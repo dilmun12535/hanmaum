@@ -38,3 +38,15 @@ alert("로그인 실패");
 loginMessage.textContent = "아이디 또는 비밀번호가 맞지 않습니다.";
 loginMessage.className = "login-message error";
 });
+
+const togglePassword = document.getElementById("togglePassword");
+
+togglePassword.addEventListener("click", () => {
+  if (loginPasswordInput.type === "password") {
+    loginPasswordInput.type = "text";
+    togglePassword.textContent = "🙈";
+  } else {
+    loginPasswordInput.type = "password";
+    togglePassword.textContent = "👁";
+  }
+});
