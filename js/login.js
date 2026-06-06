@@ -7,8 +7,10 @@ const togglePassword = document.getElementById("togglePassword");
 const USERS = {
   admin: "1234",
   김성욱: "1124",
-  김정환: "0609",
-  강민지: "0528"
+  김정환: "9155",
+  강민지: "0528",
+  고나예: "0910",
+  주신일: "0903"
 };
 
 if (togglePassword) {
