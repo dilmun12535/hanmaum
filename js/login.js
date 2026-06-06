@@ -50,3 +50,17 @@ togglePassword.addEventListener("click", () => {
     togglePassword.textContent = "👁";
   }
 });
+
+const togglePassword = document.getElementById("togglePassword");
+
+if (togglePassword) {
+  togglePassword.addEventListener("click", () => {
+    if (loginPasswordInput.type === "password") {
+      loginPasswordInput.type = "text";
+      togglePassword.textContent = "🙈";
+    } else {
+      loginPasswordInput.type = "password";
+      togglePassword.textContent = "👁";
+    }
+  });
+}
