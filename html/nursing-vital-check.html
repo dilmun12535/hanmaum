@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>간호제공 확인</title>
+
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="../css/dashboard.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo-area">
+      <img src="../images/logo.png" alt="로고" class="logo-img" />
+    </div>
+
+    <div class="topbar-right">
+      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
+      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
+
+      <div class="user-area">
+        <div class="user-badge">사회복지사</div>
+        <p class="date-text" id="todayText"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="menu-title">메뉴</div>
+      <nav class="menu-list">
+        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
+        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
+        <a href="./attendance.html" class="menu-item">출석관리</a>
+        <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a>
+        <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a>
+        <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
+        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
+        <a href="./meal-check.html" class="menu-item">식사 제공 확인</a>
+        <a href="./nursing-vital-check.html" class="menu-item active">간호제공 확인</a>
+        <a href="./medication-check.html" class="menu-item">투약 확인</a>
+      </nav>
+    </aside>
+
+    <main class="content-area">
+      <div class="content-box">
+        <div class="page-header">
+          <h2>간호제공 확인</h2>
+          <p>출석일 기준으로 혈압·맥박·체온·호흡과 건강관리 시간을 확인합니다.</p>
+        </div>
+
+        <div class="page-actions">
+          <div class="date-group">
+            <label for="checkMonth">확인 월</label>
+            <input type="text" id="checkMonth" placeholder="예: 2026-05" autocomplete="off" />
+          </div>
+
+          <div class="date-group">
+            <label for="nursingFile">간호제공 현황 파일</label>
+            <input type="file" id="nursingFile" accept=".xlsx,.xls" />
+          </div>
+
+          <div class="action-buttons">
+            <button type="button" class="primary-btn" id="checkNursingVitalBtn">간호제공 확인</button>
+            <button type="button" class="danger-btn" id="clearNursingVitalBtn">초기화</button>
+          </div>
+        </div>
+
+        <div class="notice-box">
+          <p><strong>확인 기준</strong></p>
+          <p>출석한 날에는 <strong>혈압, 맥박, 체온, 호흡</strong>이 모두 있어야 정상입니다.</p>
+          <p>건강관리 시간은 정확한 복약도움 기준에 따라 <strong>없음 20분, 1회 30분, 2회 40분, 3회 50분</strong>이어야 합니다.</p>
+          <p>결석일은 <strong>결석</strong>으로 표시하고 오류로 판단하지 않습니다.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="info-table split-check-table">
+            <thead id="nursingVitalTableHead">
+              <tr>
+                <th>수급자명</th>
+                <th>계획서 작성일</th>
+                <th>기준</th>
+              </tr>
+            </thead>
+            <tbody id="nursingVitalResultBody">
+              <tr class="empty-row">
+                <td colspan="3">확인 월과 파일을 선택해주세요.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      if (document.getElementById("checkMonth") && typeof flatpickr !== "undefined") {
+        flatpickr("#checkMonth", {
+          locale: "ko",
+          plugins: [
+            new monthSelectPlugin({
+              shorthand: false,
+              dateFormat: "Y-m",
+              altFormat: "Y년 m월",
+              theme: "light"
+            })
+          ],
+          dateFormat: "Y-m",
+          altInput: true,
+          allowInput: true,
+          onReady: function(selectedDates, dateStr, instance) {
+            const updateMonths = function() {
+              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
+              months.forEach(function(month, index) {
+                month.textContent = (index + 1) + "월";
+              });
+            };
+            updateMonths();
+            instance.calendarContainer.addEventListener("click", function() {
+              setTimeout(updateMonths, 0);
+            });
+          },
+          onYearChange: function(selectedDates, dateStr, instance) {
+            setTimeout(function() {
+              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
+              months.forEach(function(month, index) {
+                month.textContent = (index + 1) + "월";
+              });
+            }, 0);
+          }
+        });
+      }
+    });
+  </script>
+  <script src="../js/nursing-vital-check.js"></script>
+</body>
+</html>
