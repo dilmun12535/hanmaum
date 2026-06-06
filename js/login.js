@@ -5,42 +5,47 @@ const loginMessage = document.getElementById("loginMessage");
 const togglePassword = document.getElementById("togglePassword");
 
 const USERS = {
-  admin: "1234",
-  김성욱: "1124",
-  김정환: "0609",
-  강민지: "0528"
+admin: "1234",
+김성욱: "1124",
+김정환: "0609",
+강민지: "0528"
 };
 
+if (togglePassword) {
 togglePassword.addEventListener("click", () => {
-  if (loginPasswordInput.type === "password") {
-    loginPasswordInput.type = "text";
-    togglePassword.textContent = "숨김";
-  } else {
-    loginPasswordInput.type = "password";
-    togglePassword.textContent = "보기";
-  }
+if (loginPasswordInput.type === "password") {
+loginPasswordInput.type = "text";
+togglePassword.textContent = "숨김";
+} else {
+loginPasswordInput.type = "password";
+togglePassword.textContent = "보기";
+}
 });
+}
 
 loginForm.addEventListener("submit", (event) => {
-  event.preventDefault();
+event.preventDefault();
 
-  const id = loginIdInput.value.trim();
-  const password = loginPasswordInput.value.trim();
+const id = loginIdInput.value.trim();
+const password = loginPasswordInput.value.trim();
 
-  if (!id || !password) {
-    loginMessage.textContent = "아이디와 비밀번호를 모두 입력해주세요.";
-    loginMessage.className = "login-message error";
-    return;
-  }
+if (!id || !password) {
+loginMessage.textContent = "아이디와 비밀번호를 모두 입력해주세요.";
+loginMessage.className = "login-message error";
+return;
+}
 
-  if (USERS[id] === password) {
-    sessionStorage.setItem("isLoggedIn", "true");
-    sessionStorage.setItem("loginUser", id);
+if (USERS[id] === password) {
+sessionStorage.setItem("isLoggedIn", "true");
+sessionStorage.setItem("loginUser", id);
 
-    window.location.href = "html/care-plan-library.html";
-    return;
-  }
+```
+window.location.href = "html/care-plan-library.html";
+return;
+```
 
-  loginMessage.textContent = "아이디 또는 비밀번호가 맞지 않습니다.";
-  loginMessage.className = "login-message error";
+}
+
+loginMessage.textContent = "아이디 또는 비밀번호가 맞지 않습니다.";
+loginMessage.className = "login-message error";
 });
