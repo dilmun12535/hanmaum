@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>식사 제공 확인</title>
+
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="../css/dashboard.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo-area">
+      <img src="../images/logo.png" alt="로고" class="logo-img" />
+    </div>
+
+    <div class="topbar-right">
+      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
+      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
+
+      <div class="user-area">
+        <div class="user-badge">사회복지사</div>
+        <p class="date-text" id="todayText"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="menu-title">메뉴</div>
+      <nav class="menu-list">
+        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
+        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
+        <a href="./attendance.html" class="menu-item">출석관리</a>
+        <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a>
+        <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a>
+        <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
+        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
+        <a href="./meal-check.html" class="menu-item active">식사 제공 확인</a>
+        <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a>
+        <a href="./medication-check.html" class="menu-item">투약 확인</a>
+      </nav>
+    </aside>
+
+    <main class="content-area">
+      <div class="content-box">
+        <div class="page-header">
+          <h2>식사 제공 확인</h2>
+          <p>급여제공계획서와 상담일지 반영 내용을 기준으로 점심·저녁 제공 여부와 식사 형태를 확인합니다.</p>
+        </div>
+
+        <div class="page-actions">
+          <div class="date-group">
+            <label for="checkMonth">확인 월</label>
+            <input type="text" id="checkMonth" placeholder="예: 2026-05" autocomplete="off" />
+          </div>
+
+          <div class="date-group">
+            <label for="mealFile">식사/화장실 기록 파일</label>
+            <input type="file" id="mealFile" accept=".xlsx,.xls" />
+          </div>
+
+          <div class="action-buttons">
+            <button type="button" class="primary-btn" id="checkMealBtn">식사 확인</button>
+            <button type="button" class="danger-btn" id="clearMealBtn">초기화</button>
+          </div>
+        </div>
+
+        <div class="notice-box">
+          <p><strong>확인 기준</strong></p>
+          <p>급여제공계획서에 <strong>균형잡힌 식단 관리 1회</strong>가 있으면 출석일에 <strong>점심</strong>이 있어야 정상입니다.</p>
+          <p><strong>균형잡힌 식단 관리 2회</strong>가 있으면 출석일에 <strong>점심·저녁</strong>이 모두 있어야 정상입니다.</p>
+          <p><strong>기능상태에 맞는 음식 준비</strong>가 있으면 다진식 또는 죽식이어야 하며, 없으면 일반식이어야 정상입니다.</p>
+          <p>상담일지에서 식사 횟수 또는 음식 준비 내용이 바뀐 경우 반영일 이후 기준에 따라 판단합니다.</p>
+          <p>출석관리 자료를 기준으로 <strong>출석한 날만</strong> 식사 제공 여부를 확인하며, 결석일은 <strong>결석</strong>으로 표시합니다.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="info-table meal-table">
+            <thead id="mealTableHead">
+              <tr>
+                <th>수급자명</th>
+                <th>계획서 작성일</th>
+                <th>상담일지 반영</th>
+                <th>식사 횟수</th>
+                <th>음식 준비</th>
+              </tr>
+            </thead>
+            <tbody id="mealResultBody">
+              <tr class="empty-row">
+                <td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      if (document.getElementById("checkMonth") && typeof flatpickr !== "undefined") {
+        flatpickr("#checkMonth", {
+          locale: "ko",
+          plugins: [
+            new monthSelectPlugin({
+              shorthand: false,
+              dateFormat: "Y-m",
+              altFormat: "Y년 m월",
+              theme: "light"
+            })
+          ],
+          dateFormat: "Y-m",
+          altInput: true,
+          allowInput: true,
+          onReady: function(selectedDates, dateStr, instance) {
+            const updateMonths = function() {
+              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
+              months.forEach(function(month, index) {
+                month.textContent = (index + 1) + "월";
+              });
+            };
+            updateMonths();
+            instance.calendarContainer.addEventListener("click", function() {
+              setTimeout(updateMonths, 0);
+            });
+          },
+          onYearChange: function(selectedDates, dateStr, instance) {
+            setTimeout(function() {
+              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
+              months.forEach(function(month, index) {
+                month.textContent = (index + 1) + "월";
+              });
+            }, 0);
+          }
+        });
+      }
+    });
+  </script>
+  <script src="../js/meal-check.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>로그인</title>
+
+  <link rel="stylesheet" href="css/login-style.css" />
+  <script src="js/login.js" defer></script>
+</head>
+<body class="login-body">
+  <main class="login-page">
+    <section class="login-card">
+      <div class="login-logo-wrap">
+        <img src="images/logo.png" alt="로고" class="login-logo" />
+      </div>
+
+      <h1>업무 확인 시스템</h1>
+      <p class="login-subtitle">한마음주간보호센터</p>
+
+      <form id="loginForm" class="login-form">
+        <div class="login-field">
+          <label for="loginId">아이디</label>
+          <input type="text" id="loginId" placeholder="아이디를 입력해주세요" autocomplete="username" />
+        </div>
+
+        <div class="login-field">
+          <label for="loginPassword">비밀번호</label>
+          <input type="password" id="loginPassword" placeholder="비밀번호를 입력해주세요" autocomplete="current-password" />
+        </div>
+
+        <p id="loginMessage" class="login-message"></p>
+
+        <button type="submit" class="login-btn">로그인</button>
+      </form>
+    </section>
+  </main>
+</body>
+</html>
