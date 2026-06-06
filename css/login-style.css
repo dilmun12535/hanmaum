@@ -123,3 +123,22 @@
 .login-guide p {
   margin: 2px 0;
 }
+
+.password-wrap {
+  position: relative;
+}
+
+.password-wrap input {
+  padding-right: 50px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 18px;
+}
