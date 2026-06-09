@@ -39,13 +39,21 @@ function getCareItemCount(rows) {
   }).length;
 }
 
+function formatDateValue(value) {
+  if (!value) return "-";
+  const text = String(value);
+  return text.includes("T") ? text.split("T")[0] : text;
+}
+
 async function loadLibrary() {
   try {
-    const response = await fetch(API_URL);
-    carePlanLibrary = await response.json();
+    const response = await fetch(API_URL, { method: "GET", redirect: "follow" });
+    const text = await response.text();
+    carePlanLibrary = JSON.parse(text);
+    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibrary));
     renderLibrary();
   } catch (error) {
-    console.error(error);
+    console.error("구글시트 불러오기 오류:", error);
     alert("구글시트 데이터를 불러오지 못했습니다.");
   }
 }
@@ -53,6 +61,8 @@ async function loadLibrary() {
 async function addPlanToSheet(plan) {
   await fetch(API_URL, {
     method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({
       action: "add",
       ...plan
@@ -63,6 +73,8 @@ async function addPlanToSheet(plan) {
 async function deletePlansFromSheet(ids) {
   await fetch(API_URL, {
     method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
     body: JSON.stringify({
       action: "delete",
       ids
@@ -99,7 +111,7 @@ function renderLibrary() {
       </td>
       <td>${plan.longTermNumber || "-"}</td>
       <td>${plan.recipientName || "-"}</td>
-      <td>${plan.writtenDate || "-"}</td>
+      <td>${formatDateValue(plan.writtenDate)}</td>
       <td>${plan.fileName || "-"}</td>
       <td>${plan.itemCount || 0}개</td>
       <td>${plan.uploadedAt || "-"}</td>
@@ -161,7 +173,6 @@ uploadPlanBtn.addEventListener("click", () => {
       const workbook = XLSX.read(data, { type: "array" });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
-
       const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
       const newPlan = {
@@ -172,6 +183,7 @@ uploadPlanBtn.addEventListener("click", () => {
         fileName: file.name,
         uploadedAt: new Date().toLocaleString("ko-KR"),
         itemCount: getCareItemCount(rows),
+        rows,
         checked: false
       };
 
@@ -180,11 +192,13 @@ uploadPlanBtn.addEventListener("click", () => {
       planFileInput.value = "";
       planWrittenDateInput.value = "";
 
-      await loadLibrary();
-
       alert("급여제공계획서가 구글시트에 등록되었습니다.");
+
+      setTimeout(() => {
+        loadLibrary();
+      }, 1500);
     } catch (error) {
-      console.error(error);
+      console.error("등록 오류:", error);
       alert("등록 중 오류가 발생했습니다.");
     }
   };
@@ -217,11 +231,14 @@ deleteSelectedPlanBtn.addEventListener("click", async () => {
     const ids = selectedPlans.map((plan) => plan.id);
 
     await deletePlansFromSheet(ids);
-    await loadLibrary();
 
     alert("삭제되었습니다.");
+
+    setTimeout(() => {
+      loadLibrary();
+    }, 1500);
   } catch (error) {
-    console.error(error);
+    console.error("삭제 오류:", error);
     alert("삭제 중 오류가 발생했습니다.");
   }
 });
