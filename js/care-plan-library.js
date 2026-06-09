@@ -41,16 +41,23 @@ function getCareItemCount(rows) {
 
 function formatDateValue(value) {
   if (!value) return "-";
+
   const text = String(value);
   return text.includes("T") ? text.split("T")[0] : text;
 }
 
 async function loadLibrary() {
   try {
-    const response = await fetch(API_URL, { method: "GET", redirect: "follow" });
+    const response = await fetch(API_URL, {
+      method: "GET",
+      redirect: "follow"
+    });
+
     const text = await response.text();
     carePlanLibrary = JSON.parse(text);
+
     localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibrary));
+
     renderLibrary();
   } catch (error) {
     console.error("구글시트 불러오기 오류:", error);
@@ -62,7 +69,9 @@ async function addPlanToSheet(plan) {
   await fetch(API_URL, {
     method: "POST",
     mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
     body: JSON.stringify({
       action: "add",
       ...plan
@@ -74,7 +83,9 @@ async function deletePlansFromSheet(ids) {
   await fetch(API_URL, {
     method: "POST",
     mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
     body: JSON.stringify({
       action: "delete",
       ids
@@ -88,7 +99,7 @@ function renderLibrary() {
   if (carePlanLibrary.length === 0) {
     planLibraryTableBody.innerHTML = `
       <tr class="empty-row">
-        <td colspan="7">등록된 급여제공계획서가 없습니다.</td>
+        <td colspan="8">등록된 급여제공계획서가 없습니다.</td>
       </tr>
     `;
     selectAllPlanCheckbox.checked = false;
@@ -99,7 +110,8 @@ function renderLibrary() {
     if (a.recipientName === b.recipientName) {
       return new Date(b.writtenDate) - new Date(a.writtenDate);
     }
-    return String(a.recipientName).localeCompare(String(b.recipientName), "ko");
+
+    return String(a.recipientName || "").localeCompare(String(b.recipientName || ""), "ko");
   });
 
   sortedList.forEach((plan) => {
@@ -115,6 +127,7 @@ function renderLibrary() {
       <td>${plan.fileName || "-"}</td>
       <td>${plan.itemCount || 0}개</td>
       <td>${plan.uploadedAt || "-"}</td>
+      <td>${plan.uploadedBy || "알 수 없음"}</td>
     `;
 
     planLibraryTableBody.appendChild(row);
@@ -140,6 +153,8 @@ function bindCheckboxEvents() {
 
         return plan;
       });
+
+      localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibrary));
     });
   });
 }
@@ -173,7 +188,10 @@ uploadPlanBtn.addEventListener("click", () => {
       const workbook = XLSX.read(data, { type: "array" });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
+
       const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+
+      const loginUser = sessionStorage.getItem("loginUser") || "알 수 없음";
 
       const newPlan = {
         id: Date.now(),
@@ -182,6 +200,7 @@ uploadPlanBtn.addEventListener("click", () => {
         writtenDate,
         fileName: file.name,
         uploadedAt: new Date().toLocaleString("ko-KR"),
+        uploadedBy: loginUser,
         itemCount: getCareItemCount(rows),
         rows,
         checked: false
@@ -212,6 +231,7 @@ selectAllPlanCheckbox.addEventListener("change", (event) => {
     checked: event.target.checked
   }));
 
+  localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibrary));
   renderLibrary();
 });
 
