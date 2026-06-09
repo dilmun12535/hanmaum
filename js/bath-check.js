@@ -406,7 +406,11 @@ function renderResults(results) {
 
 row.innerHTML = `
   <td>${item.name}</td>
-  <td>${item.planDate || "-"}</td>
+<td>${
+  item.planDate
+    ? String(item.planDate).substring(0, 10)
+    : "-"
+}</td>
   <td>${item.counselText || "없음"}</td>
   <td>${item.requiredText || "없음"}</td>
   <td>${buildWeekCell(item.weekRequired.week1, item.weeks.week1)}</td>
