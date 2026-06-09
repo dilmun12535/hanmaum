@@ -1,3 +1,5 @@
+const API_URL = "https://script.google.com/macros/s/AKfycbyNMzHSr7ITPwJbJJXef3v1W4YYyRCiJ8zwGqykx96aszNy_QleOD2DDUyzEimjZ4FHYQ/exec";
+
 const planFileInput = document.getElementById("planFile");
 const planWrittenDateInput = document.getElementById("planWrittenDate");
 const uploadPlanBtn = document.getElementById("uploadPlanBtn");
@@ -5,11 +7,7 @@ const deleteSelectedPlanBtn = document.getElementById("deleteSelectedPlanBtn");
 const selectAllPlanCheckbox = document.getElementById("selectAllPlanCheckbox");
 const planLibraryTableBody = document.getElementById("planLibraryTableBody");
 
-let carePlanLibrary = JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
-
-function saveLibrary() {
-  localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibrary));
-}
+let carePlanLibrary = [];
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
@@ -17,7 +15,6 @@ function normalizeText(value) {
 
 function extractInfoFromFileName(fileName) {
   const nameOnly = fileName.replace(/\.(xlsx|xls)$/i, "").trim();
-
   const match = nameOnly.match(/^(L\d+)\s+(.+?)\s+수급자\s+급여제공계획/i);
 
   if (match) {
@@ -42,6 +39,37 @@ function getCareItemCount(rows) {
   }).length;
 }
 
+async function loadLibrary() {
+  try {
+    const response = await fetch(API_URL);
+    carePlanLibrary = await response.json();
+    renderLibrary();
+  } catch (error) {
+    console.error(error);
+    alert("구글시트 데이터를 불러오지 못했습니다.");
+  }
+}
+
+async function addPlanToSheet(plan) {
+  await fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "add",
+      ...plan
+    })
+  });
+}
+
+async function deletePlansFromSheet(ids) {
+  await fetch(API_URL, {
+    method: "POST",
+    body: JSON.stringify({
+      action: "delete",
+      ids
+    })
+  });
+}
+
 function renderLibrary() {
   planLibraryTableBody.innerHTML = "";
 
@@ -59,7 +87,7 @@ function renderLibrary() {
     if (a.recipientName === b.recipientName) {
       return new Date(b.writtenDate) - new Date(a.writtenDate);
     }
-    return a.recipientName.localeCompare(b.recipientName, "ko");
+    return String(a.recipientName).localeCompare(String(b.recipientName), "ko");
   });
 
   sortedList.forEach((plan) => {
@@ -88,10 +116,10 @@ function bindCheckboxEvents() {
 
   checkboxes.forEach((checkbox) => {
     checkbox.addEventListener("change", (event) => {
-      const id = Number(event.target.dataset.id);
+      const id = String(event.target.dataset.id);
 
       carePlanLibrary = carePlanLibrary.map((plan) => {
-        if (plan.id === id) {
+        if (String(plan.id) === id) {
           return {
             ...plan,
             checked: event.target.checked
@@ -100,8 +128,6 @@ function bindCheckboxEvents() {
 
         return plan;
       });
-
-      saveLibrary();
     });
   });
 }
@@ -129,34 +155,38 @@ uploadPlanBtn.addEventListener("click", () => {
 
   const reader = new FileReader();
 
-  reader.onload = (event) => {
-    const data = new Uint8Array(event.target.result);
-    const workbook = XLSX.read(data, { type: "array" });
-    const firstSheetName = workbook.SheetNames[0];
-    const worksheet = workbook.Sheets[firstSheetName];
+  reader.onload = async (event) => {
+    try {
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
 
-    const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+      const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
-    const newPlan = {
-      id: Date.now(),
-      longTermNumber: fileInfo.longTermNumber,
-      recipientName: fileInfo.recipientName,
-      writtenDate,
-      fileName: file.name,
-      uploadedAt: new Date().toLocaleString("ko-KR"),
-      itemCount: getCareItemCount(rows),
-      rows,
-      checked: false
-    };
+      const newPlan = {
+        id: Date.now(),
+        longTermNumber: fileInfo.longTermNumber,
+        recipientName: fileInfo.recipientName,
+        writtenDate,
+        fileName: file.name,
+        uploadedAt: new Date().toLocaleString("ko-KR"),
+        itemCount: getCareItemCount(rows),
+        checked: false
+      };
 
-    carePlanLibrary.push(newPlan);
-    saveLibrary();
+      await addPlanToSheet(newPlan);
 
-    planFileInput.value = "";
-    planWrittenDateInput.value = "";
+      planFileInput.value = "";
+      planWrittenDateInput.value = "";
 
-    renderLibrary();
-    alert("급여제공계획서가 보관함에 등록되었습니다.");
+      await loadLibrary();
+
+      alert("급여제공계획서가 구글시트에 등록되었습니다.");
+    } catch (error) {
+      console.error(error);
+      alert("등록 중 오류가 발생했습니다.");
+    }
   };
 
   reader.readAsArrayBuffer(file);
@@ -168,25 +198,32 @@ selectAllPlanCheckbox.addEventListener("change", (event) => {
     checked: event.target.checked
   }));
 
-  saveLibrary();
   renderLibrary();
 });
 
-deleteSelectedPlanBtn.addEventListener("click", () => {
-  const selectedCount = carePlanLibrary.filter((plan) => plan.checked).length;
+deleteSelectedPlanBtn.addEventListener("click", async () => {
+  const selectedPlans = carePlanLibrary.filter((plan) => plan.checked);
 
-  if (selectedCount === 0) {
+  if (selectedPlans.length === 0) {
     alert("삭제할 계획서를 선택해주세요.");
     return;
   }
 
-  const ok = confirm(`선택한 ${selectedCount}개의 계획서를 삭제하시겠습니까?`);
+  const ok = confirm(`선택한 ${selectedPlans.length}개의 계획서를 삭제하시겠습니까?`);
 
   if (!ok) return;
 
-  carePlanLibrary = carePlanLibrary.filter((plan) => !plan.checked);
-  saveLibrary();
-  renderLibrary();
+  try {
+    const ids = selectedPlans.map((plan) => plan.id);
+
+    await deletePlansFromSheet(ids);
+    await loadLibrary();
+
+    alert("삭제되었습니다.");
+  } catch (error) {
+    console.error(error);
+    alert("삭제 중 오류가 발생했습니다.");
+  }
 });
 
-renderLibrary();s
+loadLibrary();
