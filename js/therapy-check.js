@@ -1,3 +1,20 @@
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyNMzHSr7ITPwJbJJXef3v1W4YYyRCiJ8zwGqykx96aszNy_QleOD2DDUyzEimjZ4FHYQ/exec";
+
+async function syncCarePlanLibraryFromGoogleSheet() {
+  try {
+    const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
+    const text = await response.text();
+    const plans = JSON.parse(text);
+    localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
+    return plans;
+  } catch (error) {
+    console.error("급여제공계획서 동기화 오류:", error);
+    return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+  }
+}
+
+syncCarePlanLibraryFromGoogleSheet();
+
 const checkMonthInput = document.getElementById("checkMonth");
 const therapyFileInput = document.getElementById("therapyFile");
 const checkTherapyBtn = document.getElementById("checkTherapyBtn");
@@ -510,7 +527,8 @@ function renderResults(results) {
   });
 }
 
-checkTherapyBtn.addEventListener("click", () => {
+checkTherapyBtn.addEventListener("click", async () => {
+  await syncCarePlanLibraryFromGoogleSheet();
   const checkMonth = checkMonthInput.value;
   const file = therapyFileInput.files[0];
 
