@@ -191,7 +191,10 @@ uploadPlanBtn.addEventListener("click", () => {
 
       const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
-      const loginUser = sessionStorage.getItem("loginUser") || "알 수 없음";
+      const loginUser =
+       sessionStorage.getItem("loginUser") ||
+       localStorage.getItem("loginUser") ||
+       "알 수 없음";
 
       const newPlan = {
         id: Date.now(),
