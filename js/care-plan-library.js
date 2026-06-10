@@ -72,18 +72,19 @@ async function addPlanToSheet(plan) {
     headers: {
       "Content-Type": "text/plain;charset=utf-8"
     },
-    body: JSON.stringify({
-      action: "add",
-      id: plan.id,
-      longTermNumber: plan.longTermNumber,
-      recipientName: plan.recipientName,
-      writtenDate: plan.writtenDate,
-      fileName: plan.fileName,
-      itemCount: plan.itemCount,
-      uploadedAt: plan.uploadedAt,
-      uploadedBy: plan.uploadedBy,
-      rows: plan.rows || []
-    })
+body: JSON.stringify({
+  action: "add",
+  id: plan.id,
+  longTermNumber: plan.longTermNumber,
+  recipientName: plan.recipientName,
+  writtenDate: plan.writtenDate,
+  fileName: plan.fileName,
+  itemCount: plan.itemCount,
+  uploadedAt: plan.uploadedAt,
+  uploadedBy: sessionStorage.getItem("loginUser") || localStorage.getItem("loginUser") || plan.uploadedBy || "알 수 없음",
+  loginUser: sessionStorage.getItem("loginUser") || localStorage.getItem("loginUser") || "알 수 없음",
+  rows: plan.rows || []
+})
   });
 }
 
