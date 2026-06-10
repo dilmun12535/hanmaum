@@ -68,7 +68,6 @@ async function loadLibrary() {
 async function addPlanToSheet(plan) {
   await fetch(API_URL, {
     method: "POST",
-    mode: "no-cors",
     headers: {
       "Content-Type": "text/plain;charset=utf-8"
     },
@@ -82,7 +81,6 @@ async function addPlanToSheet(plan) {
 async function deletePlansFromSheet(ids) {
   await fetch(API_URL, {
     method: "POST",
-    mode: "no-cors",
     headers: {
       "Content-Type": "text/plain;charset=utf-8"
     },
