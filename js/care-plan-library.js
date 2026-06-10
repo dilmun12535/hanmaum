@@ -66,39 +66,26 @@ async function loadLibrary() {
 }
 
 async function addPlanToSheet(plan) {
-  alert("업로드자 확인: " + plan.uploadedBy);
+  const payload = encodeURIComponent(JSON.stringify({
+    action: "add",
+    ...plan
+  }));
 
-  await fetch(API_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      action: "add",
-      id: plan.id,
-      longTermNumber: plan.longTermNumber,
-      recipientName: plan.recipientName,
-      writtenDate: plan.writtenDate,
-      fileName: plan.fileName,
-      itemCount: plan.itemCount,
-      uploadedAt: plan.uploadedAt,
-      uploadedBy: plan.uploadedBy,
-      rows: plan.rows || []
-    })
+  await fetch(`${API_URL}?payload=${payload}`, {
+    method: "GET",
+    redirect: "follow"
   });
 }
 
 async function deletePlansFromSheet(ids) {
-  await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      action: "delete",
-      ids
-    })
+  const payload = encodeURIComponent(JSON.stringify({
+    action: "delete",
+    ids
+  }));
+
+  await fetch(`${API_URL}?payload=${payload}`, {
+    method: "GET",
+    redirect: "follow"
   });
 }
 
