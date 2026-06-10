@@ -44,6 +44,9 @@ loginForm.addEventListener("submit", (event) => {
     sessionStorage.setItem("isLoggedIn", "true");
     sessionStorage.setItem("loginUser", id);
 
+    localStorage.setItem("isLoggedIn", "true");
+    localStorage.setItem("loginUser", id);
+
     window.location.href = "html/care-plan-library.html";
     return;
   }
