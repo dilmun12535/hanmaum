@@ -66,26 +66,38 @@ async function loadLibrary() {
 }
 
 async function addPlanToSheet(plan) {
-  const payload = encodeURIComponent(JSON.stringify({
-    action: "add",
-    ...plan
-  }));
-
-  await fetch(`${API_URL}?payload=${payload}`, {
-    method: "GET",
-    redirect: "follow"
+  await fetch(API_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify({
+      action: "add",
+      id: plan.id,
+      longTermNumber: plan.longTermNumber,
+      recipientName: plan.recipientName,
+      writtenDate: plan.writtenDate,
+      fileName: plan.fileName,
+      itemCount: plan.itemCount,
+      uploadedAt: plan.uploadedAt,
+      uploadedBy: plan.uploadedBy,
+      rows: plan.rows || []
+    })
   });
 }
 
 async function deletePlansFromSheet(ids) {
-  const payload = encodeURIComponent(JSON.stringify({
-    action: "delete",
-    ids
-  }));
-
-  await fetch(`${API_URL}?payload=${payload}`, {
-    method: "GET",
-    redirect: "follow"
+  await fetch(API_URL, {
+    method: "POST",
+    mode: "no-cors",
+    headers: {
+      "Content-Type": "text/plain;charset=utf-8"
+    },
+    body: JSON.stringify({
+      action: "delete",
+      ids
+    })
   });
 }
 
@@ -95,7 +107,10 @@ function renderLibrary() {
   if (carePlanLibrary.length === 0) {
     planLibraryTableBody.innerHTML = `
       <tr class="empty-row">
-        <td colspan="8">등록된 급여제공계획서가 없습니다.</td>
+        <td></td>
+        <td colspan="7" style="text-align:center;">
+          등록된 급여제공계획서가 없습니다.
+        </td>
       </tr>
     `;
     selectAllPlanCheckbox.checked = false;
@@ -115,7 +130,12 @@ function renderLibrary() {
 
     row.innerHTML = `
       <td class="checkbox-col">
-        <input type="checkbox" class="plan-checkbox" data-id="${plan.id}" ${plan.checked ? "checked" : ""} />
+        <input
+          type="checkbox"
+          class="plan-checkbox"
+          data-id="${plan.id}"
+          ${plan.checked ? "checked" : ""}
+        />
       </td>
       <td>${plan.longTermNumber || "-"}</td>
       <td>${plan.recipientName || "-"}</td>
@@ -188,9 +208,9 @@ uploadPlanBtn.addEventListener("click", () => {
       const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
 
       const loginUser =
-       sessionStorage.getItem("loginUser") ||
-       localStorage.getItem("loginUser") ||
-       "알 수 없음";
+        sessionStorage.getItem("loginUser") ||
+        localStorage.getItem("loginUser") ||
+        "알 수 없음";
 
       const newPlan = {
         id: Date.now(),
