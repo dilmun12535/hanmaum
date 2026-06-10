@@ -66,14 +66,25 @@ async function loadLibrary() {
 }
 
 async function addPlanToSheet(plan) {
+  alert("업로드자 확인: " + plan.uploadedBy);
+
   await fetch(API_URL, {
     method: "POST",
+    mode: "no-cors",
     headers: {
       "Content-Type": "text/plain;charset=utf-8"
     },
     body: JSON.stringify({
       action: "add",
-      ...plan
+      id: plan.id,
+      longTermNumber: plan.longTermNumber,
+      recipientName: plan.recipientName,
+      writtenDate: plan.writtenDate,
+      fileName: plan.fileName,
+      itemCount: plan.itemCount,
+      uploadedAt: plan.uploadedAt,
+      uploadedBy: plan.uploadedBy,
+      rows: plan.rows || []
     })
   });
 }
