@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyNMzHSr7ITPwJbJJXef3v1W4YYyRCiJ8zwGqykx96aszNy_QleOD2DDUyzEimjZ4FHYQ/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwulqLzXeHfFo9EE6lyeiQ0oncq-OygtD9OxLqwM4HyxPT0tRWBj1sO2eImehiVf04G5g/exec";
 
 const planFileInput = document.getElementById("planFile");
 const planWrittenDateInput = document.getElementById("planWrittenDate");
