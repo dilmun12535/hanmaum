@@ -9,6 +9,18 @@ const planLibraryTableBody = document.getElementById("planLibraryTableBody");
 
 let carePlanLibrary = [];
 
+if (planWrittenDateInput) {
+  planWrittenDateInput.setAttribute("max", "9999-12-31");
+
+  planWrittenDateInput.addEventListener("input", () => {
+    const value = planWrittenDateInput.value;
+
+    if (value && value.length > 10) {
+      planWrittenDateInput.value = value.slice(0, 10);
+    }
+  });
+}
+
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
@@ -39,11 +51,25 @@ function getCareItemCount(rows) {
   }).length;
 }
 
-function formatDateValue(value) {
-  if (!value) return "-";
+function normalizeDateString(value) {
+  if (!value) return "";
 
-  const text = String(value);
-  return text.includes("T") ? text.split("T")[0] : text;
+  const text = String(value).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  if (text.includes("T")) {
+    return text.split("T")[0];
+  }
+
+  return text;
+}
+
+function formatDateValue(value) {
+  const dateText = normalizeDateString(value);
+  return dateText || "-";
 }
 
 async function loadLibrary() {
@@ -55,6 +81,11 @@ async function loadLibrary() {
 
     const text = await response.text();
     carePlanLibrary = JSON.parse(text);
+
+    carePlanLibrary = carePlanLibrary.map((plan) => ({
+      ...plan,
+      writtenDate: normalizeDateString(plan.writtenDate)
+    }));
 
     localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibrary));
 
@@ -72,19 +103,26 @@ async function addPlanToSheet(plan) {
     headers: {
       "Content-Type": "text/plain;charset=utf-8"
     },
-body: JSON.stringify({
-  action: "add",
-  id: plan.id,
-  longTermNumber: plan.longTermNumber,
-  recipientName: plan.recipientName,
-  writtenDate: plan.writtenDate,
-  fileName: plan.fileName,
-  itemCount: plan.itemCount,
-  uploadedAt: plan.uploadedAt,
-  uploadedBy: sessionStorage.getItem("loginUser") || localStorage.getItem("loginUser") || plan.uploadedBy || "알 수 없음",
-  loginUser: sessionStorage.getItem("loginUser") || localStorage.getItem("loginUser") || "알 수 없음",
-  rows: plan.rows || []
-})
+    body: JSON.stringify({
+      action: "add",
+      id: plan.id,
+      longTermNumber: plan.longTermNumber,
+      recipientName: plan.recipientName,
+      writtenDate: plan.writtenDate,
+      fileName: plan.fileName,
+      itemCount: plan.itemCount,
+      uploadedAt: plan.uploadedAt,
+      uploadedBy:
+        sessionStorage.getItem("loginUser") ||
+        localStorage.getItem("loginUser") ||
+        plan.uploadedBy ||
+        "알 수 없음",
+      loginUser:
+        sessionStorage.getItem("loginUser") ||
+        localStorage.getItem("loginUser") ||
+        "알 수 없음",
+      rows: plan.rows || []
+    })
   });
 }
 
@@ -114,16 +152,23 @@ function renderLibrary() {
         </td>
       </tr>
     `;
+
     selectAllPlanCheckbox.checked = false;
     return;
   }
 
   const sortedList = [...carePlanLibrary].sort((a, b) => {
-    if (a.recipientName === b.recipientName) {
-      return new Date(b.writtenDate) - new Date(a.writtenDate);
+    const nameA = String(a.recipientName || "");
+    const nameB = String(b.recipientName || "");
+
+    if (nameA === nameB) {
+      const dateA = normalizeDateString(a.writtenDate);
+      const dateB = normalizeDateString(b.writtenDate);
+
+      return dateB.localeCompare(dateA);
     }
 
-    return String(a.recipientName || "").localeCompare(String(b.recipientName || ""), "ko");
+    return nameA.localeCompare(nameB, "ko");
   });
 
   sortedList.forEach((plan) => {
@@ -178,7 +223,7 @@ function bindCheckboxEvents() {
 
 uploadPlanBtn.addEventListener("click", () => {
   const file = planFileInput.files[0];
-  const writtenDate = planWrittenDateInput.value;
+  const writtenDate = normalizeDateString(planWrittenDateInput.value);
 
   if (!file) {
     alert("급여제공계획서 파일을 선택해주세요.");
@@ -187,6 +232,18 @@ uploadPlanBtn.addEventListener("click", () => {
 
   if (!writtenDate) {
     alert("급여제공계획서 작성일자를 선택해주세요.");
+    return;
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(writtenDate)) {
+    alert("작성일자는 YYYY-MM-DD 형식으로 입력해주세요.");
+    return;
+  }
+
+  const year = Number(writtenDate.slice(0, 4));
+
+  if (year < 1000 || year > 9999) {
+    alert("작성일자의 연도는 4자리로 입력해주세요.");
     return;
   }
 
@@ -217,7 +274,7 @@ uploadPlanBtn.addEventListener("click", () => {
         id: Date.now(),
         longTermNumber: fileInfo.longTermNumber,
         recipientName: fileInfo.recipientName,
-        writtenDate,
+        writtenDate: writtenDate,
         fileName: file.name,
         uploadedAt: new Date().toLocaleString("ko-KR"),
         uploadedBy: loginUser,
