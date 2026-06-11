@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbypjSiYaUrN47uIkgHmyDi8mZdBH3hhZPE98Rg4gySBz5ENPj93HYU7OUWKpDa77KQ7tw/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwA3IK8YYQ7DKPcSvCM4RDVIzf8YqwDVmFAY4WFWO1Pc4wnE_UQCmr3XLolYPuWh6I7lA/exec";
 
 const counselFileInput = document.getElementById("counselFile");
 const uploadCounselBtn = document.getElementById("uploadCounselBtn");
