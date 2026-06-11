@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyNMzHSr7ITPwJbJJXef3v1W4YYyRCiJ8zwGqykx96aszNy_QleOD2DDUyzEimjZ4FHYQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycby_qhUleJaxq-SHDViDMG6XPvxuApPSHQraHE7TkTRWeMvyBgqT0lwBMqArwq6ep_dUAA/exec";
 
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
