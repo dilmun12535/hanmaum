@@ -57,17 +57,28 @@
 
           <div class="date-group">
             <label for="planWrittenDate">급여제공계획서 작성일자</label>
-            <input type="date" id="planWrittenDate" />
+            <input
+              type="date"
+              id="planWrittenDate"
+              max="9999-12-31"
+            />
           </div>
 
           <div class="action-buttons">
-            <button type="button" class="primary-btn" id="uploadPlanBtn">계획서 등록</button>
-            <button type="button" class="danger-btn" id="deleteSelectedPlanBtn">선택 삭제</button>
+            <button type="button" class="primary-btn" id="uploadPlanBtn">
+              계획서 등록
+            </button>
+            <button type="button" class="danger-btn" id="deleteSelectedPlanBtn">
+              선택 삭제
+            </button>
           </div>
         </div>
 
         <div class="notice-box">
-          <p>파일명 예시: <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong></p>
+          <p>
+            파일명 예시:
+            <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong>
+          </p>
           <p>파일명에서 장기요양번호와 수급자명을 자동으로 읽어옵니다.</p>
         </div>
 
@@ -87,9 +98,12 @@
                 <th>업로드자</th>
               </tr>
             </thead>
+
             <tbody id="planLibraryTableBody">
               <tr class="empty-row">
-                <td colspan="7">등록된 급여제공계획서가 없습니다.</td>
+                <td colspan="8">
+                  등록된 급여제공계획서가 없습니다.
+                </td>
               </tr>
             </tbody>
           </table>
@@ -101,5 +115,17 @@
   <script src="../js/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="../js/care-plan-library.js"></script>
+
+  <script>
+    const planWrittenDateInput = document.getElementById("planWrittenDate");
+
+    planWrittenDateInput.addEventListener("input", () => {
+      const value = planWrittenDateInput.value;
+
+      if (value.length > 10) {
+        planWrittenDateInput.value = value.slice(0, 10);
+      }
+    });
+  </script>
 </body>
 </html>
