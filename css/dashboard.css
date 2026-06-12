@@ -76,11 +76,9 @@
   max-width: 240px;
   flex: 0 0 240px;
   flex-shrink: 0;
-
   height: calc(100vh - 86px);
   overflow-y: auto;
   overflow-x: hidden;
-
   background-color: #ffffff;
   border-right: 1px solid #e5e7eb;
   padding: 24px 16px;
@@ -102,24 +100,19 @@
 .menu-item {
   display: flex;
   align-items: center;
-
   width: 100%;
   min-height: 48px;
   padding: 12px 16px;
-
   border-radius: 12px;
   background-color: #f7f8fc;
   color: #333;
-
   font-size: 15px;
   font-weight: 500;
   line-height: 1.35;
   text-decoration: none;
-
   white-space: normal;
   word-break: keep-all;
   overflow-wrap: normal;
-
   transition: 0.2s;
 }
 
@@ -235,74 +228,12 @@
   font-size: 13px;
 }
 
-.form-card {
-  background-color: #f8faff;
-  border: 1px solid #e5eaf5;
-  border-radius: 14px;
-  padding: 20px;
-  margin-bottom: 20px;
-  display: none;
-}
-
-.form-card.show {
-  display: block;
-}
-
-.form-card h3 {
-  font-size: 18px;
-  color: #1f3c88;
-  margin-bottom: 16px;
-}
-
-.elder-form {
-  width: 100%;
-}
-
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 16px;
-}
-
-.form-field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.form-field-wide {
-  grid-column: 1 / -1;
-}
-
-.form-field label {
-  font-size: 14px;
-  font-weight: 600;
-  color: #444;
-}
-
-.form-field input,
-.form-field select,
-.grade-select {
-  height: 42px;
-  border: 1px solid #d9deea;
-  border-radius: 10px;
-  padding: 0 12px;
-  font-size: 14px;
-  background-color: #ffffff;
-}
-
-.form-buttons {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
 .table-wrap {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
+  max-height: calc(100vh - 260px);
 }
 
 .info-table {
@@ -319,9 +250,13 @@
   vertical-align: middle;
   font-size: 14px;
   line-height: 1.5;
+  white-space: nowrap;
 }
 
 .info-table th {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   background-color: #eef3ff;
   color: #1f3c88;
   font-weight: 700;
@@ -331,83 +266,10 @@
   background-color: #fafbff;
 }
 
-.checkbox-col {
-  width: 48px;
-  text-align: center;
-}
-
-.row-checkbox,
-#selectAllCheckbox,
-#selectAllPlanCheckbox,
-#selectAllCounselCheckbox {
-  width: 16px;
-  height: 16px;
-}
-
 .empty-row td {
   text-align: center;
   color: #888;
   padding: 22px 12px;
-}
-
-.history-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: end;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
-}
-
-.notice-box {
-  margin-bottom: 20px;
-  background-color: #fff8e6;
-  border: 1px solid #f3d37a;
-  border-radius: 12px;
-  padding: 14px 16px;
-  color: #5c4400;
-  font-size: 14px;
-}
-
-.notice-box p {
-  margin-bottom: 4px;
-}
-
-.rule-box {
-  margin-top: 24px;
-  background-color: #f8faff;
-  border: 1px solid #e5eaf5;
-  border-radius: 14px;
-  padding: 18px;
-}
-
-.rule-box h3 {
-  color: #1f3c88;
-  font-size: 18px;
-  margin-bottom: 12px;
-}
-
-.rule-box p {
-  font-size: 14px;
-  color: #444;
-  margin-bottom: 6px;
-}
-
-.warn-text,
-.status-danger {
-  color: #c53030;
-  font-weight: 700;
-}
-
-.ok-text,
-.status-ok {
-  color: #1f7a3a;
-  font-weight: 700;
-}
-
-.status-warn {
-  color: #b7791f;
-  font-weight: 700;
 }
 
 .status-info {
@@ -415,63 +277,97 @@
   font-weight: 700;
 }
 
-/* 긴 일자별 표 */
-.info-table th,
-.info-table td {
+/* 출석관리 표 */
+.attendance-table {
+  min-width: 1320px;
+  table-layout: fixed;
+}
+
+.attendance-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background-color: #eaf0fb;
+}
+
+.attendance-table th,
+.attendance-table td {
+  vertical-align: middle;
+  white-space: nowrap;
+  text-align: center;
+  padding: 10px 8px;
+}
+
+.attendance-table th:nth-child(1),
+.attendance-table td:nth-child(1) {
+  min-width: 100px;
+  width: 100px;
+  text-align: left;
+  position: sticky;
+  left: 0;
+  z-index: 15;
+  background-color: #fff;
+}
+
+.attendance-table th:nth-child(1) {
+  background-color: #eaf0fb;
+  z-index: 25;
+}
+
+.attendance-table th:nth-child(2),
+.attendance-table td:nth-child(2) {
+  min-width: 140px;
+  width: 140px;
+  text-align: left;
+  position: sticky;
+  left: 100px;
+  z-index: 15;
+  background-color: #fff;
+}
+
+.attendance-table th:nth-child(2) {
+  background-color: #eaf0fb;
+  z-index: 25;
+}
+
+.attendance-table th:nth-child(3),
+.attendance-table td:nth-child(3) {
+  min-width: 115px;
+  width: 115px;
   white-space: nowrap;
 }
 
-.info-table th:nth-child(n+4),
-.info-table td:nth-child(n+4) {
-  min-width: 78px;
-  text-align: center;
+.attendance-table th:nth-child(4),
+.attendance-table td:nth-child(4) {
+  min-width: 115px;
+  width: 115px;
+  white-space: nowrap;
 }
 
-.info-table td div {
-  line-height: 1.45;
-}
-
-/* 일자별 표 앞쪽 3열 고정 */
-.info-table th:nth-child(1),
-.info-table td:nth-child(1) {
-  position: sticky;
-  left: 0;
-  z-index: 3;
-  background-color: #fff;
-  min-width: 90px;
-}
-
-.info-table th:nth-child(1) {
-  background-color: #eaf0fb;
-  z-index: 5;
-}
-
-.info-table th:nth-child(2),
-.info-table td:nth-child(2) {
-  position: sticky;
-  left: 90px;
-  z-index: 3;
-  background-color: #fff;
-  min-width: 100px;
-}
-
-.info-table th:nth-child(2) {
-  background-color: #eaf0fb;
-  z-index: 5;
-}
-
-.info-table th:nth-child(3),
-.info-table td:nth-child(3) {
-  position: sticky;
-  left: 190px;
-  z-index: 3;
-  background-color: #fff;
+.attendance-table th:nth-child(5),
+.attendance-table td:nth-child(5) {
   min-width: 80px;
+  width: 80px;
 }
 
-.info-table th:nth-child(3) {
-  background-color: #eaf0fb;
-  z-index: 5;
+.attendance-day-head,
+.attendance-day-cell {
+  min-width: 34px;
+  width: 34px;
+  font-weight: 700;
+}
+
+.attendance-day-cell {
+  color: #1f3c88;
+  font-size: 15px;
+}
+
+.attendance-day-blue {
+  color: #2563eb !important;
+}
+
+.attendance-day-red {
+  color: #dc2626 !important;
 }
 
 /* 가로 스크롤바 */
@@ -503,13 +399,5 @@
     min-width: 220px;
     max-width: 220px;
     flex-basis: 220px;
-  }
-
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .form-field-wide {
-    grid-column: auto;
   }
 }
