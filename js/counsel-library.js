@@ -18,17 +18,6 @@ function normalizeText(value) {
 function normalizeDateText(value) {
   if (!value) return "";
 
-  if (typeof value === "number") {
-    const date = XLSX.SSF.parse_date_code(value);
-
-    if (date) {
-      const yyyy = String(date.y).padStart(4, "0");
-      const mm = String(date.m).padStart(2, "0");
-      const dd = String(date.d).padStart(2, "0");
-      return `${yyyy}-${mm}-${dd}`;
-    }
-  }
-
   const text = String(value).trim().replace(/^'/, "");
 
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
@@ -38,10 +27,7 @@ function normalizeDateText(value) {
   const match = text.match(/(\d{4})[.\-/년\s]+(\d{1,2})[.\-/월\s]+(\d{1,2})/);
 
   if (match) {
-    const yyyy = match[1];
-    const mm = String(match[2]).padStart(2, "0");
-    const dd = String(match[3]).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd}`;
+    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
   }
 
   if (text.includes("T")) return text.split("T")[0];
@@ -49,74 +35,204 @@ function normalizeDateText(value) {
   return text;
 }
 
-function getCellByKeywords(row, keywords) {
-  const entries = Object.entries(row || {});
+function getCellValueByLabel(rows, labelText) {
+  const target = normalizeText(labelText);
 
-  for (const [key, value] of entries) {
-    const keyText = normalizeText(key);
+  for (let r = 0; r < rows.length; r++) {
+    const row = rows[r] || [];
 
-    if (keywords.some((word) => keyText.includes(normalizeText(word)))) {
-      return value;
+    for (let c = 0; c < row.length; c++) {
+      const cellText = normalizeText(row[c]);
+
+      if (cellText.includes(target)) {
+        for (let next = c + 1; next <= c + 8; next++) {
+          if (row[next]) return row[next];
+        }
+      }
     }
   }
 
   return "";
 }
 
-function getRecipientName(row) {
-  return getCellByKeywords(row, ["수급자명", "대상자명", "성명", "이름", "어르신"]) || "";
+function detectCareCategory(text) {
+  const clean = normalizeText(text);
+
+  if (clean.includes("목욕") || clean.includes("몸씻기") || clean.includes("옷갈아입기")) return "목욕";
+  if (clean.includes("물리치료")) return "물리치료";
+  if (clean.includes("균형잡힌식단관리") || clean.includes("식사")) return "식사";
+  if (clean.includes("기저귀")) return "기저귀";
+  if (clean.includes("정확한복약도움") || clean.includes("복약") || clean.includes("건강관리")) return "간호";
+  if (clean.includes("인지활동") || clean.includes("인지지원") || clean.includes("인지")) return "인지활동";
+  if (clean.includes("화장실") || clean.includes("대변") || clean.includes("소변") || clean.includes("배설")) return "화장실";
+
+  return "";
 }
 
-function getConsultDate(row) {
-  return normalizeDateText(
-    getCellByKeywords(row, ["상담일자", "상담일", "일자", "작성일자", "날짜"]) || ""
+function detectChangeType(text) {
+  const clean = normalizeText(text);
+
+  if (
+    clean.includes("제외") ||
+    clean.includes("중단") ||
+    clean.includes("삭제") ||
+    clean.includes("미제공") ||
+    clean.includes("하지않")
+  ) {
+    return "제외";
+  }
+
+  if (
+    clean.includes("추가") ||
+    clean.includes("시작") ||
+    clean.includes("제공") ||
+    clean.includes("반영")
+  ) {
+    return "추가";
+  }
+
+  return "기타";
+}
+
+function findBenefitReflectionStartRow(rows) {
+  for (let r = 0; r < rows.length; r++) {
+    const rowText = normalizeText((rows[r] || []).join(" "));
+
+    if (rowText.includes("급여제공반영정보")) {
+      return r;
+    }
+  }
+
+  return -1;
+}
+
+function findReflectionHeaderRow(rows, startRow) {
+  for (let r = startRow; r < Math.min(rows.length, startRow + 10); r++) {
+    const rowText = normalizeText((rows[r] || []).join(" "));
+
+    if (
+      rowText.includes("반영일") &&
+      rowText.includes("급여구분") &&
+      rowText.includes("급여내용")
+    ) {
+      return r;
+    }
+  }
+
+  return -1;
+}
+
+function parseReflectionRows(rows) {
+  const startRow = findBenefitReflectionStartRow(rows);
+
+  if (startRow === -1) return [];
+
+  const headerRowIndex = findReflectionHeaderRow(rows, startRow);
+  const result = [];
+
+  if (headerRowIndex === -1) return result;
+
+  const header = rows[headerRowIndex] || [];
+
+  const dateCol = header.findIndex((cell) => normalizeText(cell).includes("반영일"));
+  const typeCol = header.findIndex((cell) => normalizeText(cell).includes("급여구분"));
+  const contentCol = header.findIndex((cell) => normalizeText(cell).includes("급여내용"));
+  const reasonCol = header.findIndex((cell) => normalizeText(cell).includes("반영사유"));
+
+  for (let r = headerRowIndex + 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    const rowText = normalizeText(row.join(" "));
+
+    if (!rowText) continue;
+
+    const dateValue = dateCol >= 0 ? row[dateCol] : "";
+    const typeValue = typeCol >= 0 ? row[typeCol] : "";
+    const contentValue = contentCol >= 0 ? row[contentCol] : "";
+    const reasonValue = reasonCol >= 0 ? row[reasonCol] : "";
+
+    const joined = [dateValue, typeValue, contentValue, reasonValue].join(" ");
+    const category = detectCareCategory(joined);
+
+    if (!category) continue;
+
+    result.push({
+      reflectionDateRaw: dateValue,
+      category,
+      changeType: detectChangeType(joined),
+      careType: String(typeValue || "").trim(),
+      careContent: String(contentValue || "").trim(),
+      reason: String(reasonValue || "").trim(),
+      joined
+    });
+  }
+
+  return result;
+}
+
+function parseCounselSheet(rows, fileName, sheetName) {
+  const recipientName = String(
+    getCellValueByLabel(rows, "수급자") ||
+    getCellValueByLabel(rows, "성명") ||
+    getCellValueByLabel(rows, "어르신")
+  ).trim();
+
+  const counselDate = normalizeDateText(
+    getCellValueByLabel(rows, "상담일시") ||
+    getCellValueByLabel(rows, "상담일자") ||
+    getCellValueByLabel(rows, "상담일")
   );
+
+  const reflectionRows = parseReflectionRows(rows);
+  const uploadedAt = new Date().toLocaleString("ko-KR");
+
+  return reflectionRows
+    .map((item, index) => {
+      const reflectionDate = normalizeDateText(item.reflectionDateRaw) || counselDate;
+
+      if (!recipientName || !reflectionDate || !item.category) return null;
+
+      return {
+        id: `${Date.now()}_${sheetName}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+        recipientName,
+        consultDate: reflectionDate,
+        category: item.category,
+        changeType: item.changeType,
+        careContent: item.careContent || item.joined,
+        reason: item.reason || "",
+        sheetName,
+        fileName,
+        uploadedAt,
+        row: {
+          recipientName,
+          counselDate,
+          reflectionDate,
+          careType: item.careType,
+          careContent: item.careContent,
+          reason: item.reason,
+          joined: item.joined
+        },
+        checked: false
+      };
+    })
+    .filter(Boolean);
 }
 
-function getCategory(row) {
-  return getCellByKeywords(row, ["분류", "구분", "상담구분", "상담분류"]) || "";
-}
+function parseCounselWorkbook(workbook, fileName) {
+  let allParsed = [];
 
-function getChangeType(row) {
-  return getCellByKeywords(row, ["변경유형", "변경", "유형", "급여변경"]) || "";
-}
+  workbook.SheetNames.forEach((sheetName) => {
+    const sheet = workbook.Sheets[sheetName];
 
-function getCareContent(row) {
-  return (
-    getCellByKeywords(row, [
-      "급여내용",
-      "급여 내용",
-      "서비스내용",
-      "서비스 내용",
-      "제공내용",
-      "변경내용",
-      "내용"
-    ]) || ""
-  );
-}
+    const rows = XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+      defval: "",
+      raw: false
+    });
 
-function getReason(row) {
-  return getCellByKeywords(row, ["반영사유", "사유", "상담내용", "상담 내용", "비고"]) || "";
-}
+    allParsed = allParsed.concat(parseCounselSheet(rows, fileName, sheetName));
+  });
 
-function isBenefitReflectCounsel(row) {
-  const allText = normalizeText(JSON.stringify(row));
-
-  if (!allText) return false;
-
-  const hasBenefit = allText.includes("급여");
-  const hasReflect = allText.includes("반영");
-  const hasChange =
-    allText.includes("변경") ||
-    allText.includes("추가") ||
-    allText.includes("제외") ||
-    allText.includes("중지");
-
-  return hasBenefit && (hasReflect || hasChange);
-}
-
-function formatDateValue(value) {
-  return normalizeDateText(value) || "-";
+  return allParsed;
 }
 
 function makePayloadUrl(payload) {
@@ -125,38 +241,13 @@ function makePayloadUrl(payload) {
 
 async function loadCounselLibrary() {
   try {
-    if (!counselLibraryTableBody) {
-      alert("상담일지 표 영역을 찾지 못했습니다. tbody id를 확인해주세요.");
-      return;
-    }
-
     const response = await fetch(makePayloadUrl({ action: "listCounsel" }), {
       method: "GET",
       redirect: "follow"
     });
 
     const text = await response.text();
-
-    console.log("상담일지 응답:", text);
-
-    try {
-      counselLibrary = JSON.parse(text);
-    } catch (e) {
-      console.error("JSON 파싱 실패:", e);
-      console.error("응답 원본:", text);
-
-      alert(
-        "상담일지 데이터를 읽는 중 오류가 발생했습니다.\n\n" +
-          text.substring(0, 300)
-      );
-      return;
-    }
-
-    if (!Array.isArray(counselLibrary)) {
-      console.error("상담일지 응답이 배열이 아닙니다:", counselLibrary);
-      alert("상담일지 데이터 형식이 올바르지 않습니다.");
-      return;
-    }
+    counselLibrary = JSON.parse(text);
 
     counselLibrary = counselLibrary.map((item) => ({
       ...item,
@@ -167,11 +258,7 @@ async function loadCounselLibrary() {
     renderCounselLibrary();
   } catch (error) {
     console.error("상담일지 불러오기 오류:", error);
-
-    alert(
-      "상담일지 데이터를 불러오지 못했습니다.\n\n" +
-        (error.message || error)
-    );
+    alert("상담일지 데이터를 불러오지 못했습니다.");
   }
 }
 
@@ -221,23 +308,16 @@ function renderCounselLibrary() {
         </td>
       </tr>
     `;
-
-    if (selectAllCounselCheckbox) {
-      selectAllCounselCheckbox.checked = false;
-    }
-
+    selectAllCounselCheckbox.checked = false;
     return;
   }
 
   const sortedList = [...counselLibrary].sort((a, b) => {
-    const nameA = String(a.recipientName || "");
-    const nameB = String(b.recipientName || "");
-
-    if (nameA === nameB) {
+    if (String(a.recipientName || "") === String(b.recipientName || "")) {
       return String(b.consultDate || "").localeCompare(String(a.consultDate || ""));
     }
 
-    return nameA.localeCompare(nameB, "ko");
+    return String(a.recipientName || "").localeCompare(String(b.recipientName || ""), "ko");
   });
 
   sortedList.forEach((item) => {
@@ -245,15 +325,10 @@ function renderCounselLibrary() {
 
     row.innerHTML = `
       <td class="checkbox-col">
-        <input
-          type="checkbox"
-          class="counsel-checkbox"
-          data-id="${item.id}"
-          ${item.checked ? "checked" : ""}
-        />
+        <input type="checkbox" class="counsel-checkbox" data-id="${item.id}" ${item.checked ? "checked" : ""} />
       </td>
       <td>${item.recipientName || "-"}</td>
-      <td>${formatDateValue(item.consultDate)}</td>
+      <td>${item.consultDate || "-"}</td>
       <td>${item.category || "-"}</td>
       <td>${item.changeType || "-"}</td>
       <td>${item.careContent || "-"}</td>
@@ -270,155 +345,89 @@ function renderCounselLibrary() {
 }
 
 function bindCounselCheckboxEvents() {
-  const checkboxes = document.querySelectorAll(".counsel-checkbox");
-
-  checkboxes.forEach((checkbox) => {
+  document.querySelectorAll(".counsel-checkbox").forEach((checkbox) => {
     checkbox.addEventListener("change", (event) => {
       const id = String(event.target.dataset.id);
 
-      counselLibrary = counselLibrary.map((item) => {
-        if (String(item.id) === id) {
-          return {
-            ...item,
-            checked: event.target.checked
-          };
-        }
-
-        return item;
-      });
+      counselLibrary = counselLibrary.map((item) =>
+        String(item.id) === id
+          ? { ...item, checked: event.target.checked }
+          : item
+      );
     });
   });
 }
 
-if (uploadCounselBtn) {
-  uploadCounselBtn.addEventListener("click", () => {
-    const file = counselFileInput.files[0];
+uploadCounselBtn.addEventListener("click", () => {
+  const file = counselFileInput.files[0];
 
-    if (!file) {
-      alert("상담일지 파일을 선택해주세요.");
-      return;
-    }
+  if (!file) {
+    alert("상담일지 파일을 선택해주세요.");
+    return;
+  }
 
-    const reader = new FileReader();
+  const reader = new FileReader();
 
-    reader.onload = async (event) => {
-      try {
-        const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, {
-          type: "array",
-          cellDates: false
-        });
-
-        const loginUser =
-          sessionStorage.getItem("loginUser") ||
-          localStorage.getItem("loginUser") ||
-          "알 수 없음";
-
-        const uploadedAt = new Date().toLocaleString("ko-KR");
-        const items = [];
-
-        workbook.SheetNames.forEach((sheetName) => {
-          const worksheet = workbook.Sheets[sheetName];
-
-          const rows = XLSX.utils.sheet_to_json(worksheet, {
-            defval: "",
-            raw: false
-          });
-
-          rows.forEach((row, index) => {
-            if (!isBenefitReflectCounsel(row)) return;
-
-            const recipientName = getRecipientName(row);
-            const consultDate = getConsultDate(row);
-            const category = getCategory(row);
-            const changeType = getChangeType(row);
-            const careContent = getCareContent(row);
-            const reason = getReason(row);
-
-            if (!recipientName && !consultDate && !careContent && !reason) return;
-
-            items.push({
-              id: `${Date.now()}_${sheetName}_${index}_${Math.random()
-                .toString(36)
-                .slice(2, 8)}`,
-              recipientName,
-              consultDate,
-              category,
-              changeType,
-              careContent,
-              reason,
-              sheetName,
-              fileName: file.name,
-              uploadedAt,
-              uploadedBy: loginUser,
-              row
-            });
-          });
-        });
-
-        if (items.length === 0) {
-          alert("급여제공반영 정보가 있는 상담일지를 찾지 못했습니다.");
-          return;
-        }
-
-        await addCounselToSheet(items);
-
-        counselFileInput.value = "";
-
-        alert(`${items.length}건의 상담일지가 구글시트에 등록되었습니다.`);
-
-        setTimeout(() => {
-          loadCounselLibrary();
-        }, 1500);
-      } catch (error) {
-        console.error("상담일지 등록 오류:", error);
-        alert("상담일지 등록 중 오류가 발생했습니다.\n\n" + (error.message || error));
-      }
-    };
-
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-if (selectAllCounselCheckbox) {
-  selectAllCounselCheckbox.addEventListener("change", (event) => {
-    counselLibrary = counselLibrary.map((item) => ({
-      ...item,
-      checked: event.target.checked
-    }));
-
-    renderCounselLibrary();
-  });
-}
-
-if (deleteSelectedCounselBtn) {
-  deleteSelectedCounselBtn.addEventListener("click", async () => {
-    const selectedItems = counselLibrary.filter((item) => item.checked);
-
-    if (selectedItems.length === 0) {
-      alert("삭제할 상담일지를 선택해주세요.");
-      return;
-    }
-
-    const ok = confirm(`선택한 ${selectedItems.length}개의 상담일지를 삭제하시겠습니까?`);
-
-    if (!ok) return;
-
+  reader.onload = async (event) => {
     try {
-      const ids = selectedItems.map((item) => item.id);
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: "array" });
 
-      await deleteCounselsFromSheet(ids);
+      const parsed = parseCounselWorkbook(workbook, file.name);
 
-      alert("삭제되었습니다.");
+      if (parsed.length === 0) {
+        alert("모든 시트를 확인했지만 급여제공반영 정보를 찾지 못했습니다.");
+        return;
+      }
+
+      await addCounselToSheet(parsed);
+
+      counselFileInput.value = "";
+
+      alert(`${parsed.length}건의 급여제공반영 정보가 구글시트에 등록되었습니다.`);
 
       setTimeout(() => {
         loadCounselLibrary();
       }, 1500);
     } catch (error) {
-      console.error("상담일지 삭제 오류:", error);
-      alert("삭제 중 오류가 발생했습니다.\n\n" + (error.message || error));
+      console.error("상담일지 등록 오류:", error);
+      alert("상담일지 등록 중 오류가 발생했습니다.");
     }
-  });
-}
+  };
+
+  reader.readAsArrayBuffer(file);
+});
+
+selectAllCounselCheckbox.addEventListener("change", (event) => {
+  counselLibrary = counselLibrary.map((item) => ({
+    ...item,
+    checked: event.target.checked
+  }));
+
+  renderCounselLibrary();
+});
+
+deleteSelectedCounselBtn.addEventListener("click", async () => {
+  const selectedItems = counselLibrary.filter((item) => item.checked);
+
+  if (selectedItems.length === 0) {
+    alert("삭제할 상담일지를 선택해주세요.");
+    return;
+  }
+
+  const ok = confirm(`선택한 ${selectedItems.length}개의 상담일지를 삭제하시겠습니까?`);
+
+  if (!ok) return;
+
+  const ids = selectedItems.map((item) => item.id);
+
+  await deleteCounselsFromSheet(ids);
+
+  alert("삭제되었습니다.");
+
+  setTimeout(() => {
+    loadCounselLibrary();
+  }, 1500);
+});
 
 loadCounselLibrary();
