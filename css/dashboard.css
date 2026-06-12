@@ -401,3 +401,30 @@
     flex-basis: 220px;
   }
 }
+
+/* 출석관리 등급/급여개시일 칸 밀림 수정 */
+.attendance-table th:nth-child(3),
+.attendance-table td:nth-child(3) {
+  min-width: 130px !important;
+  width: 130px !important;
+  max-width: 130px !important;
+  white-space: nowrap !important;
+  overflow: hidden;
+  text-overflow: clip;
+}
+
+.attendance-table th:nth-child(4),
+.attendance-table td:nth-child(4) {
+  min-width: 120px !important;
+  width: 120px !important;
+  max-width: 120px !important;
+  white-space: nowrap !important;
+}
+
+/* 날짜 칸은 너무 커지지 않게 유지 */
+.attendance-day-head,
+.attendance-day-cell {
+  min-width: 36px !important;
+  width: 36px !important;
+  max-width: 36px !important;
+}
