@@ -441,6 +441,11 @@ function buildWeekCell(required, weekData) {
   `;
 }
 
+function buildOverallResult(weekResults) {
+  const hasError = weekResults.some((result) => result !== "정상");
+  return hasError ? "확인 필요" : "정상";
+}
+
 function buildResults(monthValue, bathRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const weekEndDates = getWeekEndDates(monthValue);
