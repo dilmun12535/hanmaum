@@ -153,6 +153,7 @@ function hasBathPlan(plan) {
 
   return (
     text.includes("몸씻기도움") ||
+    text.includes("몸씻기") ||
     text.includes("목욕") ||
     text.includes("B52")
   );
@@ -165,6 +166,31 @@ function getCounselDate(counsel) {
     counsel.date ||
     counsel.counselDate ||
     ""
+  );
+}
+
+function hasBathKeyword(text) {
+  return (
+    text.includes("목욕") ||
+    text.includes("목욕도움") ||
+    text.includes("몸씻기") ||
+    text.includes("몸씻기도움") ||
+    text.includes("몸씻") ||
+    text.includes("씻기") ||
+    text.includes("씻기도움")
+  );
+}
+
+function hasBathAction(text) {
+  return (
+    text.includes("추가") ||
+    text.includes("제외") ||
+    text.includes("중단") ||
+    text.includes("삭제") ||
+    text.includes("미제공") ||
+    text.includes("반영") ||
+    text.includes("시작") ||
+    text.includes("제공")
   );
 }
 
@@ -190,16 +216,7 @@ function getLatestBathCounsel(name, targetDate) {
         `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
       );
 
-      const hasBath = text.includes("목욕");
-      const hasAction =
-        text.includes("추가") ||
-        text.includes("제외") ||
-        text.includes("중단") ||
-        text.includes("삭제") ||
-        text.includes("미제공") ||
-        text.includes("반영");
-
-      return hasBath && hasAction;
+      return hasBathKeyword(text) && hasBathAction(text);
     })
     .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
@@ -214,7 +231,7 @@ function isRemoveCounsel(counsel) {
   );
 
   return (
-    text.includes("목욕") &&
+    hasBathKeyword(text) &&
     (
       text.includes("제외") ||
       text.includes("중단") ||
@@ -232,7 +249,7 @@ function isAddCounsel(counsel) {
   );
 
   return (
-    text.includes("목욕") &&
+    hasBathKeyword(text) &&
     (
       text.includes("추가") ||
       text.includes("시작") ||
