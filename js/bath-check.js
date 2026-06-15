@@ -16,6 +16,8 @@ async function syncCarePlanLibraryFromGoogleSheet() {
     const text = await response.text();
     const plans = JSON.parse(text);
 
+    // 용량 초과 방지: 저장 전에 기존 데이터를 안전하게 지웁니다.
+    localStorage.removeItem("carePlanLibrary");
     localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
     return plans;
   } catch (error) {
@@ -26,7 +28,6 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    // 버그 해결 포인트: 복잡한 JSON 대신 명확하게 주소 뒤에 action 파라미터를 붙여 전송합니다.
     const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, {
       method: "GET",
       redirect: "follow"
@@ -36,6 +37,10 @@ async function syncCounselLibraryFromGoogleSheet() {
     const counsels = JSON.parse(text);
 
     counselLibraryCache = Array.isArray(counsels) ? counsels : [];
+    
+    // [핵심 해결 포인트] 용량 초과(QuotaExceededError) 방지
+    // 데이터를 새로 저장하기 전에 브라우저에 남아있던 오래된 상담일지 데이터를 확실하게 비워줍니다.
+    localStorage.removeItem("counselLibrary");
     localStorage.setItem("counselLibrary", JSON.stringify(counselLibraryCache));
 
     return counselLibraryCache;
