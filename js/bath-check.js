@@ -211,17 +211,20 @@ function getLatestBathCounsel(name, targetDate) {
   const bathCounsels = counselLibrary
     .filter((item) => {
       const sameName = normalizeText(item.recipientName) === targetName;
-      const counselDate = getCounselDate(item);
+      if (!sameName) return false;
 
-      if (!sameName || !counselDate || counselDate > targetDateText) {
-        return false;
-      }
+      const counselDate = getCounselDate(item);
+      if (counselDate && counselDate > targetDateText) return false;
 
       const text = getCounselFullText(item);
 
       return hasBathKeyword(text) && hasBathAction(text);
     })
-    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
+    .sort((a, b) => {
+      const dateA = getCounselDate(a) || "0000-00-00";
+      const dateB = getCounselDate(b) || "0000-00-00";
+      return dateB.localeCompare(dateA);
+    });
 
   return bathCounsels[0] || null;
 }
