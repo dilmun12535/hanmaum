@@ -102,7 +102,7 @@
     </main>
   </div>
 
-  <script src="../js/main.js"></script>
+    <script src="../js/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
@@ -122,31 +122,11 @@
           ],
           dateFormat: "Y-m",
           altInput: true,
-          allowInput: true,
-          onReady: function(selectedDates, dateStr, instance) {
-            const updateMonths = function() {
-              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
-              months.forEach(function(month, index) {
-                month.textContent = (index + 1) + "월";
-              });
-            };
-            updateMonths();
-            instance.calendarContainer.addEventListener("click", function() {
-              setTimeout(updateMonths, 0);
-            });
-          },
-          onYearChange: function(selectedDates, dateStr, instance) {
-            setTimeout(function() {
-              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
-              months.forEach(function(month, index) {
-                month.textContent = (index + 1) + "월";
-              });
-            }, 0);
-          }
+          allowInput: true
         });
       }
     });
   </script>
-  <script src="../js/bath-check.js"></script>
+  <script src="../js/bath-check.js?v=20260615-2"></script>
 </body>
 </html>
