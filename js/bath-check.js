@@ -1,5 +1,7 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbzjy4b4CCTd2beLwDG4qnAcd0DIkMeXnynvb7DocZ0VFKz2kQ70Y0fw39jt0koUBWBv0g/exec";
 
+// 데이터를 브라우저 하드(localStorage) 대신 컴퓨터 임시 메모리(변수)에만 안전하게 보관합니다.
+let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 
 function makePayloadUrl(payload) {
@@ -14,15 +16,11 @@ async function syncCarePlanLibraryFromGoogleSheet() {
     });
 
     const text = await response.text();
-    const plans = JSON.parse(text);
-
-    // 용량 초과 방지: 저장 전에 기존 데이터를 안전하게 지웁니다.
-    localStorage.removeItem("carePlanLibrary");
-    localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
-    return plans;
+    carePlanLibraryCache = JSON.parse(text);
+    return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
-    return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+    return carePlanLibraryCache;
   }
 }
 
@@ -36,21 +34,17 @@ async function syncCounselLibraryFromGoogleSheet() {
     const text = await response.text();
     const counsels = JSON.parse(text);
 
+    // [핵심 해결 포인트] 용량 초과를 유발하던 localStorage.setItem 코드를 아예 삭제했습니다!
+    // 데이터를 메모리에만 담아두므로 QuotaExceededError가 절대 발생하지 않습니다.
     counselLibraryCache = Array.isArray(counsels) ? counsels : [];
-    
-    // [핵심 해결 포인트] 용량 초과(QuotaExceededError) 방지
-    // 데이터를 새로 저장하기 전에 브라우저에 남아있던 오래된 상담일지 데이터를 확실하게 비워줍니다.
-    localStorage.removeItem("counselLibrary");
-    localStorage.setItem("counselLibrary", JSON.stringify(counselLibraryCache));
-
     return counselLibraryCache;
   } catch (error) {
     console.error("상담일지 동기화 오류:", error);
-    counselLibraryCache = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
     return counselLibraryCache;
   }
 }
 
+// 초기 동기화 호출
 syncCarePlanLibraryFromGoogleSheet();
 syncCounselLibraryFromGoogleSheet();
 
@@ -121,10 +115,9 @@ function getWeekEndDates(monthValue) {
 }
 
 function getLatestPlansByRecipient(checkDate) {
-  const library = JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
   const checkDateText = normalizeDateText(checkDate);
 
-  const validPlans = library.filter((plan) => {
+  const validPlans = carePlanLibraryCache.filter((plan) => {
     const writtenDate = normalizeDateText(plan.writtenDate);
     return writtenDate && writtenDate <= checkDateText;
   });
@@ -206,15 +199,10 @@ function hasBathAction(text) {
 }
 
 function getLatestBathCounsel(name, targetDate) {
-  const counselLibrary =
-    counselLibraryCache.length > 0
-      ? counselLibraryCache
-      : JSON.parse(localStorage.getItem("counselLibrary") || "[]");
-
   const targetDateText = normalizeDateText(targetDate);
   const targetName = normalizeText(name);
 
-  const bathCounsels = counselLibrary
+  const bathCounsels = counselLibraryCache
     .filter((item) => {
       const itemName = normalizeText(item.recipientName || "");
 
@@ -556,6 +544,7 @@ function renderResults(results) {
 }
 
 checkBathBtn.addEventListener("click", async () => {
+  // 버튼 클릭 시 실시간으로 구글 시트에서 최신 데이터를 받아와 바로 변수에 저장합니다.
   await syncCarePlanLibraryFromGoogleSheet();
   await syncCounselLibraryFromGoogleSheet();
 
