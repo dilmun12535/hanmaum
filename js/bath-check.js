@@ -1,6 +1,5 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
-// 데이터를 브라우저 하드(localStorage) 대신 컴퓨터 임시 메모리(변수)에만 안전하게 보관합니다.
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 
@@ -34,8 +33,6 @@ async function syncCounselLibraryFromGoogleSheet() {
     const text = await response.text();
     const counsels = JSON.parse(text);
 
-    // [핵심 해결 포인트] 용량 초과를 유발하던 localStorage.setItem 코드를 아예 삭제했습니다!
-    // 데이터를 메모리에만 담아두므로 QuotaExceededError가 절대 발생하지 않습니다.
     counselLibraryCache = Array.isArray(counsels) ? counsels : [];
     return counselLibraryCache;
   } catch (error) {
@@ -44,7 +41,6 @@ async function syncCounselLibraryFromGoogleSheet() {
   }
 }
 
-// 초기 동기화 호출
 syncCarePlanLibraryFromGoogleSheet();
 syncCounselLibraryFromGoogleSheet();
 
@@ -221,6 +217,7 @@ function getLatestBathCounsel(name, targetDate) {
 
       const text = getCounselFullText(item);
 
+      // 이름이 같고 목욕 관련 키워드와 행동이 들어간 일지만 골라냅니다.
       return hasBathKeyword(text) && hasBathAction(text);
     })
     .sort((a, b) => {
@@ -277,6 +274,7 @@ function isBathRequiredAtDate(plan, name, targetDate) {
   return required;
 }
 
+// [버그 수정 포인트]: 종합 조회 화면에서 찌꺼기가 나오지 않도록 목욕 조건에 맞는 일지만 추출합니다.
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestBathCounsel(name, monthEndDate);
 
@@ -544,7 +542,6 @@ function renderResults(results) {
 }
 
 checkBathBtn.addEventListener("click", async () => {
-  // 버튼 클릭 시 실시간으로 구글 시트에서 최신 데이터를 받아와 바로 변수에 저장합니다.
   await syncCarePlanLibraryFromGoogleSheet();
   await syncCounselLibraryFromGoogleSheet();
 
