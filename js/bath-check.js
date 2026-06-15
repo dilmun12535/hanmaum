@@ -423,19 +423,22 @@ function makeResultClass(result) {
 
 function buildWeekCell(required, weekData) {
   const result = getWeekResult(required, weekData);
-  const resultClass = makeResultClass(result);
   const recordText = weekData ? weekData.recordText : "-";
 
+  let color = "#111";
+
+  if (result === "정상") {
+    color = "#2563eb";
+  }
+
+  if (result === "누락" || result === "오류") {
+    color = "#dc2626";
+  }
+
   return `
-    <div class="${resultClass}">${result}</div>
+    <div style="color:${color}; font-weight:700;">${result}</div>
     <div style="font-size:12px; color:#555; margin-top:4px;">${recordText}</div>
   `;
-}
-
-function buildOverallResult(weekResults) {
-  const hasError = weekResults.some((result) => result !== "정상");
-
-  return hasError ? "확인 필요" : "정상";
 }
 
 function buildResults(monthValue, bathRows) {
@@ -528,7 +531,9 @@ function renderResults(results) {
       <td>${buildWeekCell(item.weekRequired.week3, item.weeks.week3)}</td>
       <td>${buildWeekCell(item.weekRequired.week4, item.weeks.week4)}</td>
       <td>${buildWeekCell(item.weekRequired.week5, item.weeks.week5)}</td>
-      <td class="${overallClass}">${item.overallResult}</td>
+      <td style="color:${item.overallResult === "정상" ? "#2563eb" : "#dc2626"}; font-weight:700;">
+  ${item.overallResult}
+</td>
     `;
 
     bathResultBody.appendChild(row);
