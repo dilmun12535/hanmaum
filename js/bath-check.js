@@ -163,21 +163,29 @@ function getCounselDate(counsel) {
   );
 }
 
-function getCounselFullText(item) {
-  return normalizeText(
-    `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""} ${item.rowText || ""} ${JSON.stringify(item.row || {})}`
-  );
+// [정밀 필터링 핵심 방어기제]
+// 껍데기 JSON 전체를 뒤지지 않고, 분류(category)와 내용(careContent)만 콕 집어서 검사합니다.
+function isActualBathCounsel(item) {
+  const category = normalizeText(item.category || "");
+  const content = normalizeText(item.careContent || "");
+  const reason = normalizeText(item.reason || "");
+  
+  // 1. 대분류가 정확히 '목욕'이거나
+  if (category.includes("목욕") || category.includes("몸씻기")) {
+    return true;
+  }
+  
+  // 2. 내용이나 사유에 '목욕' 또는 '몸씻기'가 명확히 들어간 경우만 인정!
+  // (급여제외 같은 가짜 글자 파편에 절대 낚이지 않습니다.)
+  if (content.includes("목욕") || content.includes("몸씻기") || reason.includes("목욕") || reason.includes("몸씻기")) {
+    return true;
+  }
+  
+  return false;
 }
 
-// [핵심 해결포인트]: 다른 단어와 꼬이지 않게 명확한 목욕 키워드 명사만 남깁니다.
-function hasBathKeyword(text) {
-  return (
-    text.includes("목욕") || 
-    text.includes("몸씻기")
-  );
-}
-
-function hasBathAction(text) {
+function hasBathAction(item) {
+  const text = normalizeText(`${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
   return (
     text.includes("추가") ||
     text.includes("제외") ||
@@ -211,9 +219,8 @@ function getLatestBathCounsel(name, targetDate) {
         return false;
       }
 
-      const text = getCounselFullText(item);
-
-      return hasBathKeyword(text) && hasBathAction(text);
+      // 수정된 엄격한 목욕 검증법 적용
+      return isActualBathCounsel(item) && hasBathAction(item);
     })
     .sort((a, b) => {
       const dateA = getCounselDate(a) || "0000-00-00";
@@ -227,33 +234,23 @@ function getLatestBathCounsel(name, targetDate) {
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-
-  const text = getCounselFullText(counsel);
-
+  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
   return (
-    hasBathKeyword(text) &&
-    (
-      text.includes("제외") ||
-      text.includes("중단") ||
-      text.includes("삭제") ||
-      text.includes("미제공")
-    )
+    text.includes("제외") ||
+    text.includes("중단") ||
+    text.includes("삭제") ||
+    text.includes("미제공")
   );
 }
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
-
-  const text = getCounselFullText(counsel);
-
+  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
   return (
-    hasBathKeyword(text) &&
-    (
-      text.includes("추가") ||
-      text.includes("시작") ||
-      text.includes("제공") ||
-      text.includes("반영")
-    )
+    text.includes("추가") ||
+    text.includes("시작") ||
+    text.includes("제공") ||
+    text.includes("반영")
   );
 }
 
