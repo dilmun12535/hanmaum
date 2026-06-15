@@ -1,585 +1,132 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbzjy4b4CCTd2beLwDG4qnAcd0DIkMeXnynvb7DocZ0VFKz2kQ70Y0fw39jt0koUBWBv0g/exec";
-
-let carePlanLibraryCache = [];
-let counselLibraryCache = [];
-
-function makePayloadUrl(payload) {
-  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
-}
-
-async function syncCarePlanLibraryFromGoogleSheet() {
-  try {
-    const response = await fetch(CARE_PLAN_API_URL, {
-      method: "GET",
-      redirect: "follow"
-    });
-
-    const text = await response.text();
-    carePlanLibraryCache = JSON.parse(text);
-    return carePlanLibraryCache;
-  } catch (error) {
-    console.error("급여제공계획서 동기화 오류:", error);
-    return carePlanLibraryCache;
-  }
-}
-
-async function syncCounselLibraryFromGoogleSheet() {
-  try {
-    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, {
-      method: "GET",
-      redirect: "follow"
-    });
-
-    const text = await response.text();
-    const counsels = JSON.parse(text);
-
-    counselLibraryCache = Array.isArray(counsels) ? counsels : [];
-    return counselLibraryCache;
-  } catch (error) {
-    console.error("상담일지 동기화 오류:", error);
-    return counselLibraryCache;
-  }
-}
-
-syncCarePlanLibraryFromGoogleSheet();
-syncCounselLibraryFromGoogleSheet();
-
-const checkMonthInput = document.getElementById("checkMonth");
-const bathFileInput = document.getElementById("bathFile");
-const checkBathBtn = document.getElementById("checkBathBtn");
-const clearBathBtn = document.getElementById("clearBathBtn");
-const bathResultBody = document.getElementById("bathResultBody");
-
-function normalizeText(value) {
-  return String(value || "").replace(/\s/g, "").trim();
-}
-
-function normalizeDateText(value) {
-  if (!value) return "";
-
-  const text = String(value).trim().replace(/^'/, "");
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
-  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
-  if (text.includes("T")) return text.split("T")[0];
-
-  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
-
-  if (match) {
-    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
-  }
-
-  return text;
-}
-
-function getMonthEndDate(monthValue) {
-  const [year, month] = monthValue.split("-").map(Number);
-  const lastDay = new Date(year, month, 0).getDate();
-
-  return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
-}
-
-function getWeekEndDates(monthValue) {
-  const [year, month] = monthValue.split("-").map(Number);
-
-  const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 0);
-
-  const firstDay = monthStart.getDay();
-  const mondayOffset = (firstDay + 6) % 7;
-
-  const firstMonday = new Date(monthStart);
-  firstMonday.setDate(monthStart.getDate() - mondayOffset);
-
-  const result = {};
-
-  for (let i = 0; i < 5; i++) {
-    const weekStart = new Date(firstMonday);
-    weekStart.setDate(firstMonday.getDate() + i * 7);
-
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 5);
-
-    const targetDate = new Date(Math.min(weekEnd.getTime(), monthEnd.getTime()));
-
-    result[`week${i + 1}`] =
-      `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}-${String(targetDate.getDate()).padStart(2, "0")}`;
-  }
-
-  return result;
-}
-
-function getLatestPlansByRecipient(checkDate) {
-  const checkDateText = normalizeDateText(checkDate);
-
-  const validPlans = carePlanLibraryCache.filter((plan) => {
-    const writtenDate = normalizeDateText(plan.writtenDate);
-    return writtenDate && writtenDate <= checkDateText;
-  });
-
-  const latestByName = {};
-
-  validPlans.forEach((plan) => {
-    const name = String(plan.recipientName || "").trim();
-    if (!name) return;
-
-    const current = latestByName[name];
-    const writtenDate = normalizeDateText(plan.writtenDate);
-    const currentDate = current ? normalizeDateText(current.writtenDate) : "";
-
-    if (!current || writtenDate > currentDate) {
-      latestByName[name] = {
-        ...plan,
-        writtenDate
-      };
-    }
-  });
-
-  return latestByName;
-}
-
-function hasBathPlan(plan) {
-  if (!plan || !plan.rows) return false;
-
-  const text = normalizeText(JSON.stringify(plan.rows));
-
-  return (
-    text.includes("몸씻기도움") ||
-    text.includes("몸씻기") ||
-    text.includes("목욕") ||
-    text.includes("B52")
-  );
-}
-
-function getCounselDate(counsel) {
-  return normalizeDateText(
-    counsel.reflectionDate ||
-    counsel.consultDate ||
-    counsel.date ||
-    counsel.counselDate ||
-    counsel.writtenDate ||
-    ""
-  );
-}
-
-function getCounselFullText(item) {
-  return normalizeText(
-    `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""} ${item.rowText || ""} ${JSON.stringify(item.row || {})}`
-  );
-}
-
-function hasBathKeyword(text) {
-  return (
-    text.includes("목욕") ||
-    text.includes("목욕도움") ||
-    text.includes("몸씻기") ||
-    text.includes("몸씻기도움") ||
-    text.includes("몸씻") ||
-    text.includes("씻기") ||
-    text.includes("씻기도움")
-  );
-}
-
-function hasBathAction(text) {
-  return (
-    text.includes("추가") ||
-    text.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공") ||
-    text.includes("반영") ||
-    text.includes("시작") ||
-    text.includes("제공")
-  );
-}
-
-function getLatestBathCounsel(name, targetDate) {
-  const targetDateText = normalizeDateText(targetDate);
-  const targetName = normalizeText(name);
-
-  const bathCounsels = counselLibraryCache
-    .filter((item) => {
-      const itemName = normalizeText(item.recipientName || "");
-
-      const sameName =
-        itemName === targetName ||
-        itemName.includes(targetName) ||
-        targetName.includes(itemName);
-
-      if (!sameName) return false;
-
-      const counselDate = getCounselDate(item);
-
-      if (counselDate && targetDateText && counselDate > targetDateText) {
-        return false;
-      }
-
-      const text = getCounselFullText(item);
-
-      // 이름이 같고 목욕 관련 키워드와 행동이 들어간 일지만 골라냅니다.
-      return hasBathKeyword(text) && hasBathAction(text);
-    })
-    .sort((a, b) => {
-      const dateA = getCounselDate(a) || "0000-00-00";
-      const dateB = getCounselDate(b) || "0000-00-00";
-
-      return dateB.localeCompare(dateA);
-    });
-
-  return bathCounsels[0] || null;
-}
-
-function isRemoveCounsel(counsel) {
-  if (!counsel) return false;
-
-  const text = getCounselFullText(counsel);
-
-  return (
-    hasBathKeyword(text) &&
-    (
-      text.includes("제외") ||
-      text.includes("중단") ||
-      text.includes("삭제") ||
-      text.includes("미제공")
-    )
-  );
-}
-
-function isAddCounsel(counsel) {
-  if (!counsel) return false;
-
-  const text = getCounselFullText(counsel);
-
-  return (
-    hasBathKeyword(text) &&
-    (
-      text.includes("추가") ||
-      text.includes("시작") ||
-      text.includes("제공") ||
-      text.includes("반영")
-    )
-  );
-}
-
-function isBathRequiredAtDate(plan, name, targetDate) {
-  let required = hasBathPlan(plan);
-  const counsel = getLatestBathCounsel(name, targetDate);
-
-  if (counsel) {
-    if (isRemoveCounsel(counsel)) required = false;
-    if (isAddCounsel(counsel)) required = true;
-  }
-
-  return required;
-}
-
-// [버그 수정 포인트]: 종합 조회 화면에서 찌꺼기가 나오지 않도록 목욕 조건에 맞는 일지만 추출합니다.
-function getCounselTextForMonth(name, monthEndDate) {
-  const counsel = getLatestBathCounsel(name, monthEndDate);
-
-  if (!counsel) return "없음";
-
-  const counselDate = getCounselDate(counsel);
-
-  return `${counselDate || "-"} / ${counsel.changeType || "-"} / ${counsel.careContent || counsel.reason || "-"}`;
-}
-
-function parseBathCell(value) {
-  const text = String(value || "").trim();
-
-  if (!text) return null;
-
-  const cleanText = normalizeText(text);
-
-  if (cleanText.includes("일정없음")) return null;
-
-  if (cleanText.includes("목욕거부")) {
-    return {
-      hasRecord: true,
-      label: "목욕거부"
-    };
-  }
-
-  const hasTime = /\d{1,2}:\d{2}\s*~\s*\d{1,2}:\d{2}/.test(text);
-  const hasDate = /\d{4}[.-]\d{2}[.-]\d{2}/.test(text);
-
-  if (hasTime || hasDate) {
-    return {
-      hasRecord: true,
-      label: text.replace(/\n/g, " ")
-    };
-  }
-
-  return null;
-}
-
-function findWeekColumns(rows, headerIndex, weekNumber) {
-  const targetTexts = [`${weekNumber}주`, `${weekNumber}주차`];
-  const columns = [];
-
-  for (let r = Math.max(0, headerIndex - 5); r <= headerIndex + 5; r++) {
-    const row = rows[r] || [];
-
-    row.forEach((cell, colIndex) => {
-      const text = normalizeText(cell);
-
-      if (targetTexts.some((target) => text.includes(target))) {
-        columns.push(colIndex);
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>목욕 제공 확인</title>
+
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="../css/dashboard.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo-area">
+      <img src="../images/logo.png" alt="로고" class="logo-img" />
+    </div>
+
+    <div class="topbar-right">
+      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
+      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
+
+      <div class="user-area">
+        <div class="user-badge">사회복지사</div>
+        <p class="date-text" id="todayText"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="menu-title">메뉴</div>
+      <nav class="menu-list">
+        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
+        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
+        <a href="./attendance.html" class="menu-item">출석관리</a>
+        <a href="./bath-check.html" class="menu-item active">목욕 제공 확인</a>
+        <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a>
+        <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
+        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
+        <a href="./meal-check.html" class="menu-item">식사 제공 확인</a>
+        <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a>
+        <a href="./medication-check.html" class="menu-item">투약 확인</a>
+      </nav>
+    </aside>
+
+    <main class="content-area">
+      <div class="content-box">
+        <div class="page-header">
+          <h2>목욕 제공 확인</h2>
+          <p>계획서와 상담일지 급여제공반영 내용을 기준으로 목욕 기록이 맞는지 확인합니다.</p>
+        </div>
+
+        <div class="page-actions">
+          <div class="date-group">
+            <label for="checkMonth">확인 월</label>
+            <input type="text" id="checkMonth" placeholder="예: 2026-05" autocomplete="off" />
+          </div>
+
+          <div class="date-group">
+            <label for="bathFile">목욕 리포트 파일</label>
+            <input type="file" id="bathFile" accept=".xlsx,.xls" />
+          </div>
+
+          <div class="action-buttons">
+            <button type="button" class="primary-btn" id="checkBathBtn">목욕 확인</button>
+            <button type="button" class="danger-btn" id="clearBathBtn">초기화</button>
+          </div>
+        </div>
+
+        <div class="notice-box">
+          <p><strong>확인 기준</strong></p>
+          <p>계획서에 <strong>몸씻기 도움</strong>이 있고 상담일지에서 제외되지 않은 사람 → 목욕 기록 또는 목욕거부가 있어야 정상</p>
+          <p>상담일지에서 <strong>목욕 제외</strong>가 반영된 사람 → 반영일 이후에는 목욕 기록이 없어야 정상</p>
+          <p>계획서에 몸씻기 도움이 없거나 상담일지로 제외된 사람에게 목욕 기록이 있으면 <strong>오류</strong>로 표시됩니다.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="info-table">
+            <thead>
+              <tr>
+                <th>수급자명</th>
+                <th>계획서 작성일</th>
+                <th>상담일지 반영</th>
+                <th>현재 목욕 대상</th>
+                <th>1주차</th>
+                <th>2주차</th>
+                <th>3주차</th>
+                <th>4주차</th>
+                <th>5주차</th>
+                <th>종합 결과</th>
+              </tr>
+            </thead>
+            <tbody id="bathResultBody">
+              <tr class="empty-row">
+                <td colspan="11">확인 월과 목욕 리포트 파일을 선택해주세요.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+    <script src="../js/main.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      if (document.getElementById("checkMonth") && typeof flatpickr !== "undefined") {
+        flatpickr("#checkMonth", {
+          locale: "ko",
+          plugins: [
+            new monthSelectPlugin({
+              shorthand: false,
+              dateFormat: "Y-m",
+              altFormat: "Y년 m월",
+              theme: "light"
+            })
+          ],
+          dateFormat: "Y-m",
+          altInput: true,
+          allowInput: true
+        });
       }
     });
-  }
-
-  if (columns.length > 0) {
-    return {
-      start: Math.min(...columns),
-      end: Math.max(...columns)
-    };
-  }
-
-  const fallbackCol = 6 + (weekNumber - 1);
-
-  return {
-    start: fallbackCol,
-    end: fallbackCol
-  };
-}
-
-function parseBathReport(workbook) {
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-
-  const rows = XLSX.utils.sheet_to_json(sheet, {
-    header: 1,
-    defval: ""
-  });
-
-  const headerIndex = rows.findIndex((row) => {
-    return row.some((cell) => normalizeText(cell).includes("수급자명"));
-  });
-
-  if (headerIndex === -1) {
-    alert("목욕 리포트에서 수급자명 열을 찾지 못했습니다.");
-    return [];
-  }
-
-  const header = rows[headerIndex];
-  const nameCol = header.findIndex((cell) => normalizeText(cell).includes("수급자명"));
-
-  const weekRanges = {
-    week1: findWeekColumns(rows, headerIndex, 1),
-    week2: findWeekColumns(rows, headerIndex, 2),
-    week3: findWeekColumns(rows, headerIndex, 3),
-    week4: findWeekColumns(rows, headerIndex, 4),
-    week5: findWeekColumns(rows, headerIndex, 5)
-  };
-
-  const result = [];
-
-  for (let i = headerIndex + 1; i < rows.length; i++) {
-    const row = rows[i];
-    const name = String(row[nameCol] || "").trim();
-
-    if (!name || name === "수급자명") continue;
-
-    const weeks = {};
-
-    Object.entries(weekRanges).forEach(([weekKey, range]) => {
-      const cells = row.slice(range.start, range.end + 1);
-
-      const records = cells
-        .map(parseBathCell)
-        .filter((item) => item !== null);
-
-      weeks[weekKey] = {
-        hasBathRecord: records.length > 0,
-        recordText: records.length > 0
-          ? records.map((item) => item.label).join(" / ")
-          : "-"
-      };
-    });
-
-    result.push({
-      name,
-      weeks
-    });
-  }
-
-  return result;
-}
-
-function getWeekResult(required, weekData) {
-  const hasRecord = weekData && weekData.hasBathRecord;
-
-  if (required && hasRecord) return "정상";
-  if (required && !hasRecord) return "누락";
-  if (!required && hasRecord) return "오류";
-
-  return "정상";
-}
-
-function buildWeekCell(required, weekData) {
-  const result = getWeekResult(required, weekData);
-  const recordText = weekData ? weekData.recordText : "-";
-
-  let color = "#111";
-
-  if (result === "정상") {
-    color = "#2563eb";
-  }
-
-  if (result === "누락" || result === "오류") {
-    color = "#dc2626";
-  }
-
-  return `
-    <div style="color:${color}; font-weight:700;">${result}</div>
-    <div style="font-size:12px; color:#555; margin-top:4px;">${recordText}</div>
-  `;
-}
-
-function buildOverallResult(weekResults) {
-  const hasError = weekResults.some((result) => result !== "정상");
-  return hasError ? "확인 필요" : "정상";
-}
-
-function buildResults(monthValue, bathRows) {
-  const monthEndDate = getMonthEndDate(monthValue);
-  const weekEndDates = getWeekEndDates(monthValue);
-  const latestPlans = getLatestPlansByRecipient(monthEndDate);
-
-  const bathMap = {};
-
-  bathRows.forEach((row) => {
-    bathMap[row.name] = row;
-  });
-
-  const allNames = new Set([
-    ...Object.keys(latestPlans),
-    ...Object.keys(bathMap)
-  ]);
-
-  const results = [];
-
-  allNames.forEach((name) => {
-    const plan = latestPlans[name];
-    const bath = bathMap[name];
-
-    const weeks = bath
-      ? bath.weeks
-      : {
-          week1: { hasBathRecord: false, recordText: "-" },
-          week2: { hasBathRecord: false, recordText: "-" },
-          week3: { hasBathRecord: false, recordText: "-" },
-          week4: { hasBathRecord: false, recordText: "-" },
-          week5: { hasBathRecord: false, recordText: "-" }
-        };
-
-    const weekRequired = {
-      week1: isBathRequiredAtDate(plan, name, weekEndDates.week1),
-      week2: isBathRequiredAtDate(plan, name, weekEndDates.week2),
-      week3: isBathRequiredAtDate(plan, name, weekEndDates.week3),
-      week4: isBathRequiredAtDate(plan, name, weekEndDates.week4),
-      week5: isBathRequiredAtDate(plan, name, weekEndDates.week5)
-    };
-
-    const weekResults = [
-      getWeekResult(weekRequired.week1, weeks.week1),
-      getWeekResult(weekRequired.week2, weeks.week2),
-      getWeekResult(weekRequired.week3, weeks.week3),
-      getWeekResult(weekRequired.week4, weeks.week4),
-      getWeekResult(weekRequired.week5, weeks.week5)
-    ];
-
-    const anyRequired = Object.values(weekRequired).some(Boolean);
-
-    results.push({
-      name,
-      planDate: plan ? plan.writtenDate : "-",
-      counselText: getCounselTextForMonth(name, monthEndDate),
-      requiredText: anyRequired ? "있음" : "없음",
-      weekRequired,
-      weeks,
-      overallResult: buildOverallResult(weekResults)
-    });
-  });
-
-  return results.sort((a, b) => a.name.localeCompare(b.name, "ko"));
-}
-
-function renderResults(results) {
-  bathResultBody.innerHTML = "";
-
-  if (!results || results.length === 0) {
-    bathResultBody.innerHTML = `
-      <tr class="empty-row">
-        <td colspan="10">확인할 데이터가 없습니다.</td>
-      </tr>
-    `;
-    return;
-  }
-
-  results.forEach((item) => {
-    const row = document.createElement("tr");
-
-    row.innerHTML = `
-      <td>${item.name}</td>
-      <td>${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
-      <td>${item.counselText || "없음"}</td>
-      <td>${item.requiredText || "없음"}</td>
-      <td>${buildWeekCell(item.weekRequired.week1, item.weeks.week1)}</td>
-      <td>${buildWeekCell(item.weekRequired.week2, item.weeks.week2)}</td>
-      <td>${buildWeekCell(item.weekRequired.week3, item.weeks.week3)}</td>
-      <td>${buildWeekCell(item.weekRequired.week4, item.weeks.week4)}</td>
-      <td>${buildWeekCell(item.weekRequired.week5, item.weeks.week5)}</td>
-      <td style="color:${item.overallResult === "정상" ? "#2563eb" : "#dc2626"}; font-weight:700;">
-        ${item.overallResult}
-      </td>
-    `;
-
-    bathResultBody.appendChild(row);
-  });
-}
-
-checkBathBtn.addEventListener("click", async () => {
-  await syncCarePlanLibraryFromGoogleSheet();
-  await syncCounselLibraryFromGoogleSheet();
-
-  const checkMonth = checkMonthInput.value;
-  const file = bathFileInput.files[0];
-
-  if (!checkMonth) {
-    alert("확인 월을 선택해주세요.");
-    return;
-  }
-
-  if (!file) {
-    alert("목욕 리포트 파일을 업로드해주세요.");
-    return;
-  }
-
-  const reader = new FileReader();
-
-  reader.onload = (event) => {
-    const data = new Uint8Array(event.target.result);
-    const workbook = XLSX.read(data, { type: "array" });
-
-    const bathRows = parseBathReport(workbook);
-    const results = buildResults(checkMonth, bathRows);
-
-    renderResults(results);
-  };
-
-  reader.readAsArrayBuffer(file);
-});
-
-clearBathBtn.addEventListener("click", () => {
-  checkMonthInput.value = "";
-  bathFileInput.value = "";
-
-  bathResultBody.innerHTML = `
-    <tr class="empty-row">
-      <td colspan="10">확인 월과 목욕 리포트 파일을 선택해주세요.</td>
-    </tr>
-  `;
-});
+  </script>
+  <script src="../js/bath-check.js?v=20260616-001"></script>
+</body>
+</html>
