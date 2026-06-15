@@ -8,6 +8,7 @@ const elPlanDeleteTrigger = document.getElementById("deleteSelectedPlanBtn");
 const elPlanSelectAllTrigger = document.getElementById("selectAllPlanCheckbox");
 const elPlanTableBodyContainer = document.getElementById("planLibraryTableBody");
 
+// 브라우저 하드 대신 메모리에만 안전하게 들고 있도록 전역 변수로 관리합니다.
 let carePlanLibrary = [];
 
 if (elPlanDateSelector) {
@@ -79,7 +80,8 @@ async function loadLibrary() {
       checked: false
     }));
 
-    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibrary));
+    // [핵심 해결 포인트]: QuotaExceededError를 유발하던 localStorage.setItem("carePlanLibrary", ...) 코드를 완벽히 삭제했습니다!
+    // 이제 용량 한계에 제한을 받지 않고 무제한으로 어르신 데이터를 불러올 수 있습니다.
 
     if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
     renderLibrary();
@@ -89,7 +91,6 @@ async function loadLibrary() {
   }
 }
 
-// [CORS 통신 버그 완벽 해결]: no-cors 옵션을 해제하고 정석 텍스트 전송 방식을 사용합니다.
 async function addPlanToSheet(plan) {
   const loginUser = sessionStorage.getItem("loginUser") || localStorage.getItem("loginUser") || "알 수 없음";
 
@@ -114,7 +115,6 @@ async function addPlanToSheet(plan) {
   });
 }
 
-// [CORS 통신 버그 완벽 해결]
 async function deletePlansFromSheet(ids) {
   await fetch(API_URL, {
     method: "POST",
@@ -201,8 +201,6 @@ function bindCheckboxEvents() {
         return plan;
       });
 
-      localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibrary));
-      
       if (elPlanSelectAllTrigger && !event.target.checked) {
         elPlanSelectAllTrigger.checked = false;
       }
@@ -296,7 +294,6 @@ if (elPlanSelectAllTrigger) {
       checked: event.target.checked
     }));
 
-    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibrary));
     renderLibrary();
   });
 }
