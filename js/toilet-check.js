@@ -1,11 +1,24 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyNMzHSr7ITPwJbJJXef3v1W4YYyRCiJ8zwGqykx96aszNy_QleOD2DDUyzEimjZ4FHYQ/exec";
 
+let counselLibraryCache = [];
+let attendanceLibraryCache = [];
+
+function makePayloadUrl(payload) {
+  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
+    const response = await fetch(CARE_PLAN_API_URL, {
+      method: "GET",
+      redirect: "follow"
+    });
+
     const text = await response.text();
     const plans = JSON.parse(text);
+
     localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
+
     return plans;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
@@ -13,13 +26,57 @@ async function syncCarePlanLibraryFromGoogleSheet() {
   }
 }
 
-syncCarePlanLibraryFromGoogleSheet();
+async function syncCounselLibraryFromGoogleSheet() {
+  try {
+    const response = await fetch(makePayloadUrl({ action: "listCounsel" }), {
+      method: "GET",
+      redirect: "follow"
+    });
 
+    const text = await response.text();
+    const counsels = JSON.parse(text);
 
-function getAttendanceMonth(monthValue) {
-  const library = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
-  return library.filter(item => item.month === monthValue);
+    counselLibraryCache = Array.isArray(counsels) ? counsels : [];
+    localStorage.setItem("counselLibrary", JSON.stringify(counselLibraryCache));
+
+    return counselLibraryCache;
+  } catch (error) {
+    console.error("상담일지 동기화 오류:", error);
+    counselLibraryCache = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+    return counselLibraryCache;
+  }
 }
+
+async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+  try {
+    const response = await fetch(
+      makePayloadUrl({
+        action: "listAttendance",
+        month: monthValue
+      }),
+      {
+        method: "GET",
+        redirect: "follow"
+      }
+    );
+
+    const text = await response.text();
+    const attendance = JSON.parse(text);
+
+    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+
+    return attendanceLibraryCache;
+  } catch (error) {
+    console.error("출석관리 동기화 오류:", error);
+    attendanceLibraryCache = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]")
+      .filter((item) => item.month === monthValue);
+
+    return attendanceLibraryCache;
+  }
+}
+
+syncCarePlanLibraryFromGoogleSheet();
+syncCounselLibraryFromGoogleSheet();
 
 const checkMonthInput = document.getElementById("checkMonth");
 const toiletFileInput = document.getElementById("toiletFile");
@@ -30,6 +87,25 @@ const toiletTableHead = document.getElementById("toiletTableHead");
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
+}
+
+function normalizeDateText(value) {
+  if (!value) return "";
+
+  const text = String(value).trim().replace(/^'/, "");
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
+  if (text.includes("T")) return text.split("T")[0];
+
+  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+
+  if (match) {
+    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  }
+
+  return text;
 }
 
 function excelDateToJSDate(serial) {
@@ -58,17 +134,13 @@ function parseDate(value) {
     return excelDateToJSDate(value);
   }
 
-  const text = String(value);
-  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
-
-  if (!match) return "";
-
-  return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  return normalizeDateText(value);
 }
 
 function getMonthEndDate(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
+
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
@@ -84,17 +156,43 @@ function getDaysInMonth(monthValue) {
   return days;
 }
 
+function getAttendanceMonth(monthValue) {
+  return attendanceLibraryCache
+    .filter((item) => item.month === monthValue)
+    .map((item) => ({
+      name: item.recipientName || item.name || "",
+      dates: Array.isArray(item.attendanceDates)
+        ? item.attendanceDates
+        : Array.isArray(item.dates)
+          ? item.dates
+          : []
+    }));
+}
+
 function getLatestPlansByRecipient(checkDate) {
   const library = JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
-  const validPlans = library.filter((plan) => new Date(plan.writtenDate) <= new Date(checkDate));
+  const checkDateText = normalizeDateText(checkDate);
+
+  const validPlans = library.filter((plan) => {
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    return writtenDate && writtenDate <= checkDateText;
+  });
+
   const latestByName = {};
 
   validPlans.forEach((plan) => {
-    const name = plan.recipientName;
-    const current = latestByName[name];
+    const name = String(plan.recipientName || "").trim();
+    if (!name) return;
 
-    if (!current || new Date(plan.writtenDate) > new Date(current.writtenDate)) {
-      latestByName[name] = plan;
+    const current = latestByName[name];
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    const currentDate = current ? normalizeDateText(current.writtenDate) : "";
+
+    if (!current || writtenDate > currentDate) {
+      latestByName[name] = {
+        ...plan,
+        writtenDate
+      };
     }
   });
 
@@ -105,6 +203,7 @@ function hasDiaperPlan(plan) {
   if (!plan || !plan.rows) return false;
 
   const text = normalizeText(JSON.stringify(plan.rows));
+
   return (
     text.includes("기저귀교환도움") ||
     text.includes("기저귀교환") ||
@@ -113,16 +212,38 @@ function hasDiaperPlan(plan) {
   );
 }
 
+function getCounselDate(counsel) {
+  return normalizeDateText(
+    counsel.consultDate ||
+    counsel.reflectionDate ||
+    counsel.date ||
+    counsel.counselDate ||
+    ""
+  );
+}
+
 function getLatestDiaperCounsel(name, targetDate) {
-  const counselLibrary = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
-  const target = new Date(targetDate);
+  const counselLibrary =
+    counselLibraryCache.length > 0
+      ? counselLibraryCache
+      : JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+
+  const targetName = String(name || "").trim();
+  const targetDateText = normalizeDateText(targetDate);
 
   const counsels = counselLibrary
     .filter((item) => {
-      const sameName = item.recipientName === name;
-      const reflectionDate = new Date(item.reflectionDate);
-      const category = item.category || "";
-      const text = normalizeText(`${item.careContent} ${item.reason} ${item.changeType}`);
+      const sameName = String(item.recipientName || "").trim() === targetName;
+      const counselDate = getCounselDate(item);
+
+      if (!sameName || !counselDate || counselDate > targetDateText) {
+        return false;
+      }
+
+      const category = String(item.category || "");
+      const text = normalizeText(
+        `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
+      );
 
       const isDiaper =
         category === "기저귀" ||
@@ -130,9 +251,9 @@ function getLatestDiaperCounsel(name, targetDate) {
         text.includes("기저귀교환도움") ||
         text.includes("기저귀교환");
 
-      return sameName && isDiaper && reflectionDate <= target;
+      return isDiaper;
     })
-    .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
+    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
   return counsels[0] || null;
 }
@@ -140,7 +261,8 @@ function getLatestDiaperCounsel(name, targetDate) {
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
 
-  const text = normalizeText(`${counsel.changeType} ${counsel.careContent} ${counsel.reason}`);
+  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+
   return (
     text.includes("제외") ||
     text.includes("중단") ||
@@ -153,7 +275,8 @@ function isRemoveCounsel(counsel) {
 function isAddCounsel(counsel) {
   if (!counsel) return false;
 
-  const text = normalizeText(`${counsel.changeType} ${counsel.careContent} ${counsel.reason}`);
+  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+
   return (
     text.includes("추가") ||
     text.includes("시작") ||
@@ -181,10 +304,14 @@ function getCounselTextForMonth(name, monthEndDate) {
     return "없음";
   }
 
-  return `${counsel.reflectionDate} / ${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
+  const counselDate = getCounselDate(counsel);
+
+  return `${counselDate || "-"} / ${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
 }
 
 function sheetToRowsWithMerges(sheet) {
+  if (!sheet || !sheet["!ref"]) return [];
+
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const rows = [];
 
@@ -263,6 +390,7 @@ function parseCount(value) {
   }
 
   const match = text.match(/\d+/);
+
   if (!match) return 0;
 
   return Number(match[0]);
@@ -294,9 +422,11 @@ function parseToiletReport(workbook, monthValue) {
     const row = rows[i] || [];
 
     const name = String(row[nameCol] || "").trim();
+
     if (!name || name === "수급자명") continue;
 
     const dateText = parseDate(row[dateCol]);
+
     if (!dateText) continue;
     if (!dateText.startsWith(monthValue)) continue;
 
@@ -340,6 +470,7 @@ function makeResultClass(result) {
   if (result === "정상") return "status-ok";
   if (result === "횟수 부족") return "status-danger";
   if (result === "기저귀 오류") return "status-danger";
+
   return "";
 }
 
@@ -384,7 +515,8 @@ function buildResults(monthValue, toiletRows) {
 
   Object.values(nameMap).forEach((item) => {
     const plan = latestPlans[item.name];
-    const attendance = attendanceRows.find(a => a.name === item.name);
+    const attendance = attendanceRows.find((a) => a.name === item.name);
+
     item.attendanceDates = attendance ? attendance.dates : [];
     item.daysDiaperAllowed = {};
 
@@ -399,10 +531,11 @@ function buildResults(monthValue, toiletRows) {
   };
 }
 
-function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay=true) {
+function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
   if (!isAttendanceDay) {
     return '<div style="color:#999;">결석</div>';
   }
+
   if (!dayData) {
     return `
       <div class="status-danger">기록 없음</div>
@@ -422,7 +555,6 @@ function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay=true) {
     </div>
   `;
 }
-
 
 function getHolidayList(year) {
   return [
@@ -499,7 +631,6 @@ function renderResults(data) {
 }
 
 checkToiletBtn.addEventListener("click", async () => {
-  await syncCarePlanLibraryFromGoogleSheet();
   const checkMonth = checkMonthInput.value;
   const file = toiletFileInput.files[0];
 
@@ -513,11 +644,18 @@ checkToiletBtn.addEventListener("click", async () => {
     return;
   }
 
+  await syncCarePlanLibraryFromGoogleSheet();
+  await syncCounselLibraryFromGoogleSheet();
+  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+
   const reader = new FileReader();
 
   reader.onload = (event) => {
     const data = new Uint8Array(event.target.result);
-    const workbook = XLSX.read(data, { type: "array", cellDates: true });
+    const workbook = XLSX.read(data, {
+      type: "array",
+      cellDates: true
+    });
 
     const toiletRows = parseToiletReport(workbook, checkMonth);
     const results = buildResults(checkMonth, toiletRows);
