@@ -186,19 +186,20 @@ function getLatestBathCounsel(name, targetDate) {
         return false;
       }
 
-      const category = String(item.category || "");
       const text = normalizeText(
         `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
       );
 
-      const isBath =
-        category === "목욕" ||
-        text.includes("목욕") ||
-        text.includes("몸씻기") ||
-        text.includes("옷갈아입기") ||
-        text.includes("옷갈아입기도움");
+      const hasBath = text.includes("목욕");
+      const hasAction =
+        text.includes("추가") ||
+        text.includes("제외") ||
+        text.includes("중단") ||
+        text.includes("삭제") ||
+        text.includes("미제공") ||
+        text.includes("반영");
 
-      return isBath;
+      return hasBath && hasAction;
     })
     .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
@@ -209,16 +210,17 @@ function isRemoveCounsel(counsel) {
   if (!counsel) return false;
 
   const text = normalizeText(
-    `${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`
+    `${counsel.category || ""} ${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`
   );
 
   return (
-    text.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공") ||
-    text.includes("하지않") ||
-    text.includes("거부")
+    text.includes("목욕") &&
+    (
+      text.includes("제외") ||
+      text.includes("중단") ||
+      text.includes("삭제") ||
+      text.includes("미제공")
+    )
   );
 }
 
@@ -226,15 +228,17 @@ function isAddCounsel(counsel) {
   if (!counsel) return false;
 
   const text = normalizeText(
-    `${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`
+    `${counsel.category || ""} ${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`
   );
 
   return (
-    text.includes("추가") ||
-    text.includes("시작") ||
-    text.includes("제공") ||
-    text.includes("반영") ||
-    text.includes("대체")
+    text.includes("목욕") &&
+    (
+      text.includes("추가") ||
+      text.includes("시작") ||
+      text.includes("제공") ||
+      text.includes("반영")
+    )
   );
 }
 
