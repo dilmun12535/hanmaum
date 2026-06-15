@@ -210,11 +210,20 @@ function getLatestBathCounsel(name, targetDate) {
 
   const bathCounsels = counselLibrary
     .filter((item) => {
-      const sameName = normalizeText(item.recipientName) === targetName;
+      const itemName = normalizeText(item.recipientName || "");
+
+      const sameName =
+        itemName === targetName ||
+        itemName.includes(targetName) ||
+        targetName.includes(itemName);
+
       if (!sameName) return false;
 
       const counselDate = getCounselDate(item);
-      if (counselDate && counselDate > targetDateText) return false;
+
+      if (counselDate && targetDateText && counselDate > targetDateText) {
+        return false;
+      }
 
       const text = getCounselFullText(item);
 
@@ -223,6 +232,7 @@ function getLatestBathCounsel(name, targetDate) {
     .sort((a, b) => {
       const dateA = getCounselDate(a) || "0000-00-00";
       const dateB = getCounselDate(b) || "0000-00-00";
+
       return dateB.localeCompare(dateA);
     });
 
@@ -279,8 +289,17 @@ function getCounselTextForMonth(name, monthEndDate) {
   if (!counsel) return "없음";
 
   const counselDate = getCounselDate(counsel);
+  const fullText = getCounselFullText(counsel);
 
-  return `${counselDate || "-"} / ${counsel.changeType || "-"} / ${counsel.careContent || counsel.rowText || "-"}`;
+  const displayText =
+    counsel.careContent ||
+    counsel.reason ||
+    counsel.changeType ||
+    counsel.rowText ||
+    fullText ||
+    "-";
+
+  return `${counselDate || "-"} / ${counsel.changeType || "-"} / ${displayText}`;
 }
 
 function parseBathCell(value) {
