@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbx_TrOiv7C3FP3uP4SXAMpUQJqhXGlVuTZDP2a32uihMqsmmtfaueB5VQk0ic23ryGuQQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyT0S2pnW_Q19LtoSp-rQ2h02QVWxp1lwPSPKCJrLWn3mLDFDR4-9d3TkheefBS5rOL/exec";
 
 let counselLibraryCache = [];
 
@@ -161,10 +161,11 @@ function hasBathPlan(plan) {
 
 function getCounselDate(counsel) {
   return normalizeDateText(
-    counsel.consultDate ||
     counsel.reflectionDate ||
+    counsel.consultDate ||
     counsel.date ||
     counsel.counselDate ||
+    counsel.writtenDate ||
     ""
   );
 }
@@ -194,6 +195,12 @@ function hasBathAction(text) {
   );
 }
 
+function getCounselFullText(item) {
+  return normalizeText(
+    `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""} ${item.rowText || ""} ${JSON.stringify(item.row || {})}`
+  );
+}
+
 function getLatestBathCounsel(name, targetDate) {
   const counselLibrary =
     counselLibraryCache.length > 0
@@ -201,20 +208,18 @@ function getLatestBathCounsel(name, targetDate) {
       : JSON.parse(localStorage.getItem("counselLibrary") || "[]");
 
   const targetDateText = normalizeDateText(targetDate);
-  const targetName = String(name || "").trim();
+  const targetName = normalizeText(name);
 
   const bathCounsels = counselLibrary
     .filter((item) => {
-      const sameName = String(item.recipientName || "").trim() === targetName;
+      const sameName = normalizeText(item.recipientName) === targetName;
       const counselDate = getCounselDate(item);
 
       if (!sameName || !counselDate || counselDate > targetDateText) {
         return false;
       }
 
-      const text = normalizeText(
-        `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
-      );
+      const text = getCounselFullText(item);
 
       return hasBathKeyword(text) && hasBathAction(text);
     })
@@ -226,9 +231,7 @@ function getLatestBathCounsel(name, targetDate) {
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
 
-  const text = normalizeText(
-    `${counsel.category || ""} ${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`
-  );
+  const text = getCounselFullText(counsel);
 
   return (
     hasBathKeyword(text) &&
@@ -244,9 +247,7 @@ function isRemoveCounsel(counsel) {
 function isAddCounsel(counsel) {
   if (!counsel) return false;
 
-  const text = normalizeText(
-    `${counsel.category || ""} ${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`
-  );
+  const text = getCounselFullText(counsel);
 
   return (
     hasBathKeyword(text) &&
