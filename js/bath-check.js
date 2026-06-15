@@ -1,11 +1,23 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyT0S2pnW_Q19LtoSp-rQ2h02QVWxp1lwPSPKCJrLWn3mLDFDR4-9d3TkheefBS5rOL/exec";
 
+let counselLibraryCache = [];
+
+function makePayloadUrl(payload) {
+  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
+    const response = await fetch(CARE_PLAN_API_URL, {
+      method: "GET",
+      redirect: "follow"
+    });
+
     const text = await response.text();
     const plans = JSON.parse(text);
+
     localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
+
     return plans;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
@@ -13,7 +25,29 @@ async function syncCarePlanLibraryFromGoogleSheet() {
   }
 }
 
+async function syncCounselLibraryFromGoogleSheet() {
+  try {
+    const response = await fetch(makePayloadUrl({ action: "listCounsel" }), {
+      method: "GET",
+      redirect: "follow"
+    });
+
+    const text = await response.text();
+    const counsels = JSON.parse(text);
+
+    counselLibraryCache = Array.isArray(counsels) ? counsels : [];
+    localStorage.setItem("counselLibrary", JSON.stringify(counselLibraryCache));
+
+    return counselLibraryCache;
+  } catch (error) {
+    console.error("상담일지 동기화 오류:", error);
+    counselLibraryCache = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+    return counselLibraryCache;
+  }
+}
+
 syncCarePlanLibraryFromGoogleSheet();
+syncCounselLibraryFromGoogleSheet();
 
 const checkMonthInput = document.getElementById("checkMonth");
 const bathFileInput = document.getElementById("bathFile");
@@ -25,9 +59,30 @@ function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
 
+function normalizeDateText(value) {
+  if (!value) return "";
+
+  const text = String(value).trim().replace(/^'/, "");
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
+
+  if (text.includes("T")) return text.split("T")[0];
+
+  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+
+  if (match) {
+    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  }
+
+  return text;
+}
+
 function getMonthEndDate(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
+
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
@@ -47,7 +102,7 @@ function getWeekEndDates(monthValue) {
 
   for (let i = 0; i < 5; i++) {
     const weekStart = new Date(firstMonday);
-    weekStart.setDate(firstMonday.getDate() + (i * 7));
+    weekStart.setDate(firstMonday.getDate() + i * 7);
 
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 5);
@@ -63,19 +118,28 @@ function getWeekEndDates(monthValue) {
 
 function getLatestPlansByRecipient(checkDate) {
   const library = JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+  const checkDateText = normalizeDateText(checkDate);
 
   const validPlans = library.filter((plan) => {
-    return new Date(plan.writtenDate) <= new Date(checkDate);
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    return writtenDate && writtenDate <= checkDateText;
   });
 
   const latestByName = {};
 
   validPlans.forEach((plan) => {
-    const name = plan.recipientName;
-    const current = latestByName[name];
+    const name = String(plan.recipientName || "").trim();
+    if (!name) return;
 
-    if (!current || new Date(plan.writtenDate) > new Date(current.writtenDate)) {
-      latestByName[name] = plan;
+    const current = latestByName[name];
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    const currentDate = current ? normalizeDateText(current.writtenDate) : "";
+
+    if (!current || writtenDate > currentDate) {
+      latestByName[name] = {
+        ...plan,
+        writtenDate
+      };
     }
   });
 
@@ -86,28 +150,57 @@ function hasBathPlan(plan) {
   if (!plan || !plan.rows) return false;
 
   const text = normalizeText(JSON.stringify(plan.rows));
-  return text.includes("몸씻기도움") || text.includes("B52");
+
+  return (
+    text.includes("몸씻기도움") ||
+    text.includes("목욕") ||
+    text.includes("B52")
+  );
+}
+
+function getCounselDate(counsel) {
+  return normalizeDateText(
+    counsel.consultDate ||
+    counsel.reflectionDate ||
+    counsel.date ||
+    counsel.counselDate ||
+    ""
+  );
 }
 
 function getLatestBathCounsel(name, targetDate) {
-  const counselLibrary = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
-  const target = new Date(targetDate);
+  const counselLibrary =
+    counselLibraryCache.length > 0
+      ? counselLibraryCache
+      : JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+
+  const targetDateText = normalizeDateText(targetDate);
+  const targetName = String(name || "").trim();
 
   const bathCounsels = counselLibrary
     .filter((item) => {
-      const sameName = item.recipientName === name;
-      const reflectionDate = new Date(item.reflectionDate);
-      const category = item.category || "";
-      const text = normalizeText(`${item.careContent} ${item.reason} ${item.changeType}`);
+      const sameName = String(item.recipientName || "").trim() === targetName;
+      const counselDate = getCounselDate(item);
+
+      if (!sameName || !counselDate || counselDate > targetDateText) {
+        return false;
+      }
+
+      const category = String(item.category || "");
+      const text = normalizeText(
+        `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
+      );
 
       const isBath =
         category === "목욕" ||
         text.includes("목욕") ||
-        text.includes("몸씻기");
+        text.includes("몸씻기") ||
+        text.includes("옷갈아입기") ||
+        text.includes("옷갈아입기도움");
 
-      return sameName && isBath && reflectionDate <= target;
+      return isBath;
     })
-    .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
+    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
   return bathCounsels[0] || null;
 }
@@ -115,27 +208,33 @@ function getLatestBathCounsel(name, targetDate) {
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
 
-  const text = normalizeText(`${counsel.changeType} ${counsel.careContent} ${counsel.reason}`);
+  const text = normalizeText(
+    `${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`
+  );
 
   return (
     text.includes("제외") ||
     text.includes("중단") ||
     text.includes("삭제") ||
     text.includes("미제공") ||
-    text.includes("하지않")
+    text.includes("하지않") ||
+    text.includes("거부")
   );
 }
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
 
-  const text = normalizeText(`${counsel.changeType} ${counsel.careContent} ${counsel.reason}`);
+  const text = normalizeText(
+    `${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`
+  );
 
   return (
     text.includes("추가") ||
     text.includes("시작") ||
     text.includes("제공") ||
-    text.includes("반영")
+    text.includes("반영") ||
+    text.includes("대체")
   );
 }
 
@@ -164,7 +263,9 @@ function getCounselTextForMonth(name, monthEndDate) {
     return "없음";
   }
 
-  return `${counsel.reflectionDate} / ${counsel.changeType || "-"} / ${counsel.careContent || "-"}`;
+  const counselDate = getCounselDate(counsel);
+
+  return `${counselDate || "-"} / ${counsel.changeType || "-"} / ${counsel.careContent || "-"}`;
 }
 
 function parseBathCell(value) {
@@ -248,7 +349,6 @@ function parseBathReport(workbook) {
   }
 
   const header = rows[headerIndex];
-
   const nameCol = header.findIndex((cell) => normalizeText(cell).includes("수급자명"));
 
   const weekRanges = {
@@ -299,6 +399,7 @@ function getWeekResult(required, weekData) {
   if (required && hasRecord) return "정상";
   if (required && !hasRecord) return "누락";
   if (!required && hasRecord) return "오류";
+
   return "정상";
 }
 
@@ -306,6 +407,7 @@ function makeResultClass(result) {
   if (result === "정상") return "status-ok";
   if (result === "누락") return "status-danger";
   if (result === "오류") return "status-danger";
+
   return "";
 }
 
@@ -322,6 +424,7 @@ function buildWeekCell(required, weekData) {
 
 function buildOverallResult(weekResults) {
   const hasError = weekResults.some((result) => result !== "정상");
+
   return hasError ? "확인 필요" : "정상";
 }
 
@@ -331,6 +434,7 @@ function buildResults(monthValue, bathRows) {
   const latestPlans = getLatestPlansByRecipient(monthEndDate);
 
   const bathMap = {};
+
   bathRows.forEach((row) => {
     bathMap[row.name] = row;
   });
@@ -394,7 +498,7 @@ function renderResults(results) {
   if (!results || results.length === 0) {
     bathResultBody.innerHTML = `
       <tr class="empty-row">
-        <td colspan="11">확인할 데이터가 없습니다.</td>
+        <td colspan="10">확인할 데이터가 없습니다.</td>
       </tr>
     `;
     return;
@@ -404,22 +508,18 @@ function renderResults(results) {
     const row = document.createElement("tr");
     const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
 
-row.innerHTML = `
-  <td>${item.name}</td>
-<td>${
-  item.planDate
-    ? String(item.planDate).substring(0, 10)
-    : "-"
-}</td>
-  <td>${item.counselText || "없음"}</td>
-  <td>${item.requiredText || "없음"}</td>
-  <td>${buildWeekCell(item.weekRequired.week1, item.weeks.week1)}</td>
-  <td>${buildWeekCell(item.weekRequired.week2, item.weeks.week2)}</td>
-  <td>${buildWeekCell(item.weekRequired.week3, item.weeks.week3)}</td>
-  <td>${buildWeekCell(item.weekRequired.week4, item.weeks.week4)}</td>
-  <td>${buildWeekCell(item.weekRequired.week5, item.weeks.week5)}</td>
-  <td class="${overallClass}">${item.overallResult}</td>
-`;
+    row.innerHTML = `
+      <td>${item.name}</td>
+      <td>${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
+      <td>${item.counselText || "없음"}</td>
+      <td>${item.requiredText || "없음"}</td>
+      <td>${buildWeekCell(item.weekRequired.week1, item.weeks.week1)}</td>
+      <td>${buildWeekCell(item.weekRequired.week2, item.weeks.week2)}</td>
+      <td>${buildWeekCell(item.weekRequired.week3, item.weeks.week3)}</td>
+      <td>${buildWeekCell(item.weekRequired.week4, item.weeks.week4)}</td>
+      <td>${buildWeekCell(item.weekRequired.week5, item.weeks.week5)}</td>
+      <td class="${overallClass}">${item.overallResult}</td>
+    `;
 
     bathResultBody.appendChild(row);
   });
@@ -427,6 +527,8 @@ row.innerHTML = `
 
 checkBathBtn.addEventListener("click", async () => {
   await syncCarePlanLibraryFromGoogleSheet();
+  await syncCounselLibraryFromGoogleSheet();
+
   const checkMonth = checkMonthInput.value;
   const file = bathFileInput.files[0];
 
@@ -461,7 +563,7 @@ clearBathBtn.addEventListener("click", () => {
 
   bathResultBody.innerHTML = `
     <tr class="empty-row">
-      <td colspan="11">확인 월과 목욕 리포트 파일을 선택해주세요.</td>
+      <td colspan="10">확인 월과 목욕 리포트 파일을 선택해주세요.</td>
     </tr>
   `;
 });
