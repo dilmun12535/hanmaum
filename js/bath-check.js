@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbzjy4b4CCTd2beLwDG4qnAcd0DIkMeXnynvb7DocZ0VFKz2kQ70Y0fw39jt0koUBWBv0g/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -163,15 +163,33 @@ function getCounselDate(counsel) {
   );
 }
 
-// 상담일지 내부의 모든 텍스트 영역을 합쳐서 글자 공백을 제거합니다.
 function getCounselFullText(item) {
   return normalizeText(
     `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
   );
 }
 
-// [핵심 로직 수정 적용 구역]
-// 오직 '목욕'이라는 단어가 있고, 동시에 '추가'나 '제외'가 같이 엮인 문장만 통과시킵니다.
+// [버그 수정 포인트 1] 다른 단어와 꼬이지 않도록 명확하게 '목욕', '몸씻기' 단어 자체만 인정합니다.
+function hasBathKeyword(text) {
+  return (
+    text.includes("목욕") ||
+    text.includes("몸씻기")
+  );
+}
+
+function hasBathAction(text) {
+  return (
+    text.includes("추가") ||
+    text.includes("제외") ||
+    text.includes("중단") ||
+    text.includes("삭제") ||
+    text.includes("미제공") ||
+    text.includes("반영") ||
+    text.includes("시작") ||
+    text.includes("제공")
+  );
+}
+
 function getLatestBathCounsel(name, targetDate) {
   const targetDateText = normalizeDateText(targetDate);
   const targetName = normalizeText(name);
@@ -188,17 +206,14 @@ function getLatestBathCounsel(name, targetDate) {
       if (!sameName) return false;
 
       const counselDate = getCounselDate(item);
+
       if (counselDate && targetDateText && counselDate > targetDateText) {
         return false;
       }
 
       const text = getCounselFullText(item);
-      
-      // 목욕 + 추가 혹은 목욕 + 제외 조합만 허용합니다. (다른 잡다한 글자는 자동 제외)
-      const isBathMatch = text.includes("목욕");
-      const isActionMatch = text.includes("추가") || text.includes("제외") || text.includes("중단") || text.includes("삭제") || text.includes("미제공");
 
-      return isBathMatch && isActionMatch;
+      return hasBathKeyword(text) && hasBathAction(text);
     })
     .sort((a, b) => {
       const dateA = getCounselDate(a) || "0000-00-00";
@@ -212,19 +227,34 @@ function getLatestBathCounsel(name, targetDate) {
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
+
   const text = getCounselFullText(counsel);
+
   return (
-    text.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공")
+    hasBathKeyword(text) &&
+    (
+      text.includes("제외") ||
+      text.includes("중단") ||
+      text.includes("삭제") ||
+      text.includes("미제공")
+    )
   );
 }
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
+
   const text = getCounselFullText(counsel);
-  return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
+
+  return (
+    hasBathKeyword(text) &&
+    (
+      text.includes("추가") ||
+      text.includes("시작") ||
+      text.includes("제공") ||
+      text.includes("반영")
+    )
+  );
 }
 
 function isBathRequiredAtDate(plan, name, targetDate) {
@@ -239,6 +269,7 @@ function isBathRequiredAtDate(plan, name, targetDate) {
   return required;
 }
 
+// [버그 수정 포인트 2] 화면에 표시할 때도 걸러진 최신 목욕 상담일지만 뿌리도록 안전장치를 추가합니다.
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestBathCounsel(name, monthEndDate);
 
