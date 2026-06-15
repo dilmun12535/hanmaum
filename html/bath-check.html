@@ -71,4 +71,62 @@
         <div class="notice-box">
           <p><strong>확인 기준</strong></p>
           <p>계획서에 <strong>몸씻기 도움</strong>이 있고 상담일지에서 제외되지 않은 사람 → 목욕 기록 또는 목욕거부가 있어야 정상</p>
-          <p>상담일지에서 <strong>목
+          <p>상담일지에서 <strong>목욕 제외</strong>가 반영된 사람 → 반영일 이후에는 목욕 기록이 없어야 정상</p>
+          <p>계획서에 몸씻기 도움이 없거나 상담일지로 제외된 사람에게 목욕 기록이 있으면 <strong>오류</strong>로 표시됩니다.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="info-table">
+            <thead>
+              <tr>
+                <th>수급자명</th>
+                <th>계획서 작성일</th>
+                <th>상담일지 반영</th>
+                <th>현재 목욕 대상</th>
+                <th>1주차</th>
+                <th>2주차</th>
+                <th>3주차</th>
+                <th>4주차</th>
+                <th>5주차</th>
+                <th>종합 결과</th>
+              </tr>
+            </thead>
+            <tbody id="bathResultBody">
+              <tr class="empty-row">
+                <td colspan="11">확인 월과 목욕 리포트 파일을 선택해주세요.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+    <script src="../js/main.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      if (document.getElementById("checkMonth") && typeof flatpickr !== "undefined") {
+        flatpickr("#checkMonth", {
+          locale: "ko",
+          plugins: [
+            new monthSelectPlugin({
+              shorthand: false,
+              dateFormat: "Y-m",
+              altFormat: "Y년 m월",
+              theme: "light"
+            })
+          ],
+          dateFormat: "Y-m",
+          altInput: true,
+          allowInput: true
+        });
+      }
+    });
+  </script>
+  <script src="../js/bath-check.js?v=20260616-001"></script>
+</body>
+</html>
