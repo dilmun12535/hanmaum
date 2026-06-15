@@ -17,7 +17,6 @@ async function syncCarePlanLibraryFromGoogleSheet() {
     const plans = JSON.parse(text);
 
     localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
-
     return plans;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
@@ -67,7 +66,6 @@ function normalizeDateText(value) {
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
-
   if (text.includes("T")) return text.split("T")[0];
 
   const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
@@ -170,6 +168,12 @@ function getCounselDate(counsel) {
   );
 }
 
+function getCounselFullText(item) {
+  return normalizeText(
+    `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""} ${item.rowText || ""} ${JSON.stringify(item.row || {})}`
+  );
+}
+
 function hasBathKeyword(text) {
   return (
     text.includes("목욕") ||
@@ -192,12 +196,6 @@ function hasBathAction(text) {
     text.includes("반영") ||
     text.includes("시작") ||
     text.includes("제공")
-  );
-}
-
-function getCounselFullText(item) {
-  return normalizeText(
-    `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""} ${item.rowText || ""} ${JSON.stringify(item.row || {})}`
   );
 }
 
@@ -262,17 +260,11 @@ function isAddCounsel(counsel) {
 
 function isBathRequiredAtDate(plan, name, targetDate) {
   let required = hasBathPlan(plan);
-
   const counsel = getLatestBathCounsel(name, targetDate);
 
   if (counsel) {
-    if (isRemoveCounsel(counsel)) {
-      required = false;
-    }
-
-    if (isAddCounsel(counsel)) {
-      required = true;
-    }
+    if (isRemoveCounsel(counsel)) required = false;
+    if (isAddCounsel(counsel)) required = true;
   }
 
   return required;
@@ -281,13 +273,11 @@ function isBathRequiredAtDate(plan, name, targetDate) {
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestBathCounsel(name, monthEndDate);
 
-  if (!counsel) {
-    return "없음";
-  }
+  if (!counsel) return "없음";
 
   const counselDate = getCounselDate(counsel);
 
-  return `${counselDate || "-"} / ${counsel.changeType || "-"} / ${counsel.careContent || "-"}`;
+  return `${counselDate || "-"} / ${counsel.changeType || "-"} / ${counsel.careContent || counsel.rowText || "-"}`;
 }
 
 function parseBathCell(value) {
@@ -297,9 +287,7 @@ function parseBathCell(value) {
 
   const cleanText = normalizeText(text);
 
-  if (cleanText.includes("일정없음")) {
-    return null;
-  }
+  if (cleanText.includes("일정없음")) return null;
 
   if (cleanText.includes("목욕거부")) {
     return {
