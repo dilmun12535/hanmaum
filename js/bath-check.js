@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbzjy4b4CCTd2beLwDG4qnAcd0DIkMeXnynvb7DocZ0VFKz2kQ70Y0fw39jt0koUBWBv0g/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
 // 데이터를 브라우저 하드(localStorage) 대신 컴퓨터 임시 메모리(변수)에만 안전하게 보관합니다.
 let carePlanLibraryCache = [];
