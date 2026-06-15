@@ -163,41 +163,15 @@ function getCounselDate(counsel) {
   );
 }
 
-// [정밀 필터링 핵심 방어기제]
-// 껍데기 JSON 전체를 뒤지지 않고, 분류(category)와 내용(careContent)만 콕 집어서 검사합니다.
-function isActualBathCounsel(item) {
-  const category = normalizeText(item.category || "");
-  const content = normalizeText(item.careContent || "");
-  const reason = normalizeText(item.reason || "");
-  
-  // 1. 대분류가 정확히 '목욕'이거나
-  if (category.includes("목욕") || category.includes("몸씻기")) {
-    return true;
-  }
-  
-  // 2. 내용이나 사유에 '목욕' 또는 '몸씻기'가 명확히 들어간 경우만 인정!
-  // (급여제외 같은 가짜 글자 파편에 절대 낚이지 않습니다.)
-  if (content.includes("목욕") || content.includes("몸씻기") || reason.includes("목욕") || reason.includes("몸씻기")) {
-    return true;
-  }
-  
-  return false;
-}
-
-function hasBathAction(item) {
-  const text = normalizeText(`${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
-  return (
-    text.includes("추가") ||
-    text.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공") ||
-    text.includes("반영") ||
-    text.includes("시작") ||
-    text.includes("제공")
+// 상담일지 내부의 모든 텍스트 영역을 합쳐서 글자 공백을 제거합니다.
+function getCounselFullText(item) {
+  return normalizeText(
+    `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
   );
 }
 
+// [핵심 로직 수정 적용 구역]
+// 오직 '목욕'이라는 단어가 있고, 동시에 '추가'나 '제외'가 같이 엮인 문장만 통과시킵니다.
 function getLatestBathCounsel(name, targetDate) {
   const targetDateText = normalizeDateText(targetDate);
   const targetName = normalizeText(name);
@@ -214,13 +188,17 @@ function getLatestBathCounsel(name, targetDate) {
       if (!sameName) return false;
 
       const counselDate = getCounselDate(item);
-
       if (counselDate && targetDateText && counselDate > targetDateText) {
         return false;
       }
 
-      // 수정된 엄격한 목욕 검증법 적용
-      return isActualBathCounsel(item) && hasBathAction(item);
+      const text = getCounselFullText(item);
+      
+      // 목욕 + 추가 혹은 목욕 + 제외 조합만 허용합니다. (다른 잡다한 글자는 자동 제외)
+      const isBathMatch = text.includes("목욕");
+      const isActionMatch = text.includes("추가") || text.includes("제외") || text.includes("중단") || text.includes("삭제") || text.includes("미제공");
+
+      return isBathMatch && isActionMatch;
     })
     .sort((a, b) => {
       const dateA = getCounselDate(a) || "0000-00-00";
@@ -234,7 +212,7 @@ function getLatestBathCounsel(name, targetDate) {
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+  const text = getCounselFullText(counsel);
   return (
     text.includes("제외") ||
     text.includes("중단") ||
@@ -245,13 +223,8 @@ function isRemoveCounsel(counsel) {
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
-  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-  return (
-    text.includes("추가") ||
-    text.includes("시작") ||
-    text.includes("제공") ||
-    text.includes("반영")
-  );
+  const text = getCounselFullText(counsel);
+  return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
 }
 
 function isBathRequiredAtDate(plan, name, targetDate) {
