@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbzjy4b4CCTd2beLwDG4qnAcd0DIkMeXnynvb7DocZ0VFKz2kQ70Y0fw39jt0koUBWBv0g/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
 let counselLibraryCache = [];
 
@@ -26,7 +26,8 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(makePayloadUrl({ action: "listCounsel" }), {
+    // 버그 해결 포인트: 복잡한 JSON 대신 명확하게 주소 뒤에 action 파라미터를 붙여 전송합니다.
+    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, {
       method: "GET",
       redirect: "follow"
     });
@@ -289,17 +290,8 @@ function getCounselTextForMonth(name, monthEndDate) {
   if (!counsel) return "없음";
 
   const counselDate = getCounselDate(counsel);
-  const fullText = getCounselFullText(counsel);
 
-  const displayText =
-    counsel.careContent ||
-    counsel.reason ||
-    counsel.changeType ||
-    counsel.rowText ||
-    fullText ||
-    "-";
-
-  return `${counselDate || "-"} / ${counsel.changeType || "-"} / ${displayText}`;
+  return `${counselDate || "-"} / ${counsel.changeType || "-"} / ${counsel.careContent || counsel.reason || "-"}`;
 }
 
 function parseBathCell(value) {
@@ -435,14 +427,6 @@ function getWeekResult(required, weekData) {
   return "정상";
 }
 
-function makeResultClass(result) {
-  if (result === "정상") return "status-ok";
-  if (result === "누락") return "status-danger";
-  if (result === "오류") return "status-danger";
-
-  return "";
-}
-
 function buildWeekCell(required, weekData) {
   const result = getWeekResult(required, weekData);
   const recordText = weekData ? weekData.recordText : "-";
@@ -546,7 +530,6 @@ function renderResults(results) {
 
   results.forEach((item) => {
     const row = document.createElement("tr");
-    const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
 
     row.innerHTML = `
       <td>${item.name}</td>
@@ -559,8 +542,8 @@ function renderResults(results) {
       <td>${buildWeekCell(item.weekRequired.week4, item.weeks.week4)}</td>
       <td>${buildWeekCell(item.weekRequired.week5, item.weeks.week5)}</td>
       <td style="color:${item.overallResult === "정상" ? "#2563eb" : "#dc2626"}; font-weight:700;">
-  ${item.overallResult}
-</td>
+        ${item.overallResult}
+      </td>
     `;
 
     bathResultBody.appendChild(row);
