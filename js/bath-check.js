@@ -169,15 +169,11 @@ function getCounselFullText(item) {
   );
 }
 
+// [핵심 해결포인트]: 다른 단어와 꼬이지 않게 명확한 목욕 키워드 명사만 남깁니다.
 function hasBathKeyword(text) {
   return (
-    text.includes("목욕") ||
-    text.includes("목욕도움") ||
-    text.includes("몸씻기") ||
-    text.includes("몸씻기도움") ||
-    text.includes("몸씻") ||
-    text.includes("씻기") ||
-    text.includes("씻기도움")
+    text.includes("목욕") || 
+    text.includes("몸씻기")
   );
 }
 
@@ -217,7 +213,6 @@ function getLatestBathCounsel(name, targetDate) {
 
       const text = getCounselFullText(item);
 
-      // 이름이 같고 목욕 관련 키워드와 행동이 들어간 일지만 골라냅니다.
       return hasBathKeyword(text) && hasBathAction(text);
     })
     .sort((a, b) => {
@@ -274,7 +269,6 @@ function isBathRequiredAtDate(plan, name, targetDate) {
   return required;
 }
 
-// [버그 수정 포인트]: 종합 조회 화면에서 찌꺼기가 나오지 않도록 목욕 조건에 맞는 일지만 추출합니다.
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestBathCounsel(name, monthEndDate);
 
