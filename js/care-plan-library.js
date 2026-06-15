@@ -1,7 +1,6 @@
 const API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
 const planFileInput = document.getElementById("planFile");
-const planWrittenDateInput = document.getElementById("planWrittenDate");
 const uploadPlanBtn = document.getElementById("uploadPlanBtn");
 const deleteSelectedPlanBtn = document.getElementById("deleteSelectedPlanBtn");
 const selectAllPlanCheckbox = document.getElementById("selectAllPlanCheckbox");
