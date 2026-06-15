@@ -41,9 +41,6 @@ async function syncCounselLibraryFromGoogleSheet() {
   }
 }
 
-syncCarePlanLibraryFromGoogleSheet();
-syncCounselLibraryFromGoogleSheet();
-
 const checkMonthInput = document.getElementById("checkMonth");
 const bathFileInput = document.getElementById("bathFile");
 const checkBathBtn = document.getElementById("checkBathBtn");
@@ -169,7 +166,6 @@ function getCounselFullText(item) {
   );
 }
 
-// [버그 수정 포인트 1] 다른 단어와 꼬이지 않도록 명확하게 '목욕', '몸씻기' 단어 자체만 인정합니다.
 function hasBathKeyword(text) {
   return (
     text.includes("목욕") ||
@@ -206,7 +202,6 @@ function getLatestBathCounsel(name, targetDate) {
       if (!sameName) return false;
 
       const counselDate = getCounselDate(item);
-
       if (counselDate && targetDateText && counselDate > targetDateText) {
         return false;
       }
@@ -227,34 +222,19 @@ function getLatestBathCounsel(name, targetDate) {
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-
   const text = getCounselFullText(counsel);
-
   return (
-    hasBathKeyword(text) &&
-    (
-      text.includes("제외") ||
-      text.includes("중단") ||
-      text.includes("삭제") ||
-      text.includes("미제공")
-    )
+    text.includes("제외") ||
+    text.includes("중단") ||
+    text.includes("삭제") ||
+    text.includes("미제공")
   );
 }
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
-
   const text = getCounselFullText(counsel);
-
-  return (
-    hasBathKeyword(text) &&
-    (
-      text.includes("추가") ||
-      text.includes("시작") ||
-      text.includes("제공") ||
-      text.includes("반영")
-    )
-  );
+  return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
 }
 
 function isBathRequiredAtDate(plan, name, targetDate) {
@@ -269,7 +249,6 @@ function isBathRequiredAtDate(plan, name, targetDate) {
   return required;
 }
 
-// [버그 수정 포인트 2] 화면에 표시할 때도 걸러진 최신 목욕 상담일지만 뿌리도록 안전장치를 추가합니다.
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestBathCounsel(name, monthEndDate);
 
@@ -578,3 +557,12 @@ clearBathBtn.addEventListener("click", () => {
     </tr>
   `;
 });
+
+// [자동 강제 포맷 안전장치]
+// 코드가 실행될 때 브라우저 저장소 구석에 박혀있던 낡고 오염된 구버전 '옷입기 캐시 데이터'를 강제로 즉시 날려버립니다.
+localStorage.removeItem("counselLibrary");
+localStorage.removeItem("carePlanLibrary");
+
+// 초기 연동 동기화 실행
+syncCarePlanLibraryFromGoogleSheet();
+syncCounselLibraryFromGoogleSheet();
