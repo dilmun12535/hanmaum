@@ -160,7 +160,9 @@ function getCounselDate(counsel) {
   );
 }
 
-function getCounselFullText(item) {
+// [초강력 버그 수정 포인트 1]
+// 구글 내부 찌꺼기 텍스트 데이터(rowJson, rowText)를 완전히 배제하고 오직 겉에 표출되는 핵심 텍스트만 합칩니다.
+function getCounselCleanText(item) {
   return normalizeText(
     `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
   );
@@ -206,7 +208,8 @@ function getLatestBathCounsel(name, targetDate) {
         return false;
       }
 
-      const text = getCounselFullText(item);
+      // 깨끗하게 정제된 텍스트만 검사망에 올립니다.
+      const text = getCounselCleanText(item);
 
       return hasBathKeyword(text) && hasBathAction(text);
     })
@@ -222,7 +225,7 @@ function getLatestBathCounsel(name, targetDate) {
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-  const text = getCounselFullText(counsel);
+  const text = getCounselCleanText(counsel);
   return (
     text.includes("제외") ||
     text.includes("중단") ||
@@ -233,7 +236,7 @@ function isRemoveCounsel(counsel) {
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
-  const text = getCounselFullText(counsel);
+  const text = getCounselCleanText(counsel);
   return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
 }
 
@@ -558,11 +561,9 @@ clearBathBtn.addEventListener("click", () => {
   `;
 });
 
-// [자동 강제 포맷 안전장치]
-// 코드가 실행될 때 브라우저 저장소 구석에 박혀있던 낡고 오염된 구버전 '옷입기 캐시 데이터'를 강제로 즉시 날려버립니다.
+// 강제 로컬 캐시 포맷
 localStorage.removeItem("counselLibrary");
 localStorage.removeItem("carePlanLibrary");
 
-// 초기 연동 동기화 실행
 syncCarePlanLibraryFromGoogleSheet();
 syncCounselLibraryFromGoogleSheet();
