@@ -160,22 +160,10 @@ function getCounselDate(counsel) {
   );
 }
 
-// [완벽 필터링 핵심 개조 Zone 1]
-// 지저분한 뒷단 찌꺼기 텍스트를 다 버리고 오직 분류(category)와 급여내용(careContent) '자체'만 똑 떼어내서 목욕 일지인지 판별합니다.
+// [핵심 변경 1]: 가짜 단어 파편에 절대 속지 않도록 오직 분류가 '목욕'인 일지만 완전 철벽 방어합니다.
 function isPureBathCounsel(item) {
   const categoryText = normalizeText(item.category || "");
-  const contentText = normalizeText(item.careContent || "");
-  const reasonText = normalizeText(item.reason || "");
-
-  // 1. 대분류가 정확히 '목욕' 관련이거나
-  if (categoryText.includes("목욕") || categoryText.includes("몸씻기")) {
-    return true;
-  }
-  // 2. 글자 내에 '목욕' 명사가 명확히 적혀있을 때만 인정합니다. (옷 갈아입기의 가짜 단어 파편 완벽 차단)
-  if (contentText.includes("목욕") || contentText.includes("몸씻기") || reasonText.includes("목욕") || reasonText.includes("몸씻기")) {
-    return true;
-  }
-  return false;
+  return categoryText.includes("목욕");
 }
 
 function hasBathAction(item) {
@@ -183,12 +171,12 @@ function hasBathAction(item) {
   return (
     actionText.includes("추가") ||
     actionText.includes("제외") ||
-    actionText.includes("중단") ||
-    actionText.includes("삭제") ||
-    actionText.includes("미제공") ||
-    actionText.includes("반영") ||
-    actionText.includes("시작") ||
-    actionText.includes("제공")
+    text.includes("중단") ||
+    text.includes("삭제") ||
+    text.includes("미제공") ||
+    text.includes("반영") ||
+    text.includes("시작") ||
+    text.includes("제공")
   );
 }
 
@@ -212,8 +200,7 @@ function getLatestBathCounsel(name, targetDate) {
         return false;
       }
 
-      // 오직 100% 정제된 진짜 목욕 상담 기록만 연동합니다.
-      return isPureBathCounsel(item) && hasBathAction(item);
+      return isPureBathCounsel(item);
     })
     .sort((a, b) => {
       const dateA = getCounselDate(a) || "0000-00-00";
@@ -254,17 +241,21 @@ function isBathRequiredAtDate(plan, name, targetDate) {
   return required;
 }
 
-// [완벽 필터링 핵심 개조 Zone 2]
-// 화면의 '상담일지 반영' 셀 안에 텍스트가 들어갈 때, <br/> 태그를 넣어주어 엔터(줄바꿈) 효과가 나도록 깔끔하게 조정합니다.
+// [핵심 변경 2]: 너무 길게 늘어지던 하단 글자들을 15자 내외로 자르고 엔터 쳐서 이쁘게 한 줄로 내립니다.
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestBathCounsel(name, monthEndDate);
 
   if (!counsel) return "없음";
 
   const counselDate = getCounselDate(counsel);
+  let content = counsel.careContent || counsel.reason || "-";
   
-  // 가독성을 위해 날짜, 유형, 내용을 각각 한 줄씩 엔터쳐서 내려가게 만듭니다.
-  return `${counselDate || "-"} <br/> <b>[${counsel.changeType || "-"}]</b> <br/> <span style="font-size:12px; color:#555;">${counsel.careContent || counsel.reason || "-"}</span>`;
+  // 글이 너무 길면 자르고 뒤에 '...'을 붙여 깔끔하게 만듭니다.
+  if (content.length > 15) {
+    content = content.substring(0, 15) + "...";
+  }
+
+  return `${counselDate || "-"} / [${counsel.changeType || "-"}] <br/> ${content}`;
 }
 
 function parseBathCell(value) {
@@ -566,7 +557,7 @@ clearBathBtn.addEventListener("click", () => {
   `;
 });
 
-// 청소기 즉시 가동
+// 강제 로컬 캐시 초기화
 localStorage.removeItem("counselLibrary");
 localStorage.removeItem("carePlanLibrary");
 
