@@ -9,6 +9,44 @@
   <link rel="stylesheet" href="../css/dashboard.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    /* 한마음 전산 전체 메뉴와 100% 일치하도록 일체형 안내상자 클래스를 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -68,25 +106,29 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p><strong>확인 기준</strong></p>
-          <p><strong>5등급, 인지지원등급</strong> 어르신만 확인 대상입니다.</p>
-          <p>출석관리에서 저장된 <strong>출석일</strong>마다 프로그램 참여 기록 중 <strong>인지기능/인지활동</strong>이 1회 이상 있어야 정상입니다.</p>
-          <p>출석한 날 기록이 없으면 <strong>누락</strong>으로 표시되며, 출석하지 않은 날은 <strong>-</strong>로 표시됩니다.</p>
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 인지활동 확인 기준 안내
+          </h5>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">점검 대상:</b> 인지 맞춤형 급여 제공 기준에 의거하여, <b style="color: #1e293b;">5등급 및 인지지원등급</b> 수급자 어르신만 연산 확인 대상입니다.</li>
+            <li><b style="color: #1e293b;">제공 횟수 기준:</b> 출석관리에서 연동된 <b style="color: #1e293b;">출석일마다</b> 프로그램 참여 기록 중 '인지기능/인지활동' 내역이 1회 이상 완벽히 매칭되어야 합니다.</li>
+            <li><b style="color: #1e293b;">결과 표출 방식:</b> 출석하신 날에 인지 기록이 비어있으면 <span style="color: #e11d48; font-weight: 600;">누락</span>으로 표시되며, 등원하지 않으신 날은 <span style="color: #64748b; font-weight: 600;">결석(-)</span>으로 안전하게 제외 처리됩니다.</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table cognitive-table">
+          <table class="info-table cognitive-table" style="border-collapse: collapse; width: 100%;">
             <thead id="cognitiveTableHead">
               <tr>
-                <th>수급자명</th>
-                <th>등급</th>
-                <th>출석일수</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">등급</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">출석일수</th>
               </tr>
             </thead>
             <tbody id="cognitiveResultBody">
               <tr class="empty-row">
-                <td colspan="3">확인 월과 프로그램 참여 기록 파일을 선택해주세요.</td>
+                <td colspan="3" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 프로그램 참여 기록 파일을 선택해주세요.</td>
               </tr>
             </tbody>
           </table>
