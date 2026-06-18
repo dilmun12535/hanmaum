@@ -1,26 +1,48 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
+let carePlanLibraryCache = [];
+let counselLibraryCache = [];
+let attendanceLibraryCache = [];
+
+function makePayloadUrl(payload) {
+  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
-    const plans = JSON.parse(text);
-    localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
-    return plans;
+    carePlanLibraryCache = JSON.parse(text);
+    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibraryCache));
+    return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
     return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
   }
 }
 
-syncCarePlanLibraryFromGoogleSheet();
+// 💡 [동기화망 추가]: 간호제공 화면 역시 캐시 락에 갇혀 팝업 경고창이 뜨지 않도록 실시간 서버 원격 동기화 수신망을 개설했습니다.
+async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+  try {
+    const response = await fetch(
+      makePayloadUrl({
+        action: "listAttendance",
+        month: monthValue
+      }),
+      { method: "GET", redirect: "follow" }
+    );
+    const text = await response.text();
+    const attendance = JSON.parse(text);
+    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+    return attendanceLibraryCache;
+  } catch (error) {
+    console.error("출석관리 동기화 오류:", error);
+    return attendanceLibraryCache;
+  }
+}
 
-const checkMonthInput = document.getElementById("checkMonth");
-const nursingFileInput = document.getElementById("nursingFile");
-const checkNursingVitalBtn = document.getElementById("checkNursingVitalBtn");
-const clearNursingVitalBtn = document.getElementById("clearNursingVitalBtn");
-const nursingVitalTableHead = document.getElementById("nursingVitalTableHead");
-const nursingVitalResultBody = document.getElementById("nursingVitalResultBody");
+// 초기 기본 동기화 가동
+syncCarePlanLibraryFromGoogleSheet();
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
@@ -147,7 +169,7 @@ function parseMinutes(value) {
 }
 
 function getLatestPlansByRecipient(checkDate) {
-  const library = JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+  const library = carePlanLibraryCache.length > 0 ? carePlanLibraryCache : JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
   const validPlans = library.filter((plan) => new Date(plan.writtenDate) <= new Date(checkDate));
   const latestByName = {};
 
@@ -258,8 +280,11 @@ function getRequiredHealthMinutes(medicationCount) {
 }
 
 function getAttendanceMonth(monthValue) {
-  const library = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
-  return library
+  // 💡 [캐시 결함 해제]: 브라우저 캐시 외에 실시간 연동 원격 배열 데이터도 함께 스캔하도록 수급 구조를 안전하게 개조했습니다.
+  const localLibrary = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
+  const activeLibrary = attendanceLibraryCache.length > 0 ? attendanceLibraryCache : localLibrary;
+
+  return activeLibrary
     .filter((item) => item.month === monthValue)
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
@@ -376,6 +401,13 @@ function applySplitCheckStyle() {
   document.head.appendChild(style);
 }
 
+const checkMonthInput = document.getElementById("checkMonth");
+const nursingFileInput = document.getElementById("nursingFile");
+const checkNursingVitalBtn = document.getElementById("checkNursingVitalBtn");
+const clearNursingVitalBtn = document.getElementById("clearNursingVitalBtn");
+const nursingVitalTableHead = document.getElementById("nursingVitalTableHead");
+const nursingVitalResultBody = document.getElementById("nursingVitalResultBody");
+
 function parseNursingReport(workbook, monthValue) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = sheetToRowsWithMerges(sheet);
@@ -450,7 +482,6 @@ function checkVitalDay(nursingDay, requiredHealthMinutes) {
   };
 }
 
-// [일자별 셀 개조]: 오류 일자 칸 자체에도 부드러운 빨간 배경을 기입합니다.
 function buildDayCell(isAttendanceDay, nursingDay, requiredHealthMinutes) {
   if (!isAttendanceDay) {
     return `<td class="split-day-cell empty-day">결석</td>`;
@@ -569,7 +600,6 @@ function renderResults(monthValue, results) {
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
     const overallClass = problemCount > 0 ? "status-danger" : "status-ok";
     
-    // 💡 [행 전체 연동 조치]: 확인 필요 상태일 때 수급자명부터 결과 칸까지 줄 전체에 연한 분홍 배경 스타일 적용
     const errorCellBg = problemCount > 0 ? "background-color: #fff5f5;" : "";
 
     row.innerHTML = `
@@ -587,7 +617,10 @@ function renderResults(monthValue, results) {
 }
 
 checkNursingVitalBtn.addEventListener("click", async () => {
+  // 💡 [실시간 연동 가동]: 버튼 클릭 즉시 구글 시트 원격 데이터베이스와 통신하여 출석부를 강제 갱신합니다.
+  alert("구글 시트에서 계획서 및 월 출석 데이터 보관함을 동기화 중입니다...");
   await syncCarePlanLibraryFromGoogleSheet();
+  await syncAttendanceMonthFromGoogleSheet(checkMonthInput.value);
   applySplitCheckStyle();
 
   const checkMonth = checkMonthInput.value;
