@@ -178,7 +178,6 @@ function getCounselDate(counsel) {
   return normalizeDateText(counsel.consultDate || counsel.reflectionDate || counsel.date || counsel.counselDate || "");
 }
 
-// [개선 조치]: 대조 날짜 당일(15일) 상담일지도 정확하게 매칭 범위에 포함하도록 부등호 조건을 수정했습니다 (<= 적용)
 function getLatestDiaperCounsel(name, targetDate) {
   const targetName = String(name || "").trim();
   const targetDateText = normalizeDateText(targetDate);
@@ -206,7 +205,6 @@ function isRemoveCounsel(counsel) {
 function isAddCounsel(counsel) {
   if (!counsel) return false;
   const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-  // '기저귀 교환 도움' 처럼 서비스명이 명시되면 별도의 상태어 없이도 허용 상태로 인식하도록 범위를 확장했습니다.
   return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영") || text.includes("기저귀교환도움") || text.includes("기저귀교환");
 }
 
@@ -420,6 +418,7 @@ function renderResults(data) {
   rows.forEach((item) => {
     const row = document.createElement("tr");
     let hasRowError = false;
+    
     days.forEach((day) => {
       if ((item.attendanceDates || []).includes(day)) {
         const dayData = item.days[day];
@@ -434,7 +433,12 @@ function renderResults(data) {
       <td style="vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${item.planDate}</td>
       <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0; font-size: 13px;">${item.counselText}</td>
       <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${Object.values(item.daysDiaperAllowed).some(Boolean) ? "있음" : "없음"}</td>
-      ${days.map((day) => buildDayCell(item.days[day], item.daysDiaperAllowed[day], (item.attendanceDates || []).includes(day))).join("")}
+      ${days.map((day) => {
+        // 구글 시트 출석부 데이터에 존재할 때만 정상적인 '출석일'로 판단합니다. 
+        // 미이용(결석) 처리된 날은 자동으로 false가 되어 '결석' 칸으로 렌더링됩니다.
+        const isAttendanceDay = (item.attendanceDates || []).includes(day);
+        return buildDayCell(item.days[day], item.daysDiaperAllowed[day], isAttendanceDay);
+      }).join("")}
     `;
     toiletResultBody.appendChild(row);
   });
