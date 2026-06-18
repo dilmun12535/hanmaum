@@ -212,20 +212,17 @@ function getCounselTextForMonth(name, monthEndDate) {
   return `${counselDate || "-"} / [${counsel.changeType || "-"}] <br/> ${content}`;
 }
 
-// [핵심 변경 포인트 1]
-// 원본 엑셀에 나오는 예외 단어(일정없음, 급여개시전 등)를 완벽하게 탐지하여 분류 플래그(isGreyBlock)를 세웁니다.
 function parseBathCell(value) {
   const text = String(value || "").trim();
   if (!text) return null;
 
   const cleanText = normalizeText(text);
 
-  // 원본 엑셀에 들어있는 특정 행정 안내 문구들을 완벽하게 체크합니다.
   if (cleanText.includes("일정없음") || cleanText.includes("급여개시전") || cleanText.includes("급여개시") || cleanText.includes("퇴소")) {
     return {
       hasRecord: false,
-      isGreyBlock: true, // ◀ 회색 블록으로 그리기 위한 신호값
-      label: text // ◀ 원본 엑셀에 적힌 글자 모양 그대로 전달 (예: 급여개시 전)
+      isGreyBlock: true, 
+      label: text 
     };
   }
 
@@ -328,30 +325,31 @@ function getWeekResult(required, weekData) {
   return "정상";
 }
 
-// [핵심 변경 포인트 2]
-// 원본에 일정없음/급여개시전이 적힌 셀은 판정 글자 없이 회색 배경에 진한 검은색 글자 양식으로 완전히 새로 구성합니다.
+// [디자인 팩 커스텀 튜닝 구역]
+// 가독성 극대화를 위해 전산 공통 테마 컬러를 반영했습니다.
 function buildWeekTdHtml(required, weekData) {
   const result = getWeekResult(required, weekData);
   const recordText = weekData ? weekData.recordText : "-";
   const isGreyBlock = weekData ? weekData.isGreyBlock : false;
 
-  // 일정없음, 급여개시 전 문구용 단독 테두리 주입 레이아웃
+  // 1. 일정없음, 급여개시 전 등의 행정 예외 상태 셀 스타일링 (소프트 실버 블루 그리드 테마)
   if (isGreyBlock) {
     return `
-      <td style="background-color: #f3f4f6; color: #111111; font-weight: 700; text-align: center; vertical-align: middle; padding: 10px 5px; font-size: 13px; line-height: 1.4;">
+      <td style="background-color: #eef2f6; color: #475569; font-weight: 700; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; line-height: 1.4; border: 1px solid #cbd5e1;">
         ${recordText}
       </td>
     `;
   }
 
-  let color = "#111";
-  if (result === "정상") color = "#2563eb";
-  if (result === "누락" || result === "오류") color = "#dc2626";
+  // 2. 일반 결과 상태 스타일링 (가독성 높은 채도의 색상 배치)
+  let color = "#1e293b";
+  if (result === "정상") color = "#2563eb"; // 선명한 신뢰의 블루
+  if (result === "누락" || result === "오류") color = "#e11d48"; // 눈에 확 띄는 로즈 레드
 
   return `
-    <td style="text-align: center; vertical-align: middle; padding: 10px 5px;">
-      <div style="color:${color}; font-weight:700;">${result}</div>
-      <div style="font-size:12px; color:#555; margin-top:4px;">${recordText}</div>
+    <td style="text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;">
+      <div style="color:${color}; font-weight:800; font-size:14px; margin-bottom: 4px;">${result}</div>
+      <div style="font-size:12px; color:#64748b; line-height: 1.3;">${recordText}</div>
     </td>
   `;
 }
@@ -427,16 +425,16 @@ function renderResults(results) {
   results.forEach((item) => {
     const row = document.createElement("tr");
     row.innerHTML = `
-      <td>${item.name}</td>
+      <td style="font-weight: 600; color: #1e293b;">${item.name}</td>
       <td>${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
-      <td>${item.counselText || "없음"}</td>
-      <td>${item.requiredText || "없음"}</td>
+      <td style="text-align: left; line-height: 1.4; padding-left: 8px;">${item.counselText || "없음"}</td>
+      <td style="font-weight: 500;">${item.requiredText || "없음"}</td>
       ${buildWeekTdHtml(item.weekRequired.week1, item.weeks.week1)}
       ${buildWeekTdHtml(item.weekRequired.week2, item.weeks.week2)}
       ${buildWeekTdHtml(item.weekRequired.week3, item.weeks.week3)}
       ${buildWeekTdHtml(item.weekRequired.week4, item.weeks.week4)}
       ${buildWeekTdHtml(item.weekRequired.week5, item.weeks.week5)}
-      <td style="color:${item.overallResult === "정상" ? "#2563eb" : "#dc2626"}; font-weight:700; vertical-align: middle;">${item.overallResult}</td>
+      <td style="color:${item.overallResult === "정상" ? "#2563eb" : "#e11d48"}; font-weight:800; vertical-align: middle;">${item.overallResult}</td>
     `;
     bathResultBody.appendChild(row);
   });
