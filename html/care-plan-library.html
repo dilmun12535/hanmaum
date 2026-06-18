@@ -7,6 +7,44 @@
 
   <link rel="stylesheet" href="../css/common.css" />
   <link rel="stylesheet" href="../css/dashboard.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    /* 한마음 전산 전체 메뉴와 100% 일치하도록 일체형 안내상자 클래스를 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -74,34 +112,38 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p>
-            파일명 예시:
-            <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong>
-          </p>
-          <p>파일명에서 장기요양번호와 수급자명을 자동으로 읽어옵니다.</p>
+        <!-- [디자인 통일 구역]: 화장실 등 타 메뉴들과 완벽히 일치하는 단정한 네모 박스 스타일로 적용했습니다 -->
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 계획서 파일 등록 기준 안내
+          </h5>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">파일명 규격 예시:</b> <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong></li>
+            <li><b style="color: #1e293b;">데이터 자동 파싱:</b> 시스템이 파일명에서 장기요양번호(인정번호)와 수급자명을 자동으로 판독하여 분리 저장합니다.</li>
+            <li><b style="color: #1e293b;">마스터 매칭 데이터:</b> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table">
+          <table class="info-table" style="border-collapse: collapse; width: 100%;">
             <thead>
               <tr>
-                <th class="checkbox-col">
+                <th class="checkbox-col" style="border: 1px solid #e2e8f0; width: 40px;">
                   <input type="checkbox" id="selectAllPlanCheckbox" />
                 </th>
-                <th>장기요양번호</th>
-                <th>수급자명</th>
-                <th>작성일자</th>
-                <th>파일명</th>
-                <th>급여 항목 수</th>
-                <th>업로드일시</th>
-                <th>업로드자</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">장기요양번호</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">작성일자</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">파일명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">급여 항목 수</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드일시</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드자</th>
               </tr>
             </thead>
 
             <tbody id="planLibraryTableBody">
               <tr class="empty-row">
-                <td colspan="8">
+                <td colspan="8" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">
                   등록된 급여제공계획서가 없습니다.
                 </td>
               </tr>
