@@ -325,14 +325,13 @@ function getWeekResult(required, weekData) {
   return "정상";
 }
 
-// [디자인 팩 커스텀 튜닝 구역]
-// 가독성 극대화를 위해 전산 공통 테마 컬러를 반영했습니다.
+// [디자인 리뉴얼 코어]: 이 부분이 반영되어야 image_19a5aa.png의 투박한 색이 세련되게 변합니다!
 function buildWeekTdHtml(required, weekData) {
   const result = getWeekResult(required, weekData);
   const recordText = weekData ? weekData.recordText : "-";
   const isGreyBlock = weekData ? weekData.isGreyBlock : false;
 
-  // 1. 일정없음, 급여개시 전 등의 행정 예외 상태 셀 스타일링 (소프트 실버 블루 그리드 테마)
+  // 1. 투박한 진회색 대신, 부드러운 소프트 실버 블루 배경(#eef2f6)과 차분한 네이비그레이 폰트 매칭
   if (isGreyBlock) {
     return `
       <td style="background-color: #eef2f6; color: #475569; font-weight: 700; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; line-height: 1.4; border: 1px solid #cbd5e1;">
@@ -341,10 +340,10 @@ function buildWeekTdHtml(required, weekData) {
     `;
   }
 
-  // 2. 일반 결과 상태 스타일링 (가독성 높은 채도의 색상 배치)
+  // 2. 일반 셀 가독성 강화
   let color = "#1e293b";
-  if (result === "정상") color = "#2563eb"; // 선명한 신뢰의 블루
-  if (result === "누락" || result === "오류") color = "#e11d48"; // 눈에 확 띄는 로즈 레드
+  if (result === "정상") color = "#2563eb"; 
+  if (result === "누락" || result === "오류") color = "#e11d48"; 
 
   return `
     <td style="text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;">
