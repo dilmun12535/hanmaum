@@ -333,12 +333,11 @@ function parseToiletReport(workbook, monthValue) {
 }
 
 function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
-  if (!isAttendanceDay) {
+  // [수정 핵심]: 출석부 데이터에 있더라도, 엑셀 화장실 기록 자체가 없으면 '결석(미이용)'으로 강제 분류합니다.
+  if (!isAttendanceDay || !dayData) {
     return `<td style="background-color: #f8fafc; color: #64748b; font-weight: 600; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; border: 1px solid #e2e8f0;">결석</td>`;
   }
-  if (!dayData) {
-    return `<td style="background-color: #fff5f5; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;"><div style="color: #e11d48; font-weight: 800; font-size: 13px; margin-bottom: 4px;">기록 없음</div><div style="font-size: 11px; color: #64748b;">-</div></td>`;
-  }
+  
   const totalCount = dayData.stoolCount + dayData.urineCount + dayData.diaperCount;
   const resultText = getResultText(totalCount, dayData.diaperCount, hasDiaperBenefit);
 
@@ -419,11 +418,14 @@ function renderResults(data) {
     const row = document.createElement("tr");
     let hasRowError = false;
     
+    // [행 전체 에러 색상 판정 조치]
+    // 화장실 기록이 아예 없는 날은 결석 처리되므로, 행 전체를 빨갛게(hasRowError) 만드는 대상에서 제외합니다.
     days.forEach((day) => {
-      if ((item.attendanceDates || []).includes(day)) {
-        const dayData = item.days[day];
-        if (!dayData) hasRowError = true;
-        else if (getResultText(dayData.stoolCount + dayData.urineCount + dayData.diaperCount, dayData.diaperCount, item.daysDiaperAllowed[day]) !== "정상") hasRowError = true;
+      const dayData = item.days[day];
+      if ((item.attendanceDates || []).includes(day) && dayData) {
+        if (getResultText(dayData.stoolCount + dayData.urineCount + dayData.diaperCount, dayData.diaperCount, item.daysDiaperAllowed[day]) !== "정상") {
+          hasRowError = true;
+        }
       }
     });
 
@@ -434,8 +436,6 @@ function renderResults(data) {
       <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0; font-size: 13px;">${item.counselText}</td>
       <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${Object.values(item.daysDiaperAllowed).some(Boolean) ? "있음" : "없음"}</td>
       ${days.map((day) => {
-        // 구글 시트 출석부 데이터에 존재할 때만 정상적인 '출석일'로 판단합니다. 
-        // 미이용(결석) 처리된 날은 자동으로 false가 되어 '결석' 칸으로 렌더링됩니다.
         const isAttendanceDay = (item.attendanceDates || []).includes(day);
         return buildDayCell(item.days[day], item.daysDiaperAllowed[day], isAttendanceDay);
       }).join("")}
