@@ -7,6 +7,44 @@
 
   <link rel="stylesheet" href="../css/common.css" />
   <link rel="stylesheet" href="../css/dashboard.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    /* 한마음 전산 전체 메뉴와 100% 일치하도록 일체형 안내상자 클래스를 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -61,31 +99,37 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p><strong>여러 시트 자동 확인</strong></p>
-          <p>Page, report2, report3처럼 여러 시트가 있어도 모든 시트를 읽습니다.</p>
-          <p>급여제공반영 정보가 있는 상담일지만 보관함에 등록됩니다.</p>
+        <!-- [디자인 통일 구역]: 타 메뉴들과 100% 일치하는 단정한 네모 박스 레이아웃을 주입했습니다 -->
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 상담일지 여러 시트 자동 확인 기준 안내
+          </h5>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">전체 시트 자동 탐색:</b> 업로드된 파일 내에 <b style="color: #1e293b;">Page, report2, report3</b> 등 여러 개의 시트가 섞여 있어도 누락 없이 모든 시트를 스캔합니다.</li>
+            <li><b style="color: #1e293b;">급여제공반영 필터링:</b> 스캔한 내용 중 수급자별 변동 내역 및 급여 제공에 실질적인 영향을 주는 <b style="color: #1e293b;">'급여제공반영' 정보</b>가 포함된 상담일지만 선별하여 안전하게 보관함에 등록합니다.</li>
+            <li><b style="color: #1e293b;">실시간 조건 추적:</b> 이곳에 등록된 변동 데이터는 목욕, 배설(기저귀), 물리치료, 식사 등 다른 검증 스크립트에서 날짜별 기준 변화를 판단하는 추적용 코어로 연동됩니다.</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table">
+          <table class="info-table" style="border-collapse: collapse; width: 100%;">
             <thead>
               <tr>
-                <th class="checkbox-col"><input type="checkbox" id="selectAllCounselCheckbox" /></th>
-                <th>수급자명</th>
-                <th>상담일자</th>
-                <th>분류</th>
-                <th>변경유형</th>
-                <th>급여내용</th>
-                <th>반영사유</th>
-                <th>시트명</th>
-                <th>파일명</th>
-                <th>업로드일시</th>
+                <th class="checkbox-col" style="border: 1px solid #e2e8f0; width: 40px;"><input type="checkbox" id="selectAllCounselCheckbox" /></th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">상담일자</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">분류</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">변경유형</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">급여내용</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">반영사유</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">시트명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">파일명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드일시</th>
               </tr>
             </thead>
             <tbody id="counselTableBody">
               <tr class="empty-row">
-                <td colspan="10">등록된 급여제공반영 상담일지가 없습니다.</td>
+                <td colspan="10" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">등록된 급여제공반영 상담일지가 없습니다.</td>
               </tr>
             </tbody>
           </table>
