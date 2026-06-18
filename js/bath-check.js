@@ -41,6 +41,9 @@ async function syncCounselLibraryFromGoogleSheet() {
   }
 }
 
+syncCarePlanLibraryFromGoogleSheet();
+syncCounselLibraryFromGoogleSheet();
+
 const checkMonthInput = document.getElementById("checkMonth");
 const bathFileInput = document.getElementById("bathFile");
 const checkBathBtn = document.getElementById("checkBathBtn");
@@ -160,32 +163,30 @@ function getCounselDate(counsel) {
   );
 }
 
-function isPureBathCounsel(item) {
-  const categoryText = normalizeText(item.category || "");
-  const contentText = normalizeText(item.careContent || "");
-  const reasonText = normalizeText(item.reason || "");
-  const totalContent = contentText + reasonText;
-
-  if (categoryText.includes("목욕")) {
-    if (totalContent.includes("옷") || totalContent.includes("입기") || totalContent.includes("기저귀")) {
-      return false;
-    }
-    return true;
-  }
-  return false;
+function getCounselFullText(item) {
+  return normalizeText(
+    `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
+  );
 }
 
-function hasBathAction(item) {
-  const actionText = normalizeText(`${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
+// [버그 수정 포인트 1] 다른 단어와 꼬이지 않도록 명확하게 '목욕', '몸씻기' 단어 자체만 인정합니다.
+function hasBathKeyword(text) {
   return (
-    actionText.includes("추가") ||
-    actionText.includes("제외") ||
-    actionText.includes("중단") ||
-    actionText.includes("삭제") ||
-    actionText.includes("미제공") ||
-    actionText.includes("반영") ||
-    actionText.includes("시작") ||
-    actionText.includes("제공")
+    text.includes("목욕") ||
+    text.includes("몸씻기")
+  );
+}
+
+function hasBathAction(text) {
+  return (
+    text.includes("추가") ||
+    text.includes("제외") ||
+    text.includes("중단") ||
+    text.includes("삭제") ||
+    text.includes("미제공") ||
+    text.includes("반영") ||
+    text.includes("시작") ||
+    text.includes("제공")
   );
 }
 
@@ -205,11 +206,14 @@ function getLatestBathCounsel(name, targetDate) {
       if (!sameName) return false;
 
       const counselDate = getCounselDate(item);
+
       if (counselDate && targetDateText && counselDate > targetDateText) {
         return false;
       }
 
-      return isPureBathCounsel(item);
+      const text = getCounselFullText(item);
+
+      return hasBathKeyword(text) && hasBathAction(text);
     })
     .sort((a, b) => {
       const dateA = getCounselDate(a) || "0000-00-00";
@@ -223,19 +227,34 @@ function getLatestBathCounsel(name, targetDate) {
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+
+  const text = getCounselFullText(counsel);
+
   return (
-    text.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공")
+    hasBathKeyword(text) &&
+    (
+      text.includes("제외") ||
+      text.includes("중단") ||
+      text.includes("삭제") ||
+      text.includes("미제공")
+    )
   );
 }
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
-  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-  return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
+
+  const text = getCounselFullText(counsel);
+
+  return (
+    hasBathKeyword(text) &&
+    (
+      text.includes("추가") ||
+      text.includes("시작") ||
+      text.includes("제공") ||
+      text.includes("반영")
+    )
+  );
 }
 
 function isBathRequiredAtDate(plan, name, targetDate) {
@@ -250,22 +269,17 @@ function isBathRequiredAtDate(plan, name, targetDate) {
   return required;
 }
 
+// [버그 수정 포인트 2] 화면에 표시할 때도 걸러진 최신 목욕 상담일지만 뿌리도록 안전장치를 추가합니다.
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestBathCounsel(name, monthEndDate);
 
   if (!counsel) return "없음";
 
   const counselDate = getCounselDate(counsel);
-  let content = counsel.careContent || counsel.reason || "-";
-  
-  if (content.length > 15) {
-    content = content.substring(0, 15) + "...";
-  }
 
-  return `${counselDate || "-"} / [${counsel.changeType || "-"}] <br/> ${content}`;
+  return `${counselDate || "-"} / ${counsel.changeType || "-"} / ${counsel.careContent || counsel.reason || "-"}`;
 }
 
-// [핵심 변경 포인트]: 목욕 리포트 셀을 분석할 때 '급여개시' 문구를 완벽히 걸러내는 예외 처리를 반영합니다.
 function parseBathCell(value) {
   const text = String(value || "").trim();
 
@@ -273,10 +287,7 @@ function parseBathCell(value) {
 
   const cleanText = normalizeText(text);
 
-  // '일정없음' 외에도 '급여개시' 문구가 들어간 경우, 목욕을 안 한 것이므로 데이터가 없는 것(null)으로 처리합니다.
-  if (cleanText.includes("일정없음") || cleanText.includes("급여개시")) {
-    return null;
-  }
+  if (cleanText.includes("일정없음")) return null;
 
   if (cleanText.includes("목욕거부")) {
     return {
@@ -567,9 +578,3 @@ clearBathBtn.addEventListener("click", () => {
     </tr>
   `;
 });
-
-localStorage.removeItem("counselLibrary");
-localStorage.removeItem("carePlanLibrary");
-
-syncCarePlanLibraryFromGoogleSheet();
-syncCounselLibraryFromGoogleSheet();
