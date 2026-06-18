@@ -260,6 +260,17 @@ function findHeaderIndex(rows) {
   });
 }
 
+// [누락 복원 포인트]: 프로그램 작동이 멈췄던 주원인인 판단결과 문구 반환 함수를 정식으로 이식했습니다.
+function getResultText(totalCount, diaperCount, hasDiaperBenefit) {
+  if (diaperCount > 0 && !hasDiaperBenefit) {
+    return "기저귀 오류";
+  }
+  if (totalCount < 5) {
+    return "횟수 부족";
+  }
+  return "정상";
+}
+
 function makeCombinedHeader(rows, headerIndex) {
   const row1 = rows[headerIndex] || [];
   const row2 = rows[headerIndex + 1] || [];
