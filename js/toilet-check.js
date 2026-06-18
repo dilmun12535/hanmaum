@@ -14,7 +14,6 @@ async function syncCarePlanLibraryFromGoogleSheet() {
       method: "GET",
       redirect: "follow"
     });
-
     const text = await response.text();
     carePlanLibraryCache = JSON.parse(text);
     return carePlanLibraryCache;
@@ -30,10 +29,8 @@ async function syncCounselLibraryFromGoogleSheet() {
       method: "GET",
       redirect: "follow"
     });
-
     const text = await response.text();
     const counsels = JSON.parse(text);
-
     counselLibraryCache = Array.isArray(counsels) ? counsels : [];
     return counselLibraryCache;
   } catch (error) {
@@ -54,10 +51,8 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
         redirect: "follow"
       }
     );
-
     const text = await response.text();
     const attendance = JSON.parse(text);
-
     attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
     return attendanceLibraryCache;
   } catch (error) {
@@ -82,20 +77,16 @@ function normalizeText(value) {
 
 function normalizeDateText(value) {
   if (!value) return "";
-
   const text = String(value).trim().replace(/^'/, "");
-
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
   if (text.includes("T")) return text.split("T")[0];
 
   const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
-
   if (match) {
     return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
   }
-
   return text;
 }
 
@@ -103,28 +94,23 @@ function excelDateToJSDate(serial) {
   const utcDays = Math.floor(serial - 25569);
   const utcValue = utcDays * 86400;
   const dateInfo = new Date(utcValue * 1000);
-
   const year = dateInfo.getFullYear();
   const month = String(dateInfo.getMonth() + 1).padStart(2, "0");
   const day = String(dateInfo.getDate()).padStart(2, "0");
-
   return `${year}-${month}-${day}`;
 }
 
 function parseDate(value) {
   if (!value) return "";
-
   if (value instanceof Date) {
     const year = value.getFullYear();
     const month = String(value.getMonth() + 1).padStart(2, "0");
     const day = String(value.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
-
   if (typeof value === "number") {
     return excelDateToJSDate(value);
   }
-
   return normalizeDateText(value);
 }
 
@@ -132,7 +118,6 @@ function getMonthEndDate(monthValue) {
   if (!monthValue || typeof monthValue !== "string") return "";
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
-
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
@@ -141,11 +126,9 @@ function getDaysInMonth(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   const days = [];
-
   for (let day = 1; day <= lastDay; day++) {
     days.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
   }
-
   return days;
 }
 
@@ -164,58 +147,36 @@ function getAttendanceMonth(monthValue) {
 
 function getLatestPlansByRecipient(checkDate) {
   const checkDateText = normalizeDateText(checkDate);
-
   const validPlans = carePlanLibraryCache.filter((plan) => {
     const writtenDate = normalizeDateText(plan.writtenDate);
     return writtenDate && writtenDate <= checkDateText;
   });
 
   const latestByName = {};
-
   validPlans.forEach((plan) => {
     const name = String(plan.recipientName || "").trim();
     if (!name) return;
-
     const current = latestByName[name];
     const writtenDate = normalizeDateText(plan.writtenDate);
     const currentDate = current ? normalizeDateText(current.writtenDate) : "";
 
     if (!current || writtenDate > currentDate) {
-      latestByName[name] = {
-        ...plan,
-        writtenDate
-      };
+      latestByName[name] = { ...plan, writtenDate };
     }
   });
-
   return latestByName;
 }
 
 function hasDiaperPlan(plan) {
   if (!plan || !plan.rows) return false;
-
   const text = normalizeText(JSON.stringify(plan.rows));
-
-  return (
-    text.includes("기저귀교환도움") ||
-    text.includes("기저귀교환") ||
-    text.includes("기저귀") ||
-    text.includes("B63")
-  );
+  return text.includes("기저귀교환도움") || text.includes("기저귀교환") || text.includes("기저귀") || text.includes("B63");
 }
 
 function getCounselDate(counsel) {
-  return normalizeDateText(
-    counsel.consultDate ||
-    counsel.reflectionDate ||
-    counsel.date ||
-    counsel.counselDate ||
-    ""
-  );
+  return normalizeDateText(counsel.consultDate || counsel.reflectionDate || counsel.date || counsel.counselDate || "");
 }
 
-// [날짜 정밀 매칭 버그 튜닝 구역 1]
-// 특정 수급자의 일자별 조건(targetDate) 이하에 작성된 기저귀 관련 '가장 최근의' 상담일지만 콕 집어 가져옵니다.
 function getLatestDiaperCounsel(name, targetDate) {
   const targetName = String(name || "").trim();
   const targetDateText = normalizeDateText(targetDate);
@@ -224,83 +185,49 @@ function getLatestDiaperCounsel(name, targetDate) {
     .filter((item) => {
       const sameName = String(item.recipientName || "").trim() === targetName;
       const counselDate = getCounselDate(item);
-
-      // 내가 조회를 원하는 '그 당일(targetDate)'보다 미래에 쓰인 상담일지는 연산에서 완전히 제외시킵니다.
-      if (!sameName || !counselDate || counselDate > targetDateText) {
-        return false;
-      }
+      if (!sameName || !counselDate || counselDate > targetDateText) return false;
 
       const category = String(item.category || "");
-      const text = normalizeText(
-        `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
-      );
-
-      return (
-        category === "기저귀" ||
-        text.includes("기저귀") ||
-        text.includes("기저귀교환도움") ||
-        text.includes("기저귀교환")
-      );
+      const text = normalizeText(`${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
+      return category === "기저귀" || text.includes("기저귀") || text.includes("기저귀교환도움") || text.includes("기저귀교환");
     })
     .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
-
   return counsels[0] || null;
 }
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
   const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-  return (
-    text.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공") ||
-    text.includes("하지않")
-  );
+  return text.includes("제외") || text.includes("중단") || text.includes("삭제") || text.includes("미제공") || text.includes("하지않");
 }
 
-function isAddCounsel(counsel) {
+fn = function isAddCounsel(counsel) {
   if (!counsel) return false;
   const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-  return (
-    text.includes("추가") ||
-    text.includes("시작") ||
-    text.includes("제공") ||
-    text.includes("반영")
-  );
+  return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
 }
 
-// [날짜 정밀 매칭 버그 튜닝 구역 2]
-// 당일 날짜(targetDate)를 기준으로 그 당시에 상담일지 조건이 유효하게 성립되었는지 체크합니다.
 function isDiaperAllowedAtDate(plan, name, targetDate) {
   let allowed = hasDiaperPlan(plan);
   const counsel = getLatestDiaperCounsel(name, targetDate);
-
   if (counsel) {
     if (isRemoveCounsel(counsel)) allowed = false;
-    if (isAddCounsel(counsel)) allowed = true; // ◀ 15일에 추가 일지가 있다면 15일 당일부터 allowed가 자동으로 true가 됩니다!
+    if (fn(counsel)) allowed = true;
   }
-
   return allowed;
 }
 
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestDiaperCounsel(name, monthEndDate);
-
-  if (!counsel) {
-    return "없음";
-  }
-
+  if (!counsel) return "없음";
   const counselDate = getCounselDate(counsel);
   return `${counselDate || "-"} / [${counsel.changeType || "-"}]<br><span style="font-size:12px; color:#64748b;">${counsel.careContent || "-"}</span>`;
 }
 
 function sheetToRowsWithMerges(sheet) {
   if (!sheet || !sheet["!ref"]) return [];
-
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const rows = [];
-
   for (let r = range.s.r; r <= range.e.r; r++) {
     const row = [];
     for (let c = range.s.c; c <= range.e.c; c++) {
@@ -310,21 +237,17 @@ function sheetToRowsWithMerges(sheet) {
     }
     rows.push(row);
   }
-
   const merges = sheet["!merges"] || [];
   merges.forEach((merge) => {
     const startAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
     const startCell = sheet[startAddress];
     const value = startCell ? startCell.v : "";
-
     for (let r = merge.s.r; r <= merge.e.r; r++) {
       for (let c = merge.s.c; c <= merge.e.c; c++) {
-        const rowIndex = r - range.s.r;
-        rows[rowIndex][c] = value;
+        rows[r - range.s.r][c] = value;
       }
     }
   });
-
   return rows;
 }
 
@@ -332,14 +255,7 @@ function findHeaderIndex(rows) {
   return rows.findIndex((row, index) => {
     const currentText = normalizeText(row.join(" "));
     const nextText = normalizeText((rows[index + 1] || []).join(" "));
-    const totalText = currentText + nextText;
-
-    return (
-      totalText.includes("수급자명") &&
-      totalText.includes("작성일") &&
-      totalText.includes("대변") &&
-      totalText.includes("소변")
-    );
+    return (currentText + nextText).includes("수급자명") && (currentText + nextText).includes("작성일") && (currentText + nextText).includes("대변") && (currentText + nextText).includes("소변");
   });
 }
 
@@ -348,11 +264,9 @@ function makeCombinedHeader(rows, headerIndex) {
   const row2 = rows[headerIndex + 1] || [];
   const maxLength = Math.max(row1.length, row2.length);
   const header = [];
-
   for (let i = 0; i < maxLength; i++) {
     header[i] = `${row1[i] || ""} ${row2[i] || ""}`.trim();
   }
-
   return header;
 }
 
@@ -368,24 +282,19 @@ function parseCount(value) {
   const text = String(value).trim();
   if (text === "○" || text === "O" || text === "o") return 1;
   const match = text.match(/\d+/);
-  if (!match) return 0;
-  return Number(match[0]);
+  return match ? Number(match[0]) : 0;
 }
 
 function parseToiletReport(workbook, monthValue) {
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-
   const rows = sheetToRowsWithMerges(sheet);
   const headerIndex = findHeaderIndex(rows);
-
   if (headerIndex === -1) {
     alert("식사/화장실 기록에서 표 머리글을 찾지 못했습니다.");
     return [];
   }
-
   const header = makeCombinedHeader(rows, headerIndex);
-
   const nameCol = findColumn(header, ["수급자명"]);
   const dateCol = findColumn(header, ["작성일"]);
   const stoolCol = findColumn(header, ["대변"]);
@@ -393,83 +302,39 @@ function parseToiletReport(workbook, monthValue) {
   const diaperCol = findColumn(header, ["기저귀교체", "기저귀 교체", "기저귀"]);
 
   const resultMap = {};
-
   for (let i = headerIndex + 2; i < rows.length; i++) {
     const row = rows[i] || [];
     const name = String(row[nameCol] || "").trim();
-
     if (!name || name === "수급자명") continue;
 
     const dateText = parseDate(row[dateCol]);
-
-    if (!dateText) continue;
-    if (!dateText.startsWith(monthValue)) continue;
-
-    const stoolCount = parseCount(row[stoolCol]);
-    const urineCount = parseCount(row[urineCol]);
-    const diaperCount = diaperCol >= 0 ? parseCount(row[diaperCol]) : 0;
+    if (!dateText || !dateText.startsWith(monthValue)) continue;
 
     const key = `${name}_${dateText}`;
-
     if (!resultMap[key]) {
-      resultMap[key] = {
-        name,
-        date: dateText,
-        stoolCount: 0,
-        urineCount: 0,
-        diaperCount: 0
-      };
+      resultMap[key] = { name, date: dateText, stoolCount: 0, urineCount: 0, diaperCount: 0 };
     }
-
-    resultMap[key].stoolCount += stoolCount;
-    resultMap[key].urineCount += urineCount;
-    resultMap[key].diaperCount += diaperCount;
+    resultMap[key].stoolCount += parseCount(row[stoolCol]);
+    resultMap[key].urineCount += parseCount(row[urineCol]);
+    resultMap[key].diaperCount += diaperCol >= 0 ? parseCount(row[diaperCol]) : 0;
   }
-
   return Object.values(resultMap);
 }
 
 function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
   if (!isAttendanceDay) {
-    return `
-      <td style="background-color: #f8fafc; color: #64748b; font-weight: 600; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; border: 1px solid #e2e8f0;">
-        결석
-      </td>
-    `;
+    return `<td style="background-color: #f8fafc; color: #64748b; font-weight: 600; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; border: 1px solid #e2e8f0;">결석</td>`;
   }
-
   if (!dayData) {
-    return `
-      <td style="background-color: #fff5f5; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;">
-        <div style="color: #e11d48; font-weight: 800; font-size: 13px; margin-bottom: 4px;">기록 없음</div>
-        <div style="font-size: 11px; color: #64748b;">-</div>
-      </td>
-    `;
+    return `<td style="background-color: #fff5f5; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;"><div style="color: #e11d48; font-weight: 800; font-size: 13px; margin-bottom: 4px;">기록 없음</div><div style="font-size: 11px; color: #64748b;">-</div></td>`;
   }
-
   const totalCount = dayData.stoolCount + dayData.urineCount + dayData.diaperCount;
   const resultText = getResultText(totalCount, dayData.diaperCount, hasDiaperBenefit);
 
   if (resultText === "정상") {
-    return `
-      <td style="background-color: #ffffff; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;">
-        <div style="color: #2563eb; font-weight: 800; font-size: 13px; margin-bottom: 4px;">정상</div>
-        <div style="font-size: 11px; color: #64748b; line-height: 1.3;">
-          총 ${totalCount}회<br>
-          대 ${dayData.stoolCount} / 소 ${dayData.urineCount} / 기 ${dayData.diaperCount}
-        </div>
-      </td>
-    `;
+    return `<td style="background-color: #ffffff; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;"><div style="color: #2563eb; font-weight: 800; font-size: 13px; margin-bottom: 4px;">정상</div><div style="font-size: 11px; color: #64748b; line-height: 1.3;">총 ${totalCount}회<br>대 ${dayData.stoolCount} / 소 ${dayData.urineCount} / 기 ${dayData.diaperCount}</div></td>`;
   } else {
-    return `
-      <td style="background-color: #fff5f5; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #cbd5e1;">
-        <div style="color: #e11d48; font-weight: 800; font-size: 13px; margin-bottom: 4px;">${resultText}</div>
-        <div style="font-size: 11px; color: #1e293b; font-weight: 500; line-height: 1.3;">
-          총 ${totalCount}회<br>
-          대 ${dayData.stoolCount} / 소 ${dayData.urineCount} / 기 ${dayData.diaperCount}
-        </div>
-      </td>
-    `;
+    return `<td style="background-color: #fff5f5; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #cbd5e1;"><div style="color: #e11d48; font-weight: 800; font-size: 13px; margin-bottom: 4px;">${resultText}</div><div style="font-size: 11px; color: #1e293b; font-weight: 500; line-height: 1.3;">총 ${totalCount}회<br>대 ${dayData.stoolCount} / 소 ${dayData.urineCount} / 기 ${dayData.diaperCount}</div></td>`;
   }
 }
 
@@ -483,52 +348,40 @@ function buildResults(monthValue, toiletRows) {
   toiletRows.forEach((row) => {
     if (!nameMap[row.name]) {
       const plan = latestPlans[row.name];
-
-      nameMap[row.name] = {
-        name: row.name,
-        planDate: plan ? plan.writtenDate : "-",
-        counselText: getCounselTextForMonth(row.name, monthEndDate),
-        days: {}
-      };
+      nameMap[row.name] = { name: row.name, planDate: plan ? plan.writtenDate : "-", counselText: getCounselTextForMonth(row.name, monthEndDate), days: {} };
     }
-
-    nameMap[row.name].days[row.date] = {
-      stoolCount: row.stoolCount,
-      urineCount: row.urineCount,
-      diaperCount: row.diaperCount
-    };
+    nameMap[row.name].days[row.date] = { stoolCount: row.stoolCount, urineCount: row.urineCount, diaperCount: row.diaperCount };
   });
 
   Object.keys(latestPlans).forEach((name) => {
     if (!nameMap[name]) {
       const plan = latestPlans[name];
-
-      nameMap[name] = {
-        name,
-        planDate: plan ? plan.writtenDate : "-",
-        counselText: getCounselTextForMonth(name, monthEndDate),
-        days: {}
-      };
+      nameMap[name] = { name, planDate: plan ? plan.writtenDate : "-", counselText: getCounselTextForMonth(name, monthEndDate), days: {} };
     }
   });
 
   Object.values(nameMap).forEach((item) => {
     const plan = latestPlans[item.name];
     const attendance = attendanceRows.find((a) => a.name === item.name);
-
     item.attendanceDates = attendance ? attendance.dates : [];
     item.daysDiaperAllowed = {};
-
-    days.forEach((day) => {
-      // [날짜별 융합 바인딩]: 각 일자(day)마다 대조해서 15일 당일부터 유연하게 통과되도록 주입합니다.
-      item.daysDiaperAllowed[day] = isDiaperAllowedAtDate(plan, item.name, day);
-    });
+    days.forEach((day) => { item.daysDiaperAllowed[day] = isDiaperAllowedAtDate(plan, item.name, day); });
   });
+  return { days, rows: Object.values(nameMap).sort((a, b) => a.name.localeCompare(b.name, "ko")) };
+}
 
-  return {
-    days,
-    rows: Object.values(nameMap).sort((a, b) => a.name.localeCompare(b.name, "ko"))
-  };
+function getHolidayList(year) {
+  return [`${year}-01-01`, `${year}-03-01`, `${year}-05-05`, `${year}-06-06`, `${year}-08-15`, `${year}-10-03`, `${year}-10-09`, `${year}-12-25`];
+}
+
+function getDayHeaderHtml(dayText) {
+  const date = new Date(dayText);
+  const dayNum = Number(dayText.split("-")[2]);
+  const weekday = date.getDay();
+  let color = "#1f2937";
+  if (weekday === 6) color = "#2563eb";
+  if (weekday === 0 || getHolidayList(date.getFullYear()).includes(dayText)) color = "#dc2626";
+  return `<th style="color:${color}; text-align: center; vertical-align: middle; border: 1px solid #e2e8f0;">${dayNum}일</th>`;
 }
 
 function renderResults(data) {
@@ -546,72 +399,32 @@ function renderResults(data) {
   `;
 
   toiletResultBody.innerHTML = "";
-
   if (rows.length === 0) {
-    toiletResultBody.innerHTML = `
-      <tr class="empty-row">
-        <td colspan="${4 + days.length}" style="border: 1px solid #e2e8f0; text-align: center; padding: 20px;">확인할 데이터가 없습니다.</td>
-      </tr>
-    `;
+    toiletResultBody.innerHTML = `<tr><td colspan="${4 + days.length}" style="border: 1px solid #e2e8f0; text-align: center; padding: 20px;">확인할 데이터가 없습니다.</td></tr>`;
     return;
   }
 
   rows.forEach((item) => {
     const row = document.createElement("tr");
-
     let hasRowError = false;
     days.forEach((day) => {
-      const isAttendanceDay = (item.attendanceDates || []).includes(day);
-      if (isAttendanceDay) {
+      if ((item.attendanceDates || []).includes(day)) {
         const dayData = item.days[day];
-        if (!dayData) {
-          hasRowError = true;
-        } else {
-          const totalCount = dayData.stoolCount + dayData.urineCount + dayData.diaperCount;
-          const resText = getResultText(totalCount, dayData.diaperCount, item.daysDiaperAllowed[day]);
-          if (resText !== "정상") hasRowError = true;
-        }
+        if (!dayData) hasRowError = true;
+        else if (getResultText(dayData.stoolCount + dayData.urineCount + dayData.diaperCount, dayData.diaperCount, item.daysDiaperAllowed[day]) !== "정상") hasRowError = true;
       }
     });
 
-    if (hasRowError) {
-      row.style.backgroundColor = "#fff5f5";
-    } else {
-      row.style.backgroundColor = "#ffffff";
-    }
-
+    row.style.backgroundColor = hasRowError ? "#fff5f5" : "#ffffff";
     row.innerHTML = `
       <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.name}</td>
       <td style="vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${item.planDate}</td>
       <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0; font-size: 13px;">${item.counselText}</td>
       <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${Object.values(item.daysDiaperAllowed).some(Boolean) ? "있음" : "없음"}</td>
-      ${days.map((day) => {
-        const isAttendanceDay = (item.attendanceDates || []).includes(day);
-        return buildDayCell(item.days[day], item.daysDiaperAllowed[day], isAttendanceDay);
-      }).join("")}
+      ${days.map((day) => buildDayCell(item.days[day], item.daysDiaperAllowed[day], (item.attendanceDates || []).includes(day))).join("")}
     `;
-
     toiletResultBody.appendChild(row);
   });
-}
-
-function getHolidayList(year) {
-  return [
-    `${year}-01-01`, `${year}-03-01`, `${year}-05-05`, `${year}-06-06`,
-    `${year}-08-15`, `${year}-10-03`, `${year}-10-09`, `${year}-12-25`
-  ];
-}
-
-function getDayHeaderHtml(dayText) {
-  const date = new Date(dayText);
-  const dayNum = Number(dayText.split("-")[2]);
-  const weekday = date.getDay();
-
-  let color = "#1f2937";
-  if (weekday === 6) color = "#2563eb";
-  if (weekday === 0 || getHolidayList(date.getFullYear()).includes(dayText)) color = "#dc2626";
-
-  return `<th style="color:${color}; text-align: center; vertical-align: middle; border: 1px solid #e2e8f0;">${dayNum}일</th>`;
 }
 
 checkToiletBtn.addEventListener("click", async () => {
@@ -635,11 +448,7 @@ checkToiletBtn.addEventListener("click", async () => {
   const reader = new FileReader();
   reader.onload = (event) => {
     const data = new Uint8Array(event.target.result);
-    const workbook = XLSX.read(data, {
-      type: "array",
-      cellDates: true
-    });
-
+    const workbook = XLSX.read(data, { type: "array", cellDates: true });
     const toiletRows = parseToiletReport(workbook, checkMonth);
     const parsedResults = buildResults(checkMonth, toiletRows);
     renderResults(parsedResults);
@@ -650,25 +459,6 @@ checkToiletBtn.addEventListener("click", async () => {
 clearToiletBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
   toiletFileInput.value = "";
-
-  toiletTableHead.innerHTML = `
-    <tr>
-      <th style="border: 1px solid #e2e8f0; text-align: center;">수급자명</th>
-      <th style="border: 1px solid #e2e8f0; text-align: center;">계획서 작성일</th>
-      <th style="border: 1px solid #e2e8f0; text-align: center;">상담일지 반영</th>
-      <th style="border: 1px solid #e2e8f0; text-align: center;">기저귀 급여</th>
-    </tr>
-  `;
-
-  toiletResultBody.innerHTML = `
-    <tr class="empty-row">
-      <td colspan="4" style="border: 1px solid #e2e8f0; text-align: center; padding: 20px;">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td>
-    </tr>
-  `;
+  toiletTableHead.innerHTML = `<tr><th style="border: 1px solid #e2e8f0; text-align: center;">수급자명</th><th style="border: 1px solid #e2e8f0; text-align: center;">계획서 작성일</th><th style="border: 1px solid #e2e8f0; text-align: center;">상담일지 반영</th><th style="border: 1px solid #e2e8f0; text-align: center;">기저귀 급여</th></tr>`;
+  toiletResultBody.innerHTML = `<tr><td colspan="4" style="border: 1px solid #e2e8f0; text-align: center; padding: 20px;">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td></tr>`;
 });
-
-localStorage.removeItem("counselLibrary");
-localStorage.removeItem("carePlanLibrary");
-
-syncCarePlanLibraryFromGoogleSheet();
-syncCounselLibraryFromGoogleSheet();
