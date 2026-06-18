@@ -1,18 +1,47 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
+let carePlanLibraryCache = [];
+let counselLibraryCache = [];
+let attendanceLibraryCache = [];
+
+function makePayloadUrl(payload) {
+  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
-    const plans = JSON.parse(text);
-    localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
-    return plans;
+    carePlanLibraryCache = JSON.parse(text);
+    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibraryCache));
+    return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
     return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
   }
 }
 
+// 💡 [동기화 연동망 구축]: 출석관리 메뉴가 로컬 스토리지 캐시에 갇혀 팝업을 띄우지 않도록 실시간 서버 수신망을 개설했습니다.
+async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+  try {
+    const response = await fetch(
+      makePayloadUrl({
+        action: "listAttendance",
+        month: monthValue
+      }),
+      { method: "GET", redirect: "follow" }
+    );
+    const text = await response.text();
+    const attendance = JSON.parse(text);
+    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+    return attendanceLibraryCache;
+  } catch (error) {
+    console.error("출석관리 동기화 오류:", error);
+    return attendanceLibraryCache;
+  }
+}
+
+// 초기 기본 동기화 가동
 syncCarePlanLibraryFromGoogleSheet();
 
 const checkMonthInput = document.getElementById("checkMonth");
@@ -244,9 +273,11 @@ function parseCognitiveReport(workbook, monthValue) {
 }
 
 function getAttendanceMonth(monthValue) {
-  const library = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
+  // [보완 포인트]: 로컬 스토리지와 서버 캐시 변수를 다중 결합하여 안전하게 출석 데이터를 회수합니다.
+  const localLibrary = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
+  const activeLibrary = attendanceLibraryCache.length > 0 ? attendanceLibraryCache : localLibrary;
 
-  return library
+  return activeLibrary
     .filter((item) => item.month === monthValue)
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
@@ -310,7 +341,6 @@ function renderHeader(monthValue) {
   `;
 }
 
-// [일자별 셀 개조]: 누락된 날짜 칸 자체에 부드러운 빨간 배경색을 심어 가독성을 높입니다.
 function buildDayCell(isAttendanceDay, cognitiveDay) {
   if (!isAttendanceDay) {
     return `<td class="cognitive-day-cell empty-day">-</td>`;
@@ -329,7 +359,7 @@ function buildDayCell(isAttendanceDay, cognitiveDay) {
     `;
   }
 
-  // 출석했는데 인지 기록이 비어있어 '누락'일 때 소프트 레드 배경 주입
+  // 💡 [디자인 통일]: 누락 칸 자체에 부드러운 빨간 배경과 외곽선을 입혀 가독성을 최대로 높였습니다.
   return `
     <td class="cognitive-day-cell" style="background-color: #fff5f5; border: 1px solid #fda4af !important;">
       <div class="status-danger">누락</div>
@@ -374,7 +404,7 @@ function renderResults(monthValue, results) {
     const overallText = missingCount > 0 ? `확인 필요<br>${missingCount}일 누락` : "정상";
     const overallClass = missingCount > 0 ? "status-danger" : "status-ok";
     
-    // 💡 [통일성 업그레이드]: 누락이 1일이라도 있으면 행 전체 구성품에 부드러운 빨간 배경 스타일 연동
+    // 💡 [사진 요구사항 반영]: 누락 일수가 존재할 경우, 행 전체 구성품에 부드러운 연분홍 배경색 테마가 녹아들게 보완했습니다.
     const errorCellBg = missingCount > 0 ? 'background-color: #fff5f5;' : '';
 
     row.innerHTML = `
@@ -489,9 +519,6 @@ function applyCognitiveStyle() {
 }
 
 checkCognitiveBtn.addEventListener("click", async () => {
-  await syncCarePlanLibraryFromGoogleSheet();
-  applyCognitiveStyle();
-
   const checkMonth = checkMonthInput.value;
   const file = cognitiveFileInput.files[0];
 
@@ -504,6 +531,12 @@ checkCognitiveBtn.addEventListener("click", async () => {
     alert("프로그램 참여 기록 파일을 업로드해주세요.");
     return;
   }
+
+  // 💡 [실시간 연동 가동]: 검증 버튼을 누르는 순간 서버에서 최신 출석부를 강제 원격 동기화하여 팝업 락을 차단합니다.
+  alert("구글 시트에서 계획서 및 월 출석 데이터 보관함을 동기화 중입니다...");
+  await syncCarePlanLibraryFromGoogleSheet();
+  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+  applyCognitiveStyle();
 
   const attendanceRows = getAttendanceMonth(checkMonth);
   if (attendanceRows.length === 0) {
