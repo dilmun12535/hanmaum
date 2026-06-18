@@ -21,7 +21,6 @@ async function syncCarePlanLibraryFromGoogleSheet() {
   }
 }
 
-// 💡 [동기화 연동망 구축]: 출석관리 메뉴가 로컬 스토리지 캐시에 갇혀 팝업을 띄우지 않도록 실시간 서버 수신망을 개설했습니다.
 async function syncAttendanceMonthFromGoogleSheet(monthValue) {
   try {
     const response = await fetch(
@@ -53,6 +52,13 @@ const cognitiveResultBody = document.getElementById("cognitiveResultBody");
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
+}
+
+// 💡 [안전 조치]: 정렬(sort) 시 이름 데이터가 깨져있어도 에러가 나지 않도록 안전하게 문자열 변환 처리를 보완했습니다.
+function safeCompare(a, b) {
+  const nameA = String(a || "").trim();
+  const nameB = String(b || "").trim();
+  return nameA.localeCompare(nameB, "ko");
 }
 
 function excelDateToJSDate(serial) {
@@ -273,13 +279,19 @@ function parseCognitiveReport(workbook, monthValue) {
 }
 
 function getAttendanceMonth(monthValue) {
-  // [보완 포인트]: 로컬 스토리지와 서버 캐시 변수를 다중 결합하여 안전하게 출석 데이터를 회수합니다.
   const localLibrary = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
   const activeLibrary = attendanceLibraryCache.length > 0 ? attendanceLibraryCache : localLibrary;
 
   return activeLibrary
     .filter((item) => item.month === monthValue)
-    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    .map((item) => ({
+      // 💡 [오류 원인 조치]: name이 누락되어 들어오더라도 recipientName을 상호 교차 대조하여 안전하게 복원하도록 방어벽을 세웠습니다.
+      name: String(item.name || item.recipientName || "").trim(),
+      grade: item.grade || "",
+      dates: item.dates || item.attendanceDates || []
+    }))
+    .filter((item) => item.name !== "") // 이름이 아예 완전 공백인 쓰레기 행 필터링
+    .sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function isCognitiveTargetGrade(grade) {
@@ -309,7 +321,7 @@ function buildResults(monthValue, cognitiveRows) {
           cognitiveDays: cognitive ? cognitive.days : {}
         };
       })
-      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+      .sort((a, b) => safeCompare(a.name, b.name));
   }
 
   return cognitiveRows
@@ -320,7 +332,7 @@ function buildResults(monthValue, cognitiveRows) {
       attendanceDates: Object.keys(item.days || {}),
       cognitiveDays: item.days || {}
     }))
-    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    .sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function renderHeader(monthValue) {
@@ -359,7 +371,6 @@ function buildDayCell(isAttendanceDay, cognitiveDay) {
     `;
   }
 
-  // 💡 [디자인 통일]: 누락 칸 자체에 부드러운 빨간 배경과 외곽선을 입혀 가독성을 최대로 높였습니다.
   return `
     <td class="cognitive-day-cell" style="background-color: #fff5f5; border: 1px solid #fda4af !important;">
       <div class="status-danger">누락</div>
@@ -404,7 +415,6 @@ function renderResults(monthValue, results) {
     const overallText = missingCount > 0 ? `확인 필요<br>${missingCount}일 누락` : "정상";
     const overallClass = missingCount > 0 ? "status-danger" : "status-ok";
     
-    // 💡 [사진 요구사항 반영]: 누락 일수가 존재할 경우, 행 전체 구성품에 부드러운 연분홍 배경색 테마가 녹아들게 보완했습니다.
     const errorCellBg = missingCount > 0 ? 'background-color: #fff5f5;' : '';
 
     row.innerHTML = `
@@ -532,7 +542,6 @@ checkCognitiveBtn.addEventListener("click", async () => {
     return;
   }
 
-  // 💡 [실시간 연동 가동]: 검증 버튼을 누르는 순간 서버에서 최신 출석부를 강제 원격 동기화하여 팝업 락을 차단합니다.
   alert("구글 시트에서 계획서 및 월 출석 데이터 보관함을 동기화 중입니다...");
   await syncCarePlanLibraryFromGoogleSheet();
   await syncAttendanceMonthFromGoogleSheet(checkMonth);
