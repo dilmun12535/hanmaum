@@ -1,5 +1,7 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
+// [용량 초과 완벽 해결]: 브라우저 하드디스크를 쓰지 않고 메모리 캐시 변수를 활용해 QuotaExceededError를 완벽 차단합니다.
+let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 let attendanceLibraryCache = [];
 
@@ -15,14 +17,11 @@ async function syncCarePlanLibraryFromGoogleSheet() {
     });
 
     const text = await response.text();
-    const plans = JSON.parse(text);
-
-    localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
-
-    return plans;
+    carePlanLibraryCache = JSON.parse(text);
+    return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
-    return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+    return carePlanLibraryCache;
   }
 }
 
@@ -37,12 +36,9 @@ async function syncCounselLibraryFromGoogleSheet() {
     const counsels = JSON.parse(text);
 
     counselLibraryCache = Array.isArray(counsels) ? counsels : [];
-    localStorage.setItem("counselLibrary", JSON.stringify(counselLibraryCache));
-
     return counselLibraryCache;
   } catch (error) {
     console.error("상담일지 동기화 오류:", error);
-    counselLibraryCache = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
     return counselLibraryCache;
   }
 }
@@ -64,17 +60,14 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
     const attendance = JSON.parse(text);
 
     attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
-
     return attendanceLibraryCache;
   } catch (error) {
     console.error("출석관리 동기화 오류:", error);
-    attendanceLibraryCache = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]")
-      .filter((item) => item.month === monthValue);
-
     return attendanceLibraryCache;
   }
 }
 
+// 최초 구동 동기화 결합 가동
 syncCarePlanLibraryFromGoogleSheet();
 syncCounselLibraryFromGoogleSheet();
 
@@ -138,6 +131,7 @@ function parseDate(value) {
 }
 
 function getMonthEndDate(monthValue) {
+  if (!monthValue || typeof monthValue !== "string") return "";
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
 
@@ -145,6 +139,7 @@ function getMonthEndDate(monthValue) {
 }
 
 function getDaysInMonth(monthValue) {
+  if (!monthValue || typeof monthValue !== "string") return [];
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   const days = [];
@@ -170,10 +165,9 @@ function getAttendanceMonth(monthValue) {
 }
 
 function getLatestPlansByRecipient(checkDate) {
-  const library = JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
   const checkDateText = normalizeDateText(checkDate);
 
-  const validPlans = library.filter((plan) => {
+  const validPlans = carePlanLibraryCache.filter((plan) => {
     const writtenDate = normalizeDateText(plan.writtenDate);
     return writtenDate && writtenDate <= checkDateText;
   });
@@ -223,15 +217,10 @@ function getCounselDate(counsel) {
 }
 
 function getLatestDiaperCounsel(name, targetDate) {
-  const counselLibrary =
-    counselLibraryCache.length > 0
-      ? counselLibraryCache
-      : JSON.parse(localStorage.getItem("counselLibrary") || "[]");
-
   const targetName = String(name || "").trim();
   const targetDateText = normalizeDateText(targetDate);
 
-  const counsels = counselLibrary
+  const counsels = counselLibraryCache
     .filter((item) => {
       const sameName = String(item.recipientName || "").trim() === targetName;
       const counselDate = getCounselDate(item);
@@ -360,6 +349,7 @@ function findHeaderIndex(rows) {
   });
 }
 
+// ...[중략] 양식 유지 연산 파트
 function makeCombinedHeader(rows, headerIndex) {
   const row1 = rows[headerIndex] || [];
   const row2 = rows[headerIndex + 1] || [];
@@ -466,9 +456,7 @@ function getResultText(totalCount, diaperCount, hasDiaperBenefit) {
   return "정상";
 }
 
-// [디자인 팩 튜닝 구역]: 각 일자별 셀 스타일링 조합 빌더 함수
 function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
-  // 1. 결석한 날인 경우: 맑은 밀크 아쿠아 화이트 테마 처리
   if (!isAttendanceDay) {
     return `
       <td style="background-color: #f8fafc; color: #64748b; font-weight: 600; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; border: 1px solid #e2e8f0;">
@@ -477,7 +465,6 @@ function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
     `;
   }
 
-  // 2. 출석일인데 기록이 비어있는 경우: 은은한 파스텔 피치 핑크 테마 처리
   if (!dayData) {
     return `
       <td style="background-color: #fff5f5; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;">
@@ -490,9 +477,7 @@ function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
   const totalCount = dayData.stoolCount + dayData.urineCount + dayData.diaperCount;
   const resultText = getResultText(totalCount, dayData.diaperCount, hasDiaperBenefit);
 
-  // 3. 기록의 판정 결과에 따른 맞춤형 분기 처리
   if (resultText === "정상") {
-    // 정상인 칸은 순수한 흰색 배경으로 처리하여 표를 투명하게 만듭니다.
     return `
       <td style="background-color: #ffffff; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;">
         <div style="color: #2563eb; font-weight: 800; font-size: 13px; margin-bottom: 4px;">정상</div>
@@ -503,7 +488,6 @@ function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
       </td>
     `;
   } else {
-    // 횟수 부족이나 기저귀 오류인 칸은 연한 파스텔 피치 핑크 테마를 씌워줍니다.
     return `
       <td style="background-color: #fff5f5; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #cbd5e1;">
         <div style="color: #e11d48; font-weight: 800; font-size: 13px; margin-bottom: 4px;">${resultText}</div>
@@ -632,7 +616,6 @@ function renderResults(data) {
   rows.forEach((item) => {
     const row = document.createElement("tr");
 
-    // 각 수급자의 전체 요약 결과(하루라도 오류나 부족이 있는지) 파악용 플래그
     let hasRowError = false;
     days.forEach((day) => {
       const isAttendanceDay = (item.attendanceDates || []).includes(day);
@@ -648,7 +631,6 @@ function renderResults(data) {
       }
     });
 
-    // 교차 가로줄 무늬를 완전히 격파하고, 오직 오류가 검출된 줄(Row) 전체에만 부드러운 연분홍 파스텔 색상을 입힙니다.
     if (hasRowError) {
       row.style.backgroundColor = "#fff5f5";
     } else {
@@ -670,6 +652,7 @@ function renderResults(data) {
   });
 }
 
+// [버그 수정의 핵심 코어]: 구조가 파괴되었던 비동기 동기화 바인딩 레이어를 완벽 복원했습니다.
 checkToiletBtn.addEventListener("click", async () => {
   const checkMonth = checkMonthInput.value;
   const file = toiletFileInput.files[0];
@@ -699,9 +682,6 @@ checkToiletBtn.addEventListener("click", async () => {
     });
 
     const toiletRows = parseToiletReport(workbook, checkMonth);
-    const results = buildResults(workbook, checkMonth); // 내부 파라미터 보완 바인딩 유연화 수용
-
-    // 안정적인 렌더링 스코프 유지를 위한 가공 바인딩 처리
     const parsedResults = buildResults(checkMonth, toiletRows);
     renderResults(parsedResults);
   };
@@ -728,9 +708,3 @@ clearToiletBtn.addEventListener("click", () => {
     </tr>
   `;
 });
-
-localStorage.removeItem("counselLibrary");
-localStorage.removeItem("carePlanLibrary");
-
-syncCarePlanLibraryFromGoogleSheet();
-syncCounselLibraryFromGoogleSheet();
