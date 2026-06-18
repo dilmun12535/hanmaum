@@ -9,6 +9,44 @@
   <link rel="stylesheet" href="../css/dashboard.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    /* 한마음 전산 전체 메뉴와 100% 일치하도록 일체형 안내상자 클래스를 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -68,32 +106,37 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p><strong>확인 기준</strong></p>
-          <p>계획서에 <strong>몸씻기 도움</strong>이 있고 상담일지에서 제외되지 않은 사람 → 목욕 기록 또는 목욕거부가 있어야 정상</p>
-          <p>상담일지에서 <strong>목욕 제외</strong>가 반영된 사람 → 반영일 이후에는 목욕 기록이 없어야 정상</p>
-          <p>계획서에 몸씻기 도움이 없거나 상담일지로 제외된 사람에게 목욕 기록이 있으면 <strong>오류</strong>로 표시됩니다.</p>
+        <!-- [디자인 통일 구역]: 타 확인 메뉴들과 일체감을 가지도록 구조화된 독립형 파스텔 박스를 적용했습니다 -->
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 목욕 확인 기준 안내
+          </h5>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">급여 수립 기본 대상:</b> 계획서에 <b style="color: #1e293b;">몸씻기 도움</b>이 있고 상담일지에서 제외되지 않은 사람 &rarr; 주차별 목욕 기록 또는 목욕거부 내역이 입력되어 있어야 <span style="color: #2563eb; font-weight: 600;">정상</span>입니다.</li>
+            <li><b style="color: #1e293b;">상담일지 제외 반영:</b> 상담일지 기록에서 <b style="color: #1e293b;">목욕 제외</b>가 공식 반영된 사람 &rarr; 해당 반영일 이후 주차에는 목욕 기록이 없어야 <span style="color: #2563eb; font-weight: 600;">정상</span>으로 필터링합니다.</li>
+            <li><b style="color: #1e293b;">오류 판단 기준:</b> 계획서상에 몸씻기 도움이 없거나 상담일지로 제외가 확정된 수급자에게 목욕 기록이 남아있는 경우 <span style="color: #e11d48; font-weight: 600;">오류</span>로 판정되어 표출됩니다.</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table">
+          <table class="info-table" style="border-collapse: collapse; width: 100%;">
             <thead>
               <tr>
-                <th>수급자명</th>
-                <th>계획서 작성일</th>
-                <th>상담일지 반영</th>
-                <th>현재 목욕 대상</th>
-                <th>1주차</th>
-                <th>2주차</th>
-                <th>3주차</th>
-                <th>4주차</th>
-                <th>5주차</th>
-                <th>종합 결과</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">상담일지 반영</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">현재 목욕 대상</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">1주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">2주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">3주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">4주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">5주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">종합 결과</th>
               </tr>
             </thead>
             <tbody id="bathResultBody">
               <tr class="empty-row">
-                <td colspan="11">확인 월과 목욕 리포트 파일을 선택해주세요.</td>
+                <td colspan="10" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 목욕 리포트 파일을 선택해주세요.</td>
               </tr>
             </tbody>
           </table>
@@ -102,7 +145,7 @@
     </main>
   </div>
 
-    <script src="../js/main.js"></script>
+  <script src="../js/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
