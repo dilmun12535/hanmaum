@@ -218,6 +218,7 @@ function parseBathCell(value) {
 
   const cleanText = normalizeText(text);
 
+  // [개선 핵심]: 일정없음, 급여개시전, 급여개시, 퇴소 텍스트가 확인되면 누락 없이 명확하게 isGreyBlock 처리를 내려줍니다.
   if (cleanText.includes("일정없음") || cleanText.includes("급여개시전") || cleanText.includes("급여개시") || cleanText.includes("퇴소")) {
     let formattedLabel = text;
     
@@ -227,6 +228,8 @@ function parseBathCell(value) {
       formattedLabel = "급여개시<br/>" + text.replace("급여개시", "").trim();
     } else if (text.includes("퇴소") && text.replace("퇴소", "").trim().length > 0) {
       formattedLabel = "퇴소<br/>" + text.replace("퇴소", "").trim();
+    } else if (text.includes("일정없음") && text.replace("일정없음", "").trim().length > 0) {
+      formattedLabel = "일정없음<br/>" + text.replace("일정없음", "").trim();
     }
 
     return {
@@ -328,7 +331,7 @@ function parseBathReport(workbook) {
 }
 
 function getWeekResult(required, weekData) {
-  // [수정 조치]: 급여개시전, 퇴소, 일정없음 등의 회색 블록 처리된 주차는 기록 매칭 유무와 상관없이 무조건 '정상'으로 반환합니다.
+  // 회색 블록 처리된 주차(일정없음, 급여개시전 등)는 무조건 '정상'으로 반환해 오류 및 누락에서 제외합니다.
   if (weekData && weekData.isGreyBlock) return "정상";
   
   const hasRecord = weekData && weekData.hasBathRecord;
