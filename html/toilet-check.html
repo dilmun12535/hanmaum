@@ -9,6 +9,14 @@
   <link rel="stylesheet" href="../css/dashboard.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 추가적인 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -68,27 +76,32 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p><strong>확인 기준</strong></p>
-          <p>각 날짜별로 <strong>대변 + 소변 + 기저귀</strong> 합산이 <strong>5회 이상</strong>이어야 정상입니다.</p>
-          <p><strong>기저귀</strong>는 계획서와 상담일지 반영 결과에 따라 정상 여부를 판단합니다.</p>
-          <p>상담일지에서 <strong>기저귀 교환 도움 제외</strong>가 반영된 날짜 이후 기저귀 기록이 있으면 오류입니다.</p>
-          <p>표 안의 형식: <strong>총횟수 / 대변 / 소변 / 기저귀 / 결과</strong></p>
+        <!-- [개조 구역]: 다닥다닥 붙어있던 기존 안내창을 단정하고 예쁜 독채형 안내 상자로 전면 교체했습니다 -->
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 20px; margin-top: 25px; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <h5 style="color: #334155; font-weight: 700; font-size: 15px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 6px;">
+            💡 화장실 확인 기준 안내
+          </h5>
+          <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 13px; line-height: 1.6;">
+            <li style="margin-bottom: 4px;">각 날짜별로 <b style="color: #1e293b;">대변 + 소변 + 기저귀 합산이 5회 이상</b>이어야 정상입니다.</li>
+            <li style="margin-bottom: 4px;"><b style="color: #1e293b;">기저귀</b>는 계획서와 상담일지 반영 결과에 따라 정상 여부를 판단합니다.</li>
+            <li style="margin-bottom: 4px;">상담일지에서 <b style="color: #1e293b;">기저귀 교환 도움 제외가 반영된 날짜 이후</b> 기저귀 기록이 있으면 <span style="color: #e11d48; font-weight: 600;">오류</span>입니다.</li>
+            <li style="font-weight: 500; color: #64748b; margin-top: 6px; list-style-type: none; padding-left: 0;">📊 표 안의 형식: 총 횟수 / 대변 / 소변 / 기저귀 / 결과</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table">
+          <table class="info-table" style="border-collapse: collapse; width: 100%;">
             <thead id="toiletTableHead">
               <tr>
-                <th>수급자명</th>
-                <th>계획서 작성일</th>
-                <th>상담일지 반영</th>
-                <th>기저귀 급여</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">상담일지 반영</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">기저귀 급여</th>
               </tr>
             </thead>
             <tbody id="toiletResultBody">
               <tr class="empty-row">
-                <td colspan="4">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td>
+                <td colspan="4" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td>
               </tr>
             </tbody>
           </table>
