@@ -9,6 +9,44 @@
   <link rel="stylesheet" href="../css/dashboard.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    /* 한마음 전산 전체 메뉴와 100% 일치하도록 일체형 안내상자 클래스를 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -69,27 +107,32 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p><strong>등록 기준</strong></p>
-          <p>업로드 파일의 여러 시트를 모두 확인하여 <strong>수급자명, 인정번호, 등급, 급여개시일, 날짜, 서비스시간</strong>을 읽어옵니다.</p>
-          <p>서비스시간이 있고 선택한 월에 해당하는 날짜를 <strong>출석일</strong>로 저장합니다.</p>
-          <p>저장된 출석 자료는 이후 식사, 간호, 인지활동 등 다른 확인 화면에서 기준 자료로 사용할 수 있습니다.</p>
+        <!-- [디자인 통일 구역]: 화장실/식사 등 다른 메뉴들과 완벽히 일치하는 단정한 네모 박스 스타일로 적용했습니다 -->
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 출석 등록 및 보관 기준 안내
+          </h5>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">데이터 자동 파싱:</b> 업로드된 파일 내의 모든 시트를 분석하여 <b style="color: #1e293b;">수급자명, 인정번호, 등급, 급여개시일, 제공 날짜, 서비스시간</b>을 정밀하게 추출합니다.</li>
+            <li><b style="color: #1e293b;">출석일 인정 요건:</b> 실질적인 서비스 제공 시간이 기재되어 있고, 상단에서 지정한 확인 월에 부합하는 날짜만 유효한 <b style="color: #1e293b;">출석일</b>로 필터링하여 저장합니다.</li>
+            <li><b style="color: #1e293b;">기준 데이터 연동:</b> 이곳에 등록 및 저장된 출석 마스터 자료는 이후 목욕, 식사, 간호, 인지활동 등 <b>모든 데이터 검증 화면의 대조용 기본 출석판</b>으로 활용됩니다.</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table attendance-table">
+          <table class="info-table attendance-table" style="border-collapse: collapse; width: 100%;">
             <thead id="attendanceTableHead">
               <tr>
-                <th>수급자명</th>
-                <th>인정번호</th>
-                <th>등급</th>
-                <th>급여개시일</th>
-                <th>출석일수</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">인정번호</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">등급</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">급여개시일</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">출석일수</th>
               </tr>
             </thead>
             <tbody id="attendanceResultBody">
               <tr class="empty-row">
-                <td colspan="5">확인 월과 출석 파일을 선택한 뒤 출석 등록을 눌러주세요.</td>
+                <td colspan="5" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 출석 파일을 선택한 뒤 출석 등록을 눌러주세요.</td>
               </tr>
             </tbody>
           </table>
