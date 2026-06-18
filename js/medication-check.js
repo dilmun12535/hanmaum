@@ -1,18 +1,47 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
+let carePlanLibraryCache = [];
+let counselLibraryCache = [];
+let attendanceLibraryCache = [];
+
+function makePayloadUrl(payload) {
+  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
-    const plans = JSON.parse(text);
-    localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
-    return plans;
+    carePlanLibraryCache = JSON.parse(text);
+    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibraryCache));
+    return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
     return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
   }
 }
 
+// 💡 [버그 완전 차단]: 투약 확인 화면도 로컬 캐시 결함에 가두지 않고 서버에서 직접 출석 데이터를 동기화하도록 연동망을 구축했습니다.
+async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+  try {
+    const response = await fetch(
+      makePayloadUrl({
+        action: "listAttendance",
+        month: monthValue
+      }),
+      { method: "GET", redirect: "follow" }
+    );
+    const text = await response.text();
+    const attendance = JSON.parse(text);
+    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+    return attendanceLibraryCache;
+  } catch (error) {
+    console.error("출석관리 동기화 오류:", error);
+    return attendanceLibraryCache;
+  }
+}
+
+// 초기 기본 동기화 가동
 syncCarePlanLibraryFromGoogleSheet();
 
 function normalizeText(value) {
@@ -140,7 +169,7 @@ function parseMinutes(value) {
 }
 
 function getLatestPlansByRecipient(checkDate) {
-  const library = JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+  const library = carePlanLibraryCache.length > 0 ? carePlanLibraryCache : JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
   const validPlans = library.filter((plan) => new Date(plan.writtenDate) <= new Date(checkDate));
   const latestByName = {};
 
@@ -251,8 +280,11 @@ function getRequiredHealthMinutes(medicationCount) {
 }
 
 function getAttendanceMonth(monthValue) {
-  const library = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
-  return library
+  // 💡 [동기화 캐시 연결]: 원격 배열 데이터를 통합 검사하도록 안정화하여 경고 팝업의 발생을 막아줍니다.
+  const localLibrary = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
+  const activeLibrary = attendanceLibraryCache.length > 0 ? attendanceLibraryCache : localLibrary;
+
+  return activeLibrary
     .filter((item) => item.month === monthValue)
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
@@ -463,7 +495,6 @@ function checkMedicationDay(requiredCount, realCount) {
   };
 }
 
-// [일자별 셀 디자인]: 오류 일자 칸 자체에도 연한 분홍 배경 스타일 기입
 function buildDayCell(isAttendanceDay, requiredCount, realCount) {
   if (!isAttendanceDay) {
     return `<td class="split-day-cell empty-day">결석</td>`;
@@ -570,7 +601,6 @@ function renderResults(monthValue, results) {
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
     const overallClass = problemCount > 0 ? "status-danger" : "status-ok";
     
-    // 💡 [행 전체 연동 조치]: 확인 필요 상태일 때 줄 전체 구성품에 연한 분홍 배경 스타일 적용
     const errorCellBg = problemCount > 0 ? "background-color: #fff5f5;" : "";
 
     row.innerHTML = `
@@ -587,7 +617,10 @@ function renderResults(monthValue, results) {
 }
 
 checkMedicationBtn.addEventListener("click", async () => {
+  // 💡 [실시간 연동 수신망 가동]: 클릭 순간 구글 시트에서 계획서와 월 출석 보관함을 강제로 일괄 원격 갱신하여 팝업 락을 차단합니다.
+  alert("구글 시트에서 계획서 및 월 출석 데이터 보관함을 동기화 중입니다...");
   await syncCarePlanLibraryFromGoogleSheet();
+  await syncAttendanceMonthFromGoogleSheet(checkMonthInput.value);
   applySplitCheckStyle();
 
   const checkMonth = checkMonthInput.value;
@@ -598,7 +631,7 @@ checkMedicationBtn.addEventListener("click", async () => {
     return;
   }
 
-  if (!file) { // 💡 기존 소스의 오타 수정 (file -> medicationFile)
+  if (!medicationFile) { 
     alert("투약 제공 현황 파일을 업로드해주세요.");
     return;
   }
