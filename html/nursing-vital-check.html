@@ -9,6 +9,44 @@
   <link rel="stylesheet" href="../css/dashboard.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    /* 화장실/물리치료 안내상자 디자인 팩과 완벽하게 일치하도록 전용 클래스를 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -68,25 +106,30 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p><strong>확인 기준</strong></p>
-          <p>출석한 날에는 <strong>혈압, 맥박, 체온, 호흡</strong>이 모두 있어야 정상입니다.</p>
-          <p>건강관리 시간은 정확한 복약도움 기준에 따라 <strong>없음 20분, 1회 30분, 2회 40분, 3회 50분</strong>이어야 합니다.</p>
-          <p>결석일은 <strong>결석</strong>으로 표시하고 오류로 판단하지 않습니다.</p>
+        <!-- [디자인 통일 구역]: 화장실/물리치료와 똑같은 레이아웃의 네모 상자를 주입했습니다 -->
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 간호제공 확인 기준 안내
+          </h5>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">바이탈 체크:</b> 출석한 날에는 <strong>혈압, 맥박, 체온, 호흡</strong> 데이터가 모두 빠짐없이 입력되어 있어야 <span style="color: #2563eb; font-weight: 600;">정상</span>입니다.</li>
+            <li><b style="color: #1e293b;">건강관리 시간:</b> 급여 계약서상의 정확한 복약도움 횟수 기준에 따라 <b style="color: #1e293b;">없음 20분, 1회 30분, 2회 40분, 3회 50분</b>으로 일치해야 합니다.</li>
+            <li><b style="color: #1e293b;">결석일 처리:</b> 어르신이 등원하지 않은 결석일은 표에 <span style="color: #64748b; font-weight: 600;">결석</span>으로 표시되며 업무 과실(오류)로 판단하지 않습니다.</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table split-check-table">
+          <table class="info-table split-check-table" style="border-collapse: collapse; width: 100%;">
             <thead id="nursingVitalTableHead">
               <tr>
-                <th>수급자명</th>
-                <th>계획서 작성일</th>
-                <th>기준</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">기준</th>
               </tr>
             </thead>
             <tbody id="nursingVitalResultBody">
               <tr class="empty-row">
-                <td colspan="3">확인 월과 파일을 선택해주세요.</td>
+                <td colspan="3" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 파일을 선택해주세요.</td>
               </tr>
             </tbody>
           </table>
