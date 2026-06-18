@@ -210,6 +210,7 @@ function parseOneAttendanceSheet(sheet, monthValue) {
   const header = rows[headerIndex] || [];
   const dateCol = findColumn(header, ["날짜"]);
   const timeCol = findColumn(header, ["서비스시간"]);
+  const provCol = findColumn(header, ["제공시간"]); // 제공시간 컬럼 매칭 추가
 
   if (dateCol === -1) return null;
 
@@ -223,9 +224,14 @@ function parseOneAttendanceSheet(sheet, monthValue) {
     if (!dateText.startsWith(monthValue)) continue;
 
     const serviceTime = timeCol >= 0 ? String(row[timeCol] || "").trim() : "";
+    const provTime = provCol >= 0 ? String(row[provCol] || "").trim() : "";
+    
     const normalizedServiceTime = normalizeText(serviceTime);
+    const normalizedProvTime = normalizeText(provTime);
 
-    if (!normalizedServiceTime || normalizedServiceTime.includes("일정없음")) continue;
+    // [개선 핵심]: 서비스시간이나 제공시간에 '일정없음' 또는 '미이용' 텍스트가 들어가 있으면 출석 목록에서 완전히 제외합니다.
+    if (!normalizedServiceTime || normalizedServiceTime.includes("일정없음") || normalizedServiceTime.includes("미이용")) continue;
+    if (normalizedProvTime.includes("미이용") || normalizedProvTime.includes("일정없음")) continue;
 
     attendanceDates.push(dateText);
   }
@@ -334,8 +340,6 @@ async function loadAttendanceMonth(monthValue) {
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
   } catch (error) {
     console.error("출석 조회 JSON 오류:", error);
-    console.error("응답 원본:", text);
-    alert("출석 데이터를 불러오지 못했습니다.");
     return [];
   }
 }
@@ -369,65 +373,20 @@ function getDaysInMonth(monthValue) {
 function getHolidayList(year) {
   const holidays = {
     2024: [
-      "2024-01-01",
-      "2024-02-09",
-      "2024-02-10",
-      "2024-02-11",
-      "2024-02-12",
-      "2024-03-01",
-      "2024-04-10",
-      "2024-05-05",
-      "2024-05-06",
-      "2024-05-15",
-      "2024-06-06",
-      "2024-08-15",
-      "2024-09-16",
-      "2024-09-17",
-      "2024-09-18",
-      "2024-10-03",
-      "2024-10-09",
-      "2024-12-25"
+      "2024-01-01", "2024-02-09", "2024-02-10", "2024-02-11", "2024-02-12", "2024-03-01",
+      "2024-04-10", "2024-05-05", "2024-05-06", "2024-05-15", "2024-06-06", "2024-08-15",
+      "2024-09-16", "2024-09-17", "2024-09-18", "2024-10-03", "2024-10-09", "2024-12-25"
     ],
     2025: [
-      "2025-01-01",
-      "2025-01-28",
-      "2025-01-29",
-      "2025-01-30",
-      "2025-03-01",
-      "2025-03-03",
-      "2025-05-05",
-      "2025-05-06",
-      "2025-06-06",
-      "2025-08-15",
-      "2025-10-03",
-      "2025-10-05",
-      "2025-10-06",
-      "2025-10-07",
-      "2025-10-08",
-      "2025-10-09",
-      "2025-12-25"
+      "2025-01-01", "2025-01-28", "2025-01-29", "2025-01-30", "2025-03-01", "2025-03-03",
+      "2025-05-05", "2025-05-06", "2025-06-06", "2025-08-15", "2025-10-03", "2025-10-05",
+      "2025-10-06", "2025-10-07", "2025-10-08", "2025-10-09", "2025-12-25"
     ],
     2026: [
-      "2026-01-01",
-      "2026-02-16",
-      "2026-02-17",
-      "2026-02-18",
-      "2026-03-01",
-      "2026-03-02",
-      "2026-05-05",
-      "2026-05-24",
-      "2026-05-25",
-      "2026-06-03",
-      "2026-06-06",
-      "2026-08-15",
-      "2026-08-17",
-      "2026-09-24",
-      "2026-09-25",
-      "2026-09-26",
-      "2026-10-03",
-      "2026-10-05",
-      "2026-10-09",
-      "2026-12-25"
+      "2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18", "2026-03-01", "2026-03-02",
+      "2026-05-05", "2026-05-24", "2026-05-25", "2026-06-03", "2026-06-06", "2026-08-15",
+      "2026-08-17", "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-03", "2026-10-05",
+      "2026-10-09", "2026-12-25"
     ]
   };
 
@@ -641,7 +600,7 @@ registerAttendanceBtn.addEventListener("click", () => {
 
       attendanceFileInput.value = "";
 
-      alert("출석 내역이 구글시트에 저장되었습니다.");
+      alert("출석 내역이 구글시트에 업데이트 및 저장되었습니다.");
     } catch (error) {
       console.error("출석 등록 오류:", error);
       alert("출석 등록 중 오류가 발생했습니다.");
