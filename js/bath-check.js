@@ -212,6 +212,8 @@ function getCounselTextForMonth(name, monthEndDate) {
   return `${counselDate || "-"} / [${counsel.changeType || "-"}] <br/> ${content}`;
 }
 
+// [핵심 변경 포인트 1]
+// 급여개시 전 이라는 글자가 나오면 날짜 부분에 엔터를 쳐서 내려가도록 글자 쪼개기(줄바꿈) 처리를 수행합니다.
 function parseBathCell(value) {
   const text = String(value || "").trim();
   if (!text) return null;
@@ -219,10 +221,21 @@ function parseBathCell(value) {
   const cleanText = normalizeText(text);
 
   if (cleanText.includes("일정없음") || cleanText.includes("급여개시전") || cleanText.includes("급여개시") || cleanText.includes("퇴소")) {
+    let formattedLabel = text;
+    
+    // '급여개시 전 2024.01.24' 또는 '급여개시 2024.01.02' 문구가 오면 글자와 날짜 사이에 <br/> 엔터 삽입
+    if (text.includes("급여개시 전") && text.replace("급여개시 전", "").trim().length > 0) {
+      formattedLabel = "급여개시 전<br/>" + text.replace("급여개시 전", "").trim();
+    } else if (text.includes("급여개시") && !text.includes("전") && text.replace("급여개시", "").trim().length > 0) {
+      formattedLabel = "급여개시<br/>" + text.replace("급여개시", "").trim();
+    } else if (text.includes("퇴소") && text.replace("퇴소", "").trim().length > 0) {
+      formattedLabel = "퇴소<br/>" + text.replace("퇴소", "").trim();
+    }
+
     return {
       hasRecord: false,
       isGreyBlock: true, 
-      label: text 
+      label: formattedLabel 
     };
   }
 
@@ -325,22 +338,20 @@ function getWeekResult(required, weekData) {
   return "정상";
 }
 
-// [디자인 리뉴얼 코어]: 이 부분이 반영되어야 image_19a5aa.png의 투박한 색이 세련되게 변합니다!
 function buildWeekTdHtml(required, weekData) {
   const result = getWeekResult(required, weekData);
   const recordText = weekData ? weekData.recordText : "-";
   const isGreyBlock = weekData ? weekData.isGreyBlock : false;
 
-  // 1. 투박한 진회색 대신, 부드러운 소프트 실버 블루 배경(#eef2f6)과 차분한 네이비그레이 폰트 매칭
+  // 행정 공지사항 전용 회색 칸 렌더링
   if (isGreyBlock) {
     return `
-      <td style="background-color: #eef2f6; color: #475569; font-weight: 700; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; line-height: 1.4; border: 1px solid #cbd5e1;">
+      <td style="background-color: #eef2f6; color: #1e293b; font-weight: 700; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; line-height: 1.4; border: 1px solid #cbd5e1;">
         ${recordText}
       </td>
     `;
   }
 
-  // 2. 일반 셀 가독성 강화
   let color = "#1e293b";
   if (result === "정상") color = "#2563eb"; 
   if (result === "누락" || result === "오류") color = "#e11d48"; 
@@ -415,6 +426,8 @@ function buildResults(monthValue, bathRows) {
   return results.sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
+// [핵심 변경 포인트 2]
+// 결과물 테이블을 렌더링할 때 줄무늬 배경색 기능을 완전히 제거하고, 오직 '확인 필요(오류행)' 줄에만 파스텔톤 배경색을 입힙니다.
 function renderResults(results) {
   bathResultBody.innerHTML = "";
   if (!results || results.length === 0) {
@@ -423,11 +436,19 @@ function renderResults(results) {
   }
   results.forEach((item) => {
     const row = document.createElement("tr");
+    
+    // '확인 필요' 행(Row)인 경우에만 연한 실버 블루/라벤더색(#f1f5f9) 배경을 적용하고, 정상 행은 무조건 흰색 배경
+    if (item.overallResult === "확인 필요") {
+      row.style.backgroundColor = "#f1f5f9";
+    } else {
+      row.style.backgroundColor = "#ffffff";
+    }
+
     row.innerHTML = `
-      <td style="font-weight: 600; color: #1e293b;">${item.name}</td>
-      <td>${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
-      <td style="text-align: left; line-height: 1.4; padding-left: 8px;">${item.counselText || "없음"}</td>
-      <td style="font-weight: 500;">${item.requiredText || "없음"}</td>
+      <td style="font-weight: 600; color: #1e293b; vertical-align: middle;">${item.name}</td>
+      <td style="vertical-align: middle;">${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
+      <td style="text-align: left; line-height: 1.4; padding-left: 8px; vertical-align: middle;">${item.counselText || "없음"}</td>
+      <td style="font-weight: 500; vertical-align: middle;">${item.requiredText || "없음"}</td>
       ${buildWeekTdHtml(item.weekRequired.week1, item.weeks.week1)}
       ${buildWeekTdHtml(item.weekRequired.week2, item.weeks.week2)}
       ${buildWeekTdHtml(item.weekRequired.week3, item.weeks.week3)}
