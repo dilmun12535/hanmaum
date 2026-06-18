@@ -160,10 +160,19 @@ function getCounselDate(counsel) {
   );
 }
 
-// [핵심 변경 1]: 가짜 단어 파편에 절대 속지 않도록 오직 분류가 '목욕'인 일지만 완전 철벽 방어합니다.
 function isPureBathCounsel(item) {
   const categoryText = normalizeText(item.category || "");
-  return categoryText.includes("목욕");
+  const contentText = normalizeText(item.careContent || "");
+  const reasonText = normalizeText(item.reason || "");
+  const totalContent = contentText + reasonText;
+
+  if (categoryText.includes("목욕")) {
+    if (totalContent.includes("옷") || totalContent.includes("입기") || totalContent.includes("기저귀")) {
+      return false;
+    }
+    return true;
+  }
+  return false;
 }
 
 function hasBathAction(item) {
@@ -171,12 +180,12 @@ function hasBathAction(item) {
   return (
     actionText.includes("추가") ||
     actionText.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공") ||
-    text.includes("반영") ||
-    text.includes("시작") ||
-    text.includes("제공")
+    actionText.includes("중단") ||
+    actionText.includes("삭제") ||
+    actionText.includes("미제공") ||
+    actionText.includes("반영") ||
+    actionText.includes("시작") ||
+    actionText.includes("제공")
   );
 }
 
@@ -241,7 +250,6 @@ function isBathRequiredAtDate(plan, name, targetDate) {
   return required;
 }
 
-// [핵심 변경 2]: 너무 길게 늘어지던 하단 글자들을 15자 내외로 자르고 엔터 쳐서 이쁘게 한 줄로 내립니다.
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestBathCounsel(name, monthEndDate);
 
@@ -250,7 +258,6 @@ function getCounselTextForMonth(name, monthEndDate) {
   const counselDate = getCounselDate(counsel);
   let content = counsel.careContent || counsel.reason || "-";
   
-  // 글이 너무 길면 자르고 뒤에 '...'을 붙여 깔끔하게 만듭니다.
   if (content.length > 15) {
     content = content.substring(0, 15) + "...";
   }
@@ -258,6 +265,7 @@ function getCounselTextForMonth(name, monthEndDate) {
   return `${counselDate || "-"} / [${counsel.changeType || "-"}] <br/> ${content}`;
 }
 
+// [핵심 변경 포인트]: 목욕 리포트 셀을 분석할 때 '급여개시' 문구를 완벽히 걸러내는 예외 처리를 반영합니다.
 function parseBathCell(value) {
   const text = String(value || "").trim();
 
@@ -265,7 +273,10 @@ function parseBathCell(value) {
 
   const cleanText = normalizeText(text);
 
-  if (cleanText.includes("일정없음")) return null;
+  // '일정없음' 외에도 '급여개시' 문구가 들어간 경우, 목욕을 안 한 것이므로 데이터가 없는 것(null)으로 처리합니다.
+  if (cleanText.includes("일정없음") || cleanText.includes("급여개시")) {
+    return null;
+  }
 
   if (cleanText.includes("목욕거부")) {
     return {
@@ -557,7 +568,6 @@ clearBathBtn.addEventListener("click", () => {
   `;
 });
 
-// 강제 로컬 캐시 초기화
 localStorage.removeItem("counselLibrary");
 localStorage.removeItem("carePlanLibrary");
 
