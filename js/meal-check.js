@@ -100,7 +100,6 @@ function parseDate(value) {
   if (value instanceof Date) {
     const year = value.getFullYear();
     const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(dateInfo.getDate()).padStart(2, "0"); // Date 개체 안전 변환 보완
     return `${year}-${month}-${String(value.getDate()).padStart(2, "0")}`;
   }
   if (typeof value === "number") return excelDateToJSDate(value);
@@ -342,7 +341,6 @@ function getLatestMealCounsel(name, targetDate) {
       const rawDate = item.reflection || item.reflectionDate || item.consultDate || item.date || "";
       const refDate = normalizeDateText(rawDate);
       
-      // [중요 로직]: 현재 조회 중인 당일 날짜(targetDateText) 이하인 상담일지만 매칭 필터링합니다.
       if (!refDate || refDate > targetDateText) return false;
 
       const category = item.category || "";
@@ -358,6 +356,7 @@ function getLatestMealCounsel(name, targetDate) {
         text.includes("죽식")
       );
     })
+    .filter(Boolean)
     .sort((a, b) => {
       const dateA = normalizeDateText(a.reflection || a.reflectionDate || a.consultDate || a.date || "");
       const dateB = normalizeDateText(b.reflection || b.reflectionDate || b.consultDate || b.date || "");
@@ -432,6 +431,8 @@ function getAttendanceMonth(monthValue) {
     .filter((item) => item.month === monthValue)
     .map((item) => ({
       name: String(item.recipientName || item.name || "").trim(),
+      // [교정 코어]: 동기화 시 이름뿐만 아니라 장기요양인정번호 정보도 함께 객체 구조에 포함하여 리턴합니다.
+      careNum: String(item.managementNum || item.careNum || item.id || "").trim(),
       dates: Array.isArray(item.attendanceDates) ? item.attendanceDates : (Array.isArray(item.dates) ? item.dates : [])
     }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
@@ -448,6 +449,7 @@ function getFoodTypeResult(mealValue, specialFood) {
 }
 
 function getDayResult(dayData, rule) {
+  if (!rule) return "정상";
   const mealCount = rule.mealCount;
   const specialFood = rule.specialFood;
 
@@ -456,7 +458,7 @@ function getDayResult(dayData, rule) {
     return "정상";
   }
 
-  if (!dayData) return "기록 없음";
+  if (!dayData || (!dayData.lunch && !dayData.dinner)) return "기록 없음";
 
   const lunchResult = getFoodTypeResult(dayData.lunch, specialFood);
   const dinnerResult = mealCount >= 2 ? getFoodTypeResult(dayData.dinner, specialFood) : "정상";
@@ -476,6 +478,7 @@ function makeResultClass(result) {
   return "status-danger";
 }
 
+// [디자인 튜닝 포인트]: 목욕 확인서처럼 정상 및 결석을 제외한 오류 판단 셀에 부드러운 분홍빛 빨간 배경을 주입합니다.
 function buildDayCell(isAttendanceDay, dayData, rule) {
   if (!isAttendanceDay) {
     return `<td class="meal-day-cell empty-day">결석</td>`;
@@ -483,12 +486,15 @@ function buildDayCell(isAttendanceDay, dayData, rule) {
 
   const result = getDayResult(dayData, rule);
   const resultClass = makeResultClass(result);
+  
+  // 오류 상태일 경우 주입할 부드러운 빨간 배경 인라인 CSS 세팅
+  const errorBgStyle = result !== "정상" ? `background-color: #fff5f5; border: 1px solid #fda4af !important;` : "";
 
   const lunch = dayData ? (dayData.lunch || "-") : "-";
   const dinner = dayData ? (dayData.dinner || "-") : "-";
 
   return `
-    <td class="meal-day-cell">
+    <td class="meal-day-cell" style="${errorBgStyle}">
       <div class="${resultClass}">${result}</div>
       <div class="small-cell-text">
         점 ${lunch}<br>
@@ -517,8 +523,15 @@ function buildResults(monthValue, mealRows) {
 
   return names
     .map((name) => {
+      // [동일인 판정 핵심 개선]: 이름뿐만 아니라 요양번호 캐시가 있는 경우 번호의 일치 여부까지 복합 대조를 수행하여 결석 찌꺼기를 방지합니다.
+      const attendance = attendanceRows.find((item) => {
+        const sameName = String(item.name).trim() === name;
+        const plan = latestPlans[name];
+        const sameNum = plan && item.careNum && normalizeText(plan.managementNum || plan.careNum) === normalizeText(item.careNum);
+        return sameName || sameNum;
+      });
+      
       const plan = latestPlans[name];
-      const attendance = attendanceRows.find((item) => String(item.name).trim() === name);
       const meal = mealMap[name];
 
       return {
@@ -571,17 +584,12 @@ function renderResults(monthValue, results) {
   results.forEach((item) => {
     const row = document.createElement("tr");
     const attendanceSet = new Set(item.attendanceDates || []);
-    
-    // [보관/표시용]: 월말 기준의 최종 세팅 상태를 보여줍니다.
     const monthEndRule = getMealRuleAtDate(item.plan, item.name, getMonthEndDate(monthValue));
 
     let problemCount = 0;
 
     const dayCells = days.map((day) => {
       const isAttendanceDay = attendanceSet.has(day);
-      
-      // [수정 핵심]: 각 일자(day)를 루프 돌 때 해당 날짜 당일 기준의 규칙을 가져옵니다. 
-      // 이로써 25일 이전에는 1회 규칙, 25일 이후에는 2회 규칙이 자동으로 대조됩니다.
       const rule = getMealRuleAtDate(item.plan, item.name, day);
       const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule) : "정상";
 
@@ -593,6 +601,11 @@ function renderResults(monthValue, results) {
 
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
     const overallClass = problemCount > 0 ? "status-danger" : "status-ok";
+    
+    // 종합 결과에 따라 행 전체의 오류 가독성을 보완하기 위한 배경 지정
+    if (problemCount > 0) {
+      row.style.backgroundColor = "#fffbfb";
+    }
 
     row.innerHTML = `
       <td style="font-weight:600; text-align:center;">${item.name || "-"}</td>
@@ -601,7 +614,7 @@ function renderResults(monthValue, results) {
       <td style="text-align:center; font-weight:700;">${monthEndRule.mealCount || 0}회</td>
       <td style="text-align:center;">${monthEndRule.specialFood ? "기능상태 음식" : "일반식"}</td>
       ${dayCells}
-      <td class="${overallClass}" style="text-align:center; font-weight:800;">${overallText}</td>
+      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle;">${overallText}</td>
     `;
     mealResultBody.appendChild(row);
   });
