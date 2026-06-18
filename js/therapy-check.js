@@ -1,19 +1,61 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
+let carePlanLibraryCache = [];
+let counselLibraryCache = [];
+let attendanceLibraryCache = [];
+
+function makePayloadUrl(payload) {
+  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
-    const plans = JSON.parse(text);
-    localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
-    return plans;
+    carePlanLibraryCache = JSON.parse(text);
+    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibraryCache));
+    return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
     return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
   }
 }
 
+async function syncCounselLibraryFromGoogleSheet() {
+  try {
+    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, { method: "GET", redirect: "follow" });
+    const text = await response.text();
+    counselLibraryCache = JSON.parse(text);
+    localStorage.setItem("counselLibrary", JSON.stringify(counselLibraryCache));
+    return counselLibraryCache;
+  } catch (error) {
+    console.error("상담일지 동기화 오류:", error);
+    return JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+  }
+}
+
+async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+  try {
+    const response = await fetch(
+      makePayloadUrl({
+        action: "listAttendance",
+        month: monthValue
+      }),
+      { method: "GET", redirect: "follow" }
+    );
+    const text = await response.text();
+    const attendance = JSON.parse(text);
+    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+    return attendanceLibraryCache;
+  } catch (error) {
+    console.error("출석관리 동기화 오류:", error);
+    return attendanceLibraryCache;
+  }
+}
+
+// 초기 기본 동기화 가동
 syncCarePlanLibraryFromGoogleSheet();
+syncCounselLibraryFromGoogleSheet();
 
 const checkMonthInput = document.getElementById("checkMonth");
 const therapyFileInput = document.getElementById("therapyFile");
@@ -228,6 +270,7 @@ function getCounselTextForMonth(name, monthEndDate) {
 }
 
 function sheetToRowsWithMerges(sheet) {
+  if (!sheet || !sheet["!ref"]) return [];
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const rows = [];
 
@@ -352,6 +395,7 @@ function makeResultClass(result) {
   return "";
 }
 
+// [주차별 셀 개조]: 누락/오류 발생 주차 칸 자체에 소프트 레드 배경 스타일을 주입합니다.
 function buildWeekCell(required, weekData) {
   const result = getWeekResult(required, weekData);
   const resultClass = makeResultClass(result);
@@ -364,12 +408,16 @@ function buildWeekCell(required, weekData) {
       .replaceAll("~", " ~ ");
   }
 
+  const errorCellBg = result !== "정상" ? "background-color: #fff5f5;" : "";
+
   return `
-    <div class="${resultClass}" style="font-weight:700;">
-      ${result}
-    </div>
-    <div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">
-      ${recordText}
+    <div style="width: 100%; height: 100%; padding: 4px; ${errorCellBg}">
+      <div class="${resultClass}" style="font-weight:700;">
+        ${result}
+      </div>
+      <div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">
+        ${recordText}
+      </div>
     </div>
   `;
 }
@@ -443,7 +491,6 @@ function buildResults(monthValue, therapyRows) {
   return results.sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
-
 function applyTherapyReadableStyle() {
   if (document.getElementById("therapyReadableStyle")) {
     return;
@@ -456,18 +503,22 @@ function applyTherapyReadableStyle() {
     .therapy-check-table td {
       vertical-align: top;
       white-space: normal;
+      border: 1px solid #e2e8f0;
+      padding: 10px 8px;
     }
 
     .therapy-check-table th:nth-child(1),
     .therapy-check-table td:nth-child(1) {
       min-width: 90px;
       width: 90px;
+      text-align: center;
     }
 
     .therapy-check-table th:nth-child(2),
     .therapy-check-table td:nth-child(2) {
       min-width: 115px;
       width: 115px;
+      text-align: center;
     }
 
     .therapy-check-table th:nth-child(3),
@@ -482,6 +533,7 @@ function applyTherapyReadableStyle() {
       min-width: 210px;
       width: 210px;
       text-align: center;
+      padding: 0px !important;
     }
 
     .therapy-check-table th:nth-child(10),
@@ -489,7 +541,11 @@ function applyTherapyReadableStyle() {
       min-width: 90px;
       width: 90px;
       text-align: center;
+      vertical-align: middle;
     }
+    
+    .status-ok { color: #2563eb; font-weight: 800; }
+    .status-danger { color: #e11d48; font-weight: 800; }
   `;
   document.head.appendChild(style);
 }
@@ -501,7 +557,7 @@ function renderResults(results) {
   if (!results || results.length === 0) {
     therapyResultBody.innerHTML = `
       <tr class="empty-row">
-        <td colspan="9">확인할 데이터가 없습니다.</td>
+        <td colspan="10">확인할 데이터가 없습니다.</td>
       </tr>
     `;
     return;
@@ -510,17 +566,20 @@ function renderResults(results) {
   results.forEach((item) => {
     const row = document.createElement("tr");
     const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
+    
+    // 💡 [행 전체 연동 조치]: 확인 필요 상태일 때 줄 전체 구성요소에 연한 분홍 배경 스타일 적용
+    const errorCellBg = item.overallResult !== "정상" ? "background-color: #fff5f5;" : "";
 
     row.innerHTML = `
-      <td>${item.name}</td>
-      <td>${item.planDate}</td>
-      <td>${item.counselText}</td>
+      <td style="font-weight:600; ${errorCellBg}">${item.name}</td>
+      <td style="${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
+      <td style="font-size:12px; line-height:1.4; ${errorCellBg}">${item.counselText}</td>
       <td>${buildWeekCell(item.weekRequired.week1, item.weeks.week1)}</td>
       <td>${buildWeekCell(item.weekRequired.week2, item.weeks.week2)}</td>
       <td>${buildWeekCell(item.weekRequired.week3, item.weeks.week3)}</td>
       <td>${buildWeekCell(item.weekRequired.week4, item.weeks.week4)}</td>
       <td>${buildWeekCell(item.weekRequired.week5, item.weeks.week5)}</td>
-      <td class="${overallClass}">${item.overallResult}</td>
+      <td class="${overallClass}" style="font-weight:800; vertical-align:middle; ${errorCellBg}">${item.overallResult}</td>
     `;
 
     therapyResultBody.appendChild(row);
@@ -563,7 +622,7 @@ clearTherapyBtn.addEventListener("click", () => {
 
   therapyResultBody.innerHTML = `
     <tr class="empty-row">
-      <td colspan="9">확인 월과 물리치료 기록 파일을 선택해주세요.</td>
+      <td colspan="10">확인 월과 물리치료 기록 파일을 선택해주세요.</td>
     </tr>
   `;
 });
