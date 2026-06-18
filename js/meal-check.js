@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbfaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -97,16 +97,13 @@ function excelDateToJSDate(serial) {
 
 function parseDate(value) {
   if (!value) return "";
-
   if (value instanceof Date) {
     const year = value.getFullYear();
     const month = String(value.getMonth() + 1).padStart(2, "0");
     const day = String(value.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   }
-
   if (typeof value === "number") return excelDateToJSDate(value);
-
   return normalizeDateText(value);
 }
 
@@ -122,11 +119,9 @@ function getDaysInMonth(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   const days = [];
-
   for (let day = 1; day <= lastDay; day++) {
     days.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
   }
-
   return days;
 }
 
@@ -152,7 +147,6 @@ function getHolidayList(year) {
       "2026-10-05", "2026-10-09", "2026-12-25"
     ]
   };
-
   return holidays[year] || [];
 }
 
@@ -173,18 +167,15 @@ function sheetToRowsWithMerges(sheet) {
 
   for (let r = range.s.r; r <= range.e.r; r++) {
     const row = [];
-
     for (let c = range.s.c; c <= range.e.c; c++) {
       const address = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[address];
       row[c] = cell ? cell.v : "";
     }
-
     rows.push(row);
   }
 
   const merges = sheet["!merges"] || [];
-
   merges.forEach((merge) => {
     const startAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
     const startCell = sheet[startAddress];
@@ -197,7 +188,6 @@ function sheetToRowsWithMerges(sheet) {
       }
     }
   });
-
   return rows;
 }
 
@@ -226,7 +216,6 @@ function makeCombinedHeader(rows, headerIndex) {
   for (let i = 0; i < maxLength; i++) {
     header[i] = `${row1[i] || ""} ${row2[i] || ""}`.trim();
   }
-
   return header;
 }
 
@@ -239,13 +228,11 @@ function findColumn(header, keywords) {
 
 function parseMealType(value) {
   const text = normalizeText(value);
-
   if (!text || text.includes("일정없음") || text.includes("미이용") || text.includes("급여개시전")) return "";
   if (text.includes("다진")) return "다진식";
   if (text.includes("죽")) return "죽식";
   if (text.includes("일반")) return "일반식";
   if (text.includes("미음")) return "죽식";
-
   return String(value || "").trim();
 }
 
@@ -261,7 +248,6 @@ function parseMealReport(workbook, monthValue) {
   }
 
   const header = makeCombinedHeader(rows, headerIndex);
-
   const nameCol = findColumn(header, ["수급자명"]);
   const dateCol = findColumn(header, ["작성일"]);
   const lunchCol = findColumn(header, ["식사", "점심"]);
@@ -272,7 +258,6 @@ function parseMealReport(workbook, monthValue) {
 
   for (let i = headerIndex + 2; i < rows.length; i++) {
     const row = rows[i] || [];
-
     const rawName = String(row[nameCol] || "").trim();
     if (rawName && rawName !== "수급자명") currentName = rawName;
     const name = currentName;
@@ -283,10 +268,7 @@ function parseMealReport(workbook, monthValue) {
     if (!dateText || !dateText.startsWith(monthValue)) continue;
 
     if (!resultMap[name]) {
-      resultMap[name] = {
-        name,
-        days: {}
-      };
+      resultMap[name] = { name, days: {} };
     }
 
     resultMap[name].days[dateText] = {
@@ -294,11 +276,9 @@ function parseMealReport(workbook, monthValue) {
       dinner: parseMealType(row[dinnerCol])
     };
   }
-
   return Object.values(resultMap);
 }
 
-// [수정 핵심]: 날짜 비교 로직을 문자열 포맷 일치 정규화(normalizeDateText) 방식으로 대폭 강화했습니다.
 function getLatestPlansByRecipient(checkDate) {
   const checkDateText = normalizeDateText(checkDate);
   const validPlans = carePlanLibraryCache.filter((plan) => {
@@ -318,41 +298,42 @@ function getLatestPlansByRecipient(checkDate) {
       latestByName[name] = { ...plan, writtenDate };
     }
   });
-
   return latestByName;
 }
 
-function planRowsToTexts(plan) {
-  if (!plan || !plan.rows) return [];
-  return plan.rows.map((row) => normalizeText(JSON.stringify(row)));
+// [수정 핵심 1]: rows 필드가 문자열 텍스트 자체로 들어오므로, 배열 가공 단계를 없애고 텍스트 통문자열로 추출합니다.
+function planToFullText(plan) {
+  if (!plan) return "";
+  if (typeof plan.rows === "string") return normalizeText(plan.rows);
+  return normalizeText(JSON.stringify(plan.rows || ""));
 }
 
+// [수정 핵심 2]: 통문자열 내에서 식사 키워드를 스캔하여 횟수를 매칭합니다.
 function getMealCountFromPlan(plan) {
-  const rowTexts = planRowsToTexts(plan);
-  const targetRows = rowTexts.filter((text) =>
-    text.includes("균형잡힌식단관리") ||
-    text.includes("균형잡힌식단") ||
-    text.includes("식단관리") ||
-    text.includes("식사")
-  );
+  const text = planToFullText(plan);
+  
+  // 식사 계획이 아예 포함되지 않은 경우
+  if (!text.includes("식사도움") && !text.includes("식단관리") && !text.includes("식사") && !text.includes("식단")) {
+    return 0;
+  }
 
-  if (targetRows.length === 0) return 0;
-
-  const joined = targetRows.join(" ");
-  if (joined.match(/2\s*회/) || joined.match(/2\s*일/) || joined.includes("점심저녁")) return 2;
-  if (joined.match(/1\s*회/) || joined.match(/1\s*일/) || joined.includes("점심")) return 1;
-
-  return 1;
+  // 텍스트 매칭 검사
+  if (text.includes("점심저녁") || text.includes("2회") || text.includes("1일2회") || text.includes("점심,저녁")) {
+    return 2;
+  }
+  if (text.includes("점심") || text.includes("1회") || text.includes("1일1회")) {
+    return 1;
+  }
+  return 1; // 기본 기본값
 }
 
 function hasFoodPrepPlan(plan) {
-  const text = planRowsToTexts(plan).join(" ");
+  const text = planToFullText(plan);
   return (
-    text.includes("기능상태에맞는음식준비") ||
-    text.includes("기능상태맞는음식") ||
     text.includes("음식준비") ||
     text.includes("다진식") ||
-    text.includes("죽식")
+    text.includes("죽식") ||
+    text.includes("미음")
   );
 }
 
@@ -407,12 +388,10 @@ function isAddCounsel(counsel) {
 
 function getMealCountFromText(text, fallback) {
   const clean = normalizeText(text);
-
   if (clean.match(/2\s*회/) || clean.match(/2\s*일/) || clean.includes("점심저녁")) return 2;
   if (clean.match(/1\s*회/) || clean.match(/1\s*일/) || clean.includes("점심")) return 1;
   if (clean.includes("저녁추가")) return 2;
   if (clean.includes("저녁제외")) return 1;
-
   return fallback;
 }
 
@@ -462,12 +441,10 @@ function getAttendanceMonth(monthValue) {
 
 function getFoodTypeResult(mealValue, specialFood) {
   if (!mealValue) return "누락";
-
   if (specialFood) {
     if (mealValue === "다진식" || mealValue === "죽식") return "정상";
     return "식사형태 오류";
   }
-
   if (mealValue === "일반식") return "정상";
   return "식사형태 오류";
 }
@@ -492,7 +469,6 @@ function getDayResult(dayData, rule) {
   if (mealCount === 1 && dayData.dinner) {
     return "저녁 확인";
   }
-
   return "정상";
 }
 
@@ -535,7 +511,6 @@ function buildResults(monthValue, mealRows) {
   });
 
   let names = [];
-
   if (attendanceRows.length > 0) {
     names = attendanceRows.map((item) => String(item.name).trim());
   } else {
@@ -613,7 +588,6 @@ function renderResults(monthValue, results) {
       if (isAttendanceDay && result !== "정상") {
         problemCount += 1;
       }
-
       return buildDayCell(isAttendanceDay, item.mealDays[day], rule);
     }).join("");
 
@@ -629,7 +603,6 @@ function renderResults(monthValue, results) {
       ${dayCells}
       <td class="${overallClass}" style="text-align:center; font-weight:800;">${overallText}</td>
     `;
-
     mealResultBody.appendChild(row);
   });
 }
@@ -640,98 +613,24 @@ function applyMealStyle() {
   const style = document.createElement("style");
   style.id = "mealStyle";
   style.textContent = `
-    .meal-table {
-      min-width: 2200px;
-      table-layout: fixed;
-    }
-
-    .meal-table th,
-    .meal-table td {
-      vertical-align: middle;
-      white-space: normal;
-      text-align: center;
-      padding: 10px 8px;
-      border: 1px solid #e2e8f0;
-    }
-
-    .meal-table th:nth-child(1),
-    .meal-table td:nth-child(1) {
-      min-width: 100px;
-      width: 100px;
-      text-align: center;
-      position: sticky;
-      left: 0;
-      z-index: 4;
-      background-color: #fff;
-    }
-
-    .meal-table th:nth-child(1) {
-      background-color: #eaf0fb;
-      z-index: 6;
-    }
-
-    .meal-table th:nth-child(2),
-    .meal-table td:nth-child(2) {
-      min-width: 115px;
-      width: 115px;
-    }
-
-    .meal-table th:nth-child(3),
-    .meal-table td:nth-child(3) {
-      min-width: 160px;
-      width: 160px;
-      text-align: left;
-    }
-
-    .meal-table th:nth-child(4),
-    .meal-table td:nth-child(4) {
-      min-width: 80px;
-      width: 80px;
-    }
-
-    .meal-table th:nth-child(5),
-    .meal-table td:nth-child(5) {
-      min-width: 100px;
-      width: 100px;
-    }
-
-    .meal-day-head,
-    .meal-day-cell {
-      min-width: 95px;
-      width: 95px;
-    }
-
-    .meal-table th:last-child,
-    .meal-table td:last-child {
-      min-width: 115px;
-      width: 115px;
-      word-break: keep-all;
-      line-height: 1.5;
-    }
-
-    .small-cell-text {
-      font-size: 11px;
-      color: #555;
-      margin-top: 4px;
-      line-height: 1.4;
-      word-break: keep-all;
-    }
-
-    .empty-day {
-      color: #64748b;
-      background-color: #f8fafc;
-      font-weight: 600;
-      word-break: keep-all;
-    }
-
+    .meal-table { min-width: 2200px; table-layout: fixed; }
+    .meal-table th, .meal-table td { vertical-align: middle; white-space: normal; text-align: center; padding: 10px 8px; border: 1px solid #e2e8f0; }
+    .meal-table th:nth-child(1), .meal-table td:nth-child(1) { min-width: 100px; width: 100px; text-align: center; position: sticky; left: 0; z-index: 4; background-color: #fff; }
+    .meal-table th:nth-child(1) { background-color: #eaf0fb; z-index: 6; }
+    .meal-table th:nth-child(2), .meal-table td:nth-child(2) { min-width: 115px; width: 115px; }
+    .meal-table th:nth-child(3), .meal-table td:nth-child(3) { min-width: 160px; width: 160px; text-align: left; }
+    .meal-table th:nth-child(4), .meal-table td:nth-child(4) { min-width: 80px; width: 80px; }
+    .meal-table th:nth-child(5), .meal-table td:nth-child(5) { min-width: 100px; width: 100px; }
+    .meal-day-head, .meal-day-cell { min-width: 95px; width: 95px; }
+    .meal-table th:last-child, .meal-table td:last-child { min-width: 115px; width: 115px; word-break: keep-all; line-height: 1.5; }
+    .small-cell-text { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; word-break: keep-all; }
+    .empty-day { color: #64748b; background-color: #f8fafc; font-weight: 600; word-break: keep-all; }
     .status-ok { color: #2563eb; font-weight: 800; }
     .status-warn { color: #ea580c; font-weight: 800; }
     .status-danger { color: #e11d48; font-weight: 800; }
-
     .meal-day-blue { color: #2563eb !important; }
     .meal-day-red { color: #dc2626 !important; }
   `;
-
   document.head.appendChild(style);
 }
 
@@ -743,7 +642,6 @@ checkMealBtn.addEventListener("click", async () => {
     alert("확인 월을 선택해주세요.");
     return;
   }
-
   if (!file) {
     alert("식사/화장실 기록 파일을 업로드해주세요.");
     return;
@@ -771,27 +669,12 @@ checkMealBtn.addEventListener("click", async () => {
 
     renderResults(checkMonth, results);
   };
-
   reader.readAsArrayBuffer(file);
 });
 
 clearMealBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
   mealFileInput.value = "";
-
-  mealTableHead.innerHTML = `
-    <tr>
-      <th>수급자명</th>
-      <th>계획서 작성일</th>
-      <th>상담일지 반영</th>
-      <th>식사 횟수</th>
-      <th>음식 준비</th>
-    </tr>
-  `;
-
-  mealResultBody.innerHTML = `
-    <tr class="empty-row">
-      <td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td>
-    </tr>
-  `;
+  mealTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>식사 횟수</th><th>음식 준비</th></tr>`;
+  mealResultBody.innerHTML = `<tr class="empty-row"><td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td></tr>`;
 });
