@@ -70,7 +70,7 @@ function normalizeText(value) {
 
 function normalizeDateText(value) {
   if (!value) return "";
-  const text = String(value).replace(/\s/g, "").replace(/^'/, ""); // 공백까지 완전히 제거
+  const text = String(value).replace(/\s/g, "").replace(/^'/, "");
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
@@ -100,8 +100,8 @@ function parseDate(value) {
   if (value instanceof Date) {
     const year = value.getFullYear();
     const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
+    const day = String(dateInfo.getDate()).padStart(2, "0"); // Date 개체 안전 변환 보완
+    return `${year}-${month}-${String(value.getDate()).padStart(2, "0")}`;
   }
   if (typeof value === "number") return excelDateToJSDate(value);
   return normalizeDateText(value);
@@ -331,7 +331,6 @@ function hasFoodPrepPlan(plan) {
   );
 }
 
-// [상담일지 반영 핵심 수정]: 구글 시트 저장 필드명인 'reflection'을 감지하고 안전하게 날짜 정형화를 가칩니다.
 function getLatestMealCounsel(name, targetDate) {
   const targetDateText = normalizeDateText(targetDate);
   const targetName = String(name || "").trim();
@@ -340,9 +339,10 @@ function getLatestMealCounsel(name, targetDate) {
     .filter((item) => {
       if (String(item.recipientName || item.name || "").trim() !== targetName) return false;
       
-      // 스냅샷 구조에 따라 reflection, reflectionDate, consultDate 등 유연하게 취득
       const rawDate = item.reflection || item.reflectionDate || item.consultDate || item.date || "";
       const refDate = normalizeDateText(rawDate);
+      
+      // [중요 로직]: 현재 조회 중인 당일 날짜(targetDateText) 이하인 상담일지만 매칭 필터링합니다.
       if (!refDate || refDate > targetDateText) return false;
 
       const category = item.category || "";
@@ -571,15 +571,17 @@ function renderResults(monthValue, results) {
   results.forEach((item) => {
     const row = document.createElement("tr");
     const attendanceSet = new Set(item.attendanceDates || []);
+    
+    // [보관/표시용]: 월말 기준의 최종 세팅 상태를 보여줍니다.
     const monthEndRule = getMealRuleAtDate(item.plan, item.name, getMonthEndDate(monthValue));
 
     let problemCount = 0;
-    let attendCount = 0;
 
     const dayCells = days.map((day) => {
       const isAttendanceDay = attendanceSet.has(day);
-      if (isAttendanceDay) attendCount += 1;
-
+      
+      // [수정 핵심]: 각 일자(day)를 루프 돌 때 해당 날짜 당일 기준의 규칙을 가져옵니다. 
+      // 이로써 25일 이전에는 1회 규칙, 25일 이후에는 2회 규칙이 자동으로 대조됩니다.
       const rule = getMealRuleAtDate(item.plan, item.name, day);
       const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule) : "정상";
 
@@ -617,4 +619,62 @@ function applyMealStyle() {
     .meal-table th:nth-child(1) { background-color: #eaf0fb; z-index: 6; }
     .meal-table th:nth-child(2), .meal-table td:nth-child(2) { min-width: 115px; width: 115px; }
     .meal-table th:nth-child(3), .meal-table td:nth-child(3) { min-width: 160px; width: 160px; text-align: left; }
-    .meal-table th:nth-child(4), .meal-table td:nth-child(4) { min-width: 80
+    .meal-table th:nth-child(4), .meal-table td:nth-child(4) { min-width: 80px; width: 80px; }
+    .meal-table th:nth-child(5), .meal-table td:nth-child(5) { min-width: 100px; width: 100px; }
+    .meal-day-head, .meal-day-cell { min-width: 95px; width: 95px; }
+    .meal-table th:last-child, .meal-table td:last-child { min-width: 115px; width: 115px; word-break: keep-all; line-height: 1.5; }
+    .small-cell-text { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; word-break: keep-all; }
+    .empty-day { color: #64748b; background-color: #f8fafc; font-weight: 600; word-break: keep-all; }
+    .status-ok { color: #2563eb; font-weight: 800; }
+    .status-warn { color: #ea580c; font-weight: 800; }
+    .status-danger { color: #e11d48; font-weight: 800; }
+    .meal-day-blue { color: #2563eb !important; }
+    .meal-day-red { color: #dc2626 !important; }
+  `;
+  document.head.appendChild(style);
+}
+
+checkMealBtn.addEventListener("click", async () => {
+  const checkMonth = checkMonthInput.value;
+  const file = mealFileInput.files[0];
+
+  if (!checkMonth) {
+    alert("확인 월을 선택해주세요.");
+    return;
+  }
+  if (!file) {
+    alert("식사/화장실 기록 파일을 업로드해주세요.");
+    return;
+  }
+
+  alert("구글 시트에서 계획서, 상담일지, 출석 데이터를 원격 동기화 중입니다...");
+  await syncCarePlanLibraryFromGoogleSheet();
+  await syncCounselLibraryFromGoogleSheet();
+  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+
+  applyMealStyle();
+
+  const attendanceRows = getAttendanceMonth(checkMonth);
+  if (attendanceRows.length === 0) {
+    alert("출석관리 저장 내역이 없습니다. 먼저 출석관리에서 해당 월 출석을 등록해 주세요.");
+  }
+
+  const reader = new FileReader();
+  reader.onload = (event) => {
+    const data = new Uint8Array(event.target.result);
+    const workbook = XLSX.read(data, { type: "array", cellDates: true });
+
+    const mealRows = parseMealReport(workbook, checkMonth);
+    const results = buildResults(checkMonth, mealRows);
+
+    renderResults(checkMonth, results);
+  };
+  reader.readAsArrayBuffer(file);
+});
+
+clearMealBtn.addEventListener("click", () => {
+  checkMonthInput.value = "";
+  mealFileInput.value = "";
+  mealTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>식사 횟수</th><th>음식 준비</th></tr>`;
+  mealResultBody.innerHTML = `<tr class="empty-row"><td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td></tr>`;
+});
