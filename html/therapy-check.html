@@ -9,6 +9,14 @@
   <link rel="stylesheet" href="../css/dashboard.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -68,31 +76,35 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p><strong>💡 물리치료 주차별 점검 기준</strong></p>
-          <p>• <strong>급여제공계획서 기준:</strong> 계획서에 물리치료(기능회복훈련)가 수립된 수급자는 해당 주차(출석일 기준)에 물리치료 제공 기록이 있어야 <strong>'정상'</strong>으로 처리됩니다.</p>
-          <p>• <strong>상담일지(반영일) 기준:</strong> 상태 변화나 보호자 요청 등으로 물리치료가 <strong>제외·중단</strong>된 경우, 상담일지 반영일 이후 주차부터는 기록이 없어야 <strong>'정상'</strong>으로 처리됩니다.</p>
-          <p>• <strong>오류 표시 대상:</strong> 물리치료 계획이 없거나 상담일지로 제외된 분에게 제공 기록이 남아있는 경우, 또는 계획이 있음에도 출석한 주차에 기록이 누락된 경우 <strong>'미제공/오류'</strong>로 안내됩니다.</p>
+        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 20px; margin-top: 25px; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
+          <h5 style="color: #334155; font-weight: 700; font-size: 15px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 6px;">
+            💡 물리치료 주차별 점검 기준 안내
+          </h5>
+          <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 13px; line-height: 1.6;">
+            <li style="margin-bottom: 4px;"><b style="color: #1e293b;">급여제공계획서 기준:</b> 계획서에 물리치료(기능회복훈련)가 수립된 수급자는 해당 주차(출석일 기준)에 물리치료 제공 기록이 있어야 <span style="color: #2563eb; font-weight: 600;">정상</span>으로 처리됩니다.</li>
+            <li style="margin-bottom: 4px;"><b style="color: #1e293b;">상담일지(반영일) 기준:</b> 상태 변화나 보호자 요청 등으로 물리치료가 <b style="color: #1e293b;">제외·중단</b>된 경우, 상담일지 반영일 이후 주차부터는 기록이 없어야 <span style="color: #2563eb; font-weight: 600;">정상</span>으로 처리됩니다.</li>
+            <li><b style="color: #1e293b;">오류 표시 대상:</b> 물리치료 계획이 없거나 상담일지로 제외된 분에게 제공 기록이 남아있는 경우, 또는 계획이 있음에도 출석한 주차에 기록이 누락된 경우 <span style="color: #e11d48; font-weight: 600;">점검 필요</span> 상태로 안내됩니다.</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table">
+          <table class="info-table" style="border-collapse: collapse; width: 100%;">
             <thead>
               <tr>
-                <th>수급자명</th>
-                <th>계획서 작성일</th>
-                <th>상담일지 반영</th>
-                <th>1주차</th>
-                <th>2주차</th>
-                <th>3주차</th>
-                <th>4주차</th>
-                <th>5주차</th>
-                <th>종합 결과</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">상담일지 반영</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">1주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">2주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">3주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">4주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">5주차</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">종합 결과</th>
               </tr>
             </thead>
             <tbody id="therapyResultBody">
               <tr class="empty-row">
-                <td colspan="9">확인 월과 물리치료 기록 파일을 선택해주세요.</td>
+                <td colspan="9" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 물리치료 기록 파일을 선택해주세요.</td>
               </tr>
             </tbody>
           </table>
