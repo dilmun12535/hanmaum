@@ -1,23 +1,22 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
 let carePlanLibraryCache = [];
-let counselLibraryCache = [];
 let attendanceLibraryCache = [];
 
 function makePayloadUrl(payload) {
   return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
+// 💡 [영구 조치]: 브라우저 저장 한도를 터트리던 localStorage.setItem 구문을 원천 삭제하고 안전한 메모리 변수 수신 방식으로 리모델링했습니다.
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
     carePlanLibraryCache = JSON.parse(text);
-    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibraryCache));
     return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
-    return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+    return [];
   }
 }
 
@@ -40,9 +39,6 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
   }
 }
 
-// 초기 기본 동기화 가동
-syncCarePlanLibraryFromGoogleSheet();
-
 const checkMonthInput = document.getElementById("checkMonth");
 const cognitiveFileInput = document.getElementById("cognitiveFile");
 const checkCognitiveBtn = document.getElementById("checkCognitiveBtn");
@@ -54,7 +50,6 @@ function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
 
-// 💡 [안전 조치]: 정렬(sort) 시 이름 데이터가 깨져있어도 에러가 나지 않도록 안전하게 문자열 변환 처리를 보완했습니다.
 function safeCompare(a, b) {
   const nameA = String(a || "").trim();
   const nameB = String(b || "").trim();
@@ -65,34 +60,20 @@ function excelDateToJSDate(serial) {
   const utcDays = Math.floor(serial - 25569);
   const utcValue = utcDays * 86400;
   const dateInfo = new Date(utcValue * 1000);
-
-  const year = dateInfo.getFullYear();
-  const month = String(dateInfo.getMonth() + 1).padStart(2, "0");
-  const day = String(dateInfo.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  return `${dateInfo.getFullYear()}-${String(dateInfo.getMonth() + 1).padStart(2, "0")}-${String(dateInfo.getDate()).padStart(2, "0")}`;
 }
 
 function parseDate(value) {
   if (!value) return "";
-
   if (value instanceof Date) {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
-
-    return `${year}-${month}-${day}`;
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
   }
-
   if (typeof value === "number") {
     return excelDateToJSDate(value);
   }
-
   const text = String(value);
   const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
-
   if (!match) return "";
-
   return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
 }
 
@@ -100,11 +81,9 @@ function getDaysInMonth(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   const days = [];
-
   for (let day = 1; day <= lastDay; day++) {
     days.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
   }
-
   return days;
 }
 
@@ -130,7 +109,6 @@ function getHolidayList(year) {
       "2026-10-05", "2026-10-09", "2026-12-25"
     ]
   };
-
   return holidays[year] || [];
 }
 
@@ -138,7 +116,6 @@ function getDayColorClass(dateText) {
   const date = new Date(dateText);
   const weekday = date.getDay();
   const holidayList = getHolidayList(date.getFullYear());
-
   if (weekday === 0 || holidayList.includes(dateText)) return "cognitive-day-red";
   if (weekday === 6) return "cognitive-day-blue";
   return "";
@@ -147,47 +124,33 @@ function getDayColorClass(dateText) {
 function sheetToRowsWithMerges(sheet) {
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const rows = [];
-
   for (let r = range.s.r; r <= range.e.r; r++) {
     const row = [];
-
     for (let c = range.s.c; c <= range.e.c; c++) {
       const address = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[address];
       row[c] = cell ? cell.v : "";
     }
-
     rows.push(row);
   }
-
   const merges = sheet["!merges"] || [];
-
   merges.forEach((merge) => {
     const startAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
     const startCell = sheet[startAddress];
     const value = startCell ? startCell.v : "";
-
     for (let r = merge.s.r; r <= merge.e.r; r++) {
       for (let c = merge.s.c; c <= merge.e.c; c++) {
-        const rowIndex = r - range.s.r;
-        rows[rowIndex][c] = value;
+        rows[r - range.s.r][c] = value;
       }
     }
   });
-
   return rows;
 }
 
 function findHeaderIndex(rows) {
   return rows.findIndex((row) => {
     const text = normalizeText(row.join(" "));
-
-    return (
-      text.includes("수급자명") &&
-      text.includes("제공일시") &&
-      text.includes("프로그램") &&
-      text.includes("참여도")
-    );
+    return text.includes("수급자명") && text.includes("제공일시") && text.includes("프로그램") && text.includes("참여도");
   });
 }
 
@@ -200,26 +163,16 @@ function findColumn(header, keywords) {
 
 function isCognitiveRecord(rowText) {
   const text = normalizeText(rowText);
-
-  return (
-    text.includes("인지기능") ||
-    text.includes("인지활동") ||
-    text.includes("인지프로그램") ||
-    text.includes("인지")
-  );
+  return text.includes("인지기능") || text.includes("인지활동") || text.includes("인지프로그램") || text.includes("인지");
 }
 
 function parseCognitiveReport(workbook, monthValue) {
   const resultMap = {};
-
   workbook.SheetNames.forEach((sheetName) => {
     const sheet = workbook.Sheets[sheetName];
     const rows = sheetToRowsWithMerges(sheet);
     const headerIndex = findHeaderIndex(rows);
-
-    if (headerIndex === -1) {
-      return;
-    }
+    if (headerIndex === -1) return;
 
     const header = rows[headerIndex] || [];
     const nameCol = findColumn(header, ["수급자명"]);
@@ -231,7 +184,6 @@ function parseCognitiveReport(workbook, monthValue) {
 
     for (let i = headerIndex + 1; i < rows.length; i++) {
       const row = rows[i] || [];
-
       const name = String(row[nameCol] || "").trim();
       if (!name || name === "수급자명") continue;
 
@@ -248,24 +200,12 @@ function parseCognitiveReport(workbook, monthValue) {
       if (!isCognitiveRecord(checkText)) continue;
 
       if (!resultMap[name]) {
-        resultMap[name] = {
-          name,
-          grade,
-          days: {}
-        };
+        resultMap[name] = { name, grade, days: {} };
       }
-
-      if (!resultMap[name].grade && grade) {
-        resultMap[name].grade = grade;
-      }
-
+      if (!resultMap[name].grade && grade) resultMap[name].grade = grade;
       if (!resultMap[name].days[dateText]) {
-        resultMap[name].days[dateText] = {
-          count: 0,
-          programs: []
-        };
+        resultMap[name].days[dateText] = { count: 0, programs: [] };
       }
-
       resultMap[name].days[dateText].count += 1;
 
       const programName = programCol >= 0 ? String(row[programCol] || "").trim() : "";
@@ -274,314 +214,15 @@ function parseCognitiveReport(workbook, monthValue) {
       }
     }
   });
-
   return Object.values(resultMap);
 }
 
 function getAttendanceMonth(monthValue) {
-  const localLibrary = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
-  const activeLibrary = attendanceLibraryCache.length > 0 ? attendanceLibraryCache : localLibrary;
-
-  return activeLibrary
+  return attendanceLibraryCache
     .filter((item) => item.month === monthValue)
     .map((item) => ({
-      // 💡 [오류 원인 조치]: name이 누락되어 들어오더라도 recipientName을 상호 교차 대조하여 안전하게 복원하도록 방어벽을 세웠습니다.
       name: String(item.name || item.recipientName || "").trim(),
       grade: item.grade || "",
       dates: item.dates || item.attendanceDates || []
     }))
-    .filter((item) => item.name !== "") // 이름이 아예 완전 공백인 쓰레기 행 필터링
-    .sort((a, b) => safeCompare(a.name, b.name));
-}
-
-function isCognitiveTargetGrade(grade) {
-  const text = normalizeText(grade);
-
-  return text.includes("5등급") || text.includes("인지지원");
-}
-
-function buildResults(monthValue, cognitiveRows) {
-  const attendanceRows = getAttendanceMonth(monthValue);
-  const cognitiveMap = {};
-
-  cognitiveRows.forEach((row) => {
-    cognitiveMap[row.name] = row;
-  });
-
-  if (attendanceRows.length > 0) {
-    return attendanceRows
-      .filter((item) => isCognitiveTargetGrade(item.grade))
-      .map((attendance) => {
-        const cognitive = cognitiveMap[attendance.name];
-
-        return {
-          name: attendance.name,
-          grade: attendance.grade || (cognitive ? cognitive.grade : "-"),
-          attendanceDates: attendance.dates || [],
-          cognitiveDays: cognitive ? cognitive.days : {}
-        };
-      })
-      .sort((a, b) => safeCompare(a.name, b.name));
-  }
-
-  return cognitiveRows
-    .filter((item) => isCognitiveTargetGrade(item.grade))
-    .map((item) => ({
-      name: item.name,
-      grade: item.grade || "-",
-      attendanceDates: Object.keys(item.days || {}),
-      cognitiveDays: item.days || {}
-    }))
-    .sort((a, b) => safeCompare(a.name, b.name));
-}
-
-function renderHeader(monthValue) {
-  const days = getDaysInMonth(monthValue);
-
-  cognitiveTableHead.innerHTML = `
-    <tr>
-      <th>수급자명</th>
-      <th>등급</th>
-      <th>출석일수</th>
-      ${days.map((day) => {
-        const dayNum = Number(day.split("-")[2]);
-        const colorClass = getDayColorClass(day);
-        return `<th class="cognitive-day-head ${colorClass}">${dayNum}</th>`;
-      }).join("")}
-      <th>종합 결과</th>
-    </tr>
-  `;
-}
-
-function buildDayCell(isAttendanceDay, cognitiveDay) {
-  if (!isAttendanceDay) {
-    return `<td class="cognitive-day-cell empty-day">-</td>`;
-  }
-
-  if (cognitiveDay && cognitiveDay.count > 0) {
-    const programText = cognitiveDay.programs && cognitiveDay.programs.length > 0
-      ? cognitiveDay.programs.join("<br>")
-      : `${cognitiveDay.count}회`;
-
-    return `
-      <td class="cognitive-day-cell">
-        <div class="status-ok">정상</div>
-        <div class="small-cell-text">${programText}</div>
-      </td>
-    `;
-  }
-
-  return `
-    <td class="cognitive-day-cell" style="background-color: #fff5f5; border: 1px solid #fda4af !important;">
-      <div class="status-danger">누락</div>
-      <div class="small-cell-text">출석</div>
-    </td>
-  `;
-}
-
-function renderResults(monthValue, results) {
-  renderHeader(monthValue);
-  cognitiveResultBody.innerHTML = "";
-
-  const days = getDaysInMonth(monthValue);
-
-  if (!results || results.length === 0) {
-    cognitiveResultBody.innerHTML = `
-      <tr class="empty-row">
-        <td colspan="${4 + days.length}">5등급 또는 인지지원등급 대상자가 없습니다. 출석관리 저장 여부를 확인해주세요.</td>
-      </tr>
-    `;
-    return;
-  }
-
-  results.forEach((item) => {
-    const row = document.createElement("tr");
-    const attendanceSet = new Set(item.attendanceDates || []);
-    let missingCount = 0;
-    let attendCount = 0;
-
-    const dayCells = days.map((day) => {
-      const isAttendanceDay = attendanceSet.has(day);
-      if (isAttendanceDay) attendCount += 1;
-
-      const cognitiveDay = item.cognitiveDays ? item.cognitiveDays[day] : null;
-      if (isAttendanceDay && (!cognitiveDay || cognitiveDay.count <= 0)) {
-        missingCount += 1;
-      }
-
-      return buildDayCell(isAttendanceDay, cognitiveDay);
-    }).join("");
-
-    const overallText = missingCount > 0 ? `확인 필요<br>${missingCount}일 누락` : "정상";
-    const overallClass = missingCount > 0 ? "status-danger" : "status-ok";
-    
-    const errorCellBg = missingCount > 0 ? 'background-color: #fff5f5;' : '';
-
-    row.innerHTML = `
-      <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
-      <td style="text-align:center; ${errorCellBg}">${item.grade || "-"}</td>
-      <td class="status-info" style="text-align:center; ${errorCellBg}">${attendCount}일</td>
-      ${dayCells}
-      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${overallText}</td>
-    `;
-
-    cognitiveResultBody.appendChild(row);
-  });
-}
-
-function applyCognitiveStyle() {
-  if (document.getElementById("cognitiveStyle")) return;
-
-  const style = document.createElement("style");
-  style.id = "cognitiveStyle";
-  style.textContent = `
-    .cognitive-table {
-      min-width: 1800px;
-      table-layout: fixed;
-    }
-
-    .cognitive-table th,
-    .cognitive-table td {
-      vertical-align: middle;
-      white-space: normal;
-      text-align: center;
-      padding: 10px 8px;
-      border: 1px solid #e2e8f0;
-    }
-
-    .cognitive-table th:nth-child(1),
-    .cognitive-table td:nth-child(1) {
-      min-width: 100px;
-      width: 100px;
-      text-align: center;
-      position: sticky;
-      left: 0;
-      z-index: 4;
-    }
-
-    .cognitive-table th:nth-child(1) {
-      background-color: #eaf0fb;
-      z-index: 6;
-    }
-
-    .cognitive-table th:nth-child(2),
-    .cognitive-table td:nth-child(2) {
-      min-width: 120px;
-      width: 120px;
-      position: sticky;
-      left: 100px;
-      z-index: 4;
-    }
-
-    .cognitive-table th:nth-child(2) {
-      background-color: #eaf0fb;
-      z-index: 6;
-    }
-
-    .cognitive-table th:nth-child(3),
-    .cognitive-table td:nth-child(3) {
-      min-width: 80px;
-      width: 80px;
-    }
-
-    .cognitive-day-head,
-    .cognitive-day-cell {
-      min-width: 90px;
-      width: 90px;
-    }
-
-    .small-cell-text {
-      font-size: 11px;
-      color: #555;
-      margin-top: 4px;
-      line-height: 1.4;
-      word-break: keep-all;
-    }
-
-    .empty-day {
-      color: #999;
-      background-color: #f8fafc;
-    }
-
-    .cognitive-day-blue {
-      color: #2563eb !important;
-    }
-
-    .cognitive-day-red {
-      color: #dc2626 !important;
-    }
-
-    .status-ok { color: #2563eb; font-weight: 800; }
-    .status-danger { color: #e11d48; font-weight: 800; }
-
-    .cognitive-table th:last-child,
-    .cognitive-table td:last-child {
-      min-width: 120px;
-      width: 120px;
-      white-space: normal;
-      word-break: keep-all;
-      line-height: 1.5;
-      text-align: center;
-    }
-  `;
-
-  document.head.appendChild(style);
-}
-
-checkCognitiveBtn.addEventListener("click", async () => {
-  const checkMonth = checkMonthInput.value;
-  const file = cognitiveFileInput.files[0];
-
-  if (!checkMonth) {
-    alert("확인 월을 선택해주세요.");
-    return;
-  }
-
-  if (!file) {
-    alert("프로그램 참여 기록 파일을 업로드해주세요.");
-    return;
-  }
-
-  alert("구글 시트에서 계획서 및 월 출석 데이터 보관함을 동기화 중입니다...");
-  await syncCarePlanLibraryFromGoogleSheet();
-  await syncAttendanceMonthFromGoogleSheet(checkMonth);
-  applyCognitiveStyle();
-
-  const attendanceRows = getAttendanceMonth(checkMonth);
-  if (attendanceRows.length === 0) {
-    alert("출석관리 저장 내역이 없습니다. 먼저 출석관리에서 해당 월 출석을 등록해주세요.");
-  }
-
-  const reader = new FileReader();
-
-  reader.onload = (event) => {
-    const data = new Uint8Array(event.target.result);
-    const workbook = XLSX.read(data, { type: "array", cellDates: true });
-
-    const cognitiveRows = parseCognitiveReport(workbook, checkMonth);
-    const results = buildResults(checkMonth, cognitiveRows);
-
-    renderResults(checkMonth, results);
-  };
-
-  reader.readAsArrayBuffer(file);
-});
-
-clearCognitiveBtn.addEventListener("click", () => {
-  checkMonthInput.value = "";
-  cognitiveFileInput.value = "";
-
-  cognitiveTableHead.innerHTML = `
-    <tr>
-      <th>수급자명</th>
-      <th>등급</th>
-      <th>출석일수</th>
-    </tr>
-  `;
-
-  cognitiveResultBody.innerHTML = `
-    <tr class="empty-row">
-      <td colspan="3">확인 월과 프로그램 참여 기록 파일을 선택해주세요.</td>
-    </tr>
-  `;
-});
+    .filter
