@@ -1,19 +1,61 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
+let carePlanLibraryCache = [];
+let counselLibraryCache = [];
+let attendanceLibraryCache = [];
+
+function makePayloadUrl(payload) {
+  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
+}
+
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
-    const plans = JSON.parse(text);
-    localStorage.setItem("carePlanLibrary", JSON.stringify(plans));
-    return plans;
+    carePlanLibraryCache = JSON.parse(text);
+    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibraryCache));
+    return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
     return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
   }
 }
 
+async function syncCounselLibraryFromGoogleSheet() {
+  try {
+    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, { method: "GET", redirect: "follow" });
+    const text = await response.text();
+    counselLibraryCache = JSON.parse(text);
+    localStorage.setItem("counselLibrary", JSON.stringify(counselLibraryCache));
+    return counselLibraryCache;
+  } catch (error) {
+    console.error("상담일지 동기화 오류:", error);
+    return JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+  }
+}
+
+async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+  try {
+    const response = await fetch(
+      makePayloadUrl({
+        action: "listAttendance",
+        month: monthValue
+      }),
+      { method: "GET", redirect: "follow" }
+    );
+    const text = await response.text();
+    const attendance = JSON.parse(text);
+    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+    return attendanceLibraryCache;
+  } catch (error) {
+    console.error("출석관리 동기화 오류:", error);
+    return attendanceLibraryCache;
+  }
+}
+
+// 초기 기본 동기화 가동
 syncCarePlanLibraryFromGoogleSheet();
+syncCounselLibraryFromGoogleSheet();
 
 const checkMonthInput = document.getElementById("checkMonth");
 const mealFileInput = document.getElementById("mealFile");
@@ -24,6 +66,21 @@ const mealResultBody = document.getElementById("mealResultBody");
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
+}
+
+function normalizeDateText(value) {
+  if (!value) return "";
+  const text = String(value).trim().replace(/^'/, "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
+  if (text.includes("T")) return text.split("T")[0];
+
+  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+  if (match) {
+    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  }
+  return text;
 }
 
 function excelDateToJSDate(serial) {
@@ -50,20 +107,18 @@ function parseDate(value) {
 
   if (typeof value === "number") return excelDateToJSDate(value);
 
-  const text = String(value);
-  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
-  if (!match) return "";
-
-  return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  return normalizeDateText(value);
 }
 
 function getMonthEndDate(monthValue) {
+  if (!monthValue || typeof monthValue !== "string") return "";
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
 function getDaysInMonth(monthValue) {
+  if (!monthValue || typeof monthValue !== "string") return [];
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   const days = [];
@@ -112,6 +167,7 @@ function getDayColorClass(dateText) {
 }
 
 function sheetToRowsWithMerges(sheet) {
+  if (!sheet || !sheet["!ref"]) return [];
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const rows = [];
 
@@ -184,7 +240,7 @@ function findColumn(header, keywords) {
 function parseMealType(value) {
   const text = normalizeText(value);
 
-  if (!text || text.includes("일정없음")) return "";
+  if (!text || text.includes("일정없음") || text.includes("미이용") || text.includes("급여개시전")) return "";
   if (text.includes("다진")) return "다진식";
   if (text.includes("죽")) return "죽식";
   if (text.includes("일반")) return "일반식";
@@ -242,17 +298,24 @@ function parseMealReport(workbook, monthValue) {
   return Object.values(resultMap);
 }
 
+// [수정 핵심]: 날짜 비교 로직을 문자열 포맷 일치 정규화(normalizeDateText) 방식으로 대폭 강화했습니다.
 function getLatestPlansByRecipient(checkDate) {
-  const library = JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
-  const validPlans = library.filter((plan) => new Date(plan.writtenDate) <= new Date(checkDate));
+  const checkDateText = normalizeDateText(checkDate);
+  const validPlans = carePlanLibraryCache.filter((plan) => {
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    return writtenDate && writtenDate <= checkDateText;
+  });
+
   const latestByName = {};
-
   validPlans.forEach((plan) => {
-    const name = plan.recipientName;
+    const name = String(plan.recipientName || "").trim();
+    if (!name) return;
     const current = latestByName[name];
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    const currentDate = current ? normalizeDateText(current.writtenDate) : "";
 
-    if (!current || new Date(plan.writtenDate) > new Date(current.writtenDate)) {
-      latestByName[name] = plan;
+    if (!current || writtenDate > currentDate) {
+      latestByName[name] = { ...plan, writtenDate };
     }
   });
 
@@ -294,56 +357,51 @@ function hasFoodPrepPlan(plan) {
 }
 
 function getLatestMealCounsel(name, targetDate) {
-  const counselLibrary = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
-  const target = new Date(targetDate);
+  const targetDateText = normalizeDateText(targetDate);
+  const targetName = String(name || "").trim();
 
-  const counsels = counselLibrary
+  const counsels = counselLibraryCache
     .filter((item) => {
-      const sameName = item.recipientName === name;
-      const reflectionDate = new Date(item.reflectionDate);
+      if (String(item.recipientName || "").trim() !== targetName) return false;
+      const refDate = normalizeDateText(item.reflectionDate || item.consultDate || item.date || "");
+      if (!refDate || refDate > targetDateText) return false;
+
       const category = item.category || "";
       const text = normalizeText(`${item.careContent} ${item.reason} ${item.changeType}`);
 
-      const isMeal =
+      return (
         category === "식사" ||
         text.includes("균형잡힌식단") ||
         text.includes("식단관리") ||
         text.includes("식사") ||
         text.includes("음식준비") ||
         text.includes("다진식") ||
-        text.includes("죽식");
-
-      return sameName && isMeal && reflectionDate <= target;
+        text.includes("죽식")
+      );
     })
-    .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
+    .sort((a, b) => {
+      const dateA = normalizeDateText(a.reflectionDate || a.consultDate || a.date || "");
+      const dateB = normalizeDateText(b.reflectionDate || b.consultDate || b.date || "");
+      return dateB.localeCompare(dateA);
+    });
 
   return counsels[0] || null;
 }
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-
   const text = normalizeText(`${counsel.changeType} ${counsel.careContent} ${counsel.reason}`);
-
   return (
-    text.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공") ||
-    text.includes("하지않")
+    text.includes("제외") || text.includes("중단") || text.includes("삭제") ||
+    text.includes("미제공") || text.includes("하지않")
   );
 }
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
-
   const text = normalizeText(`${counsel.changeType} ${counsel.careContent} ${counsel.reason}`);
-
   return (
-    text.includes("추가") ||
-    text.includes("시작") ||
-    text.includes("제공") ||
-    text.includes("반영")
+    text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영")
   );
 }
 
@@ -373,7 +431,6 @@ function getMealRuleAtDate(plan, name, targetDate) {
       } else if (isAddCounsel(counsel)) {
         mealCount = Math.max(1, mealCount);
       }
-
       mealCount = getMealCountFromText(text, mealCount);
     }
 
@@ -383,25 +440,23 @@ function getMealRuleAtDate(plan, name, targetDate) {
     }
   }
 
-  return {
-    mealCount,
-    specialFood
-  };
+  return { mealCount, specialFood };
 }
 
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestMealCounsel(name, monthEndDate);
-
   if (!counsel) return "없음";
-
-  return `${counsel.reflectionDate}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
+  const refDate = counsel.reflectionDate || counsel.consultDate || counsel.date || "-";
+  return `${refDate}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
 }
 
 function getAttendanceMonth(monthValue) {
-  const library = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
-
-  return library
+  return attendanceLibraryCache
     .filter((item) => item.month === monthValue)
+    .map((item) => ({
+      name: String(item.recipientName || item.name || "").trim(),
+      dates: Array.isArray(item.attendanceDates) ? item.attendanceDates : (Array.isArray(item.dates) ? item.dates : [])
+    }))
     .sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
@@ -476,29 +531,21 @@ function buildResults(monthValue, mealRows) {
   const mealMap = {};
 
   mealRows.forEach((row) => {
-    mealMap[row.name] = row;
+    mealMap[String(row.name).trim()] = row;
   });
 
   let names = [];
 
   if (attendanceRows.length > 0) {
-    names = attendanceRows.map((item) => item.name);
+    names = attendanceRows.map((item) => String(item.name).trim());
   } else {
     names = Array.from(new Set([...Object.keys(latestPlans), ...Object.keys(mealMap)]));
   }
 
   return names
-    .filter((name) => {
-      const plan = latestPlans[name];
-      const baseCount = getMealCountFromPlan(plan);
-      const hasMeal = baseCount > 0;
-      const meal = mealMap[name];
-
-      return hasMeal || meal;
-    })
     .map((name) => {
       const plan = latestPlans[name];
-      const attendance = attendanceRows.find((item) => item.name === name);
+      const attendance = attendanceRows.find((item) => String(item.name).trim() === name);
       const meal = mealMap[name];
 
       return {
@@ -574,13 +621,13 @@ function renderResults(monthValue, results) {
     const overallClass = problemCount > 0 ? "status-danger" : "status-ok";
 
     row.innerHTML = `
-      <td>${item.name || "-"}</td>
-      <td>${item.planDate || "-"}</td>
-      <td>${item.counselText || "없음"}</td>
-      <td>${monthEndRule.mealCount || 0}회</td>
-      <td>${monthEndRule.specialFood ? "기능상태 음식" : "일반식"}</td>
+      <td style="font-weight:600; text-align:center;">${item.name || "-"}</td>
+      <td style="text-align:center;">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
+      <td style="text-align:left; font-size:12px; line-height:1.4;">${item.counselText || "없음"}</td>
+      <td style="text-align:center; font-weight:700;">${monthEndRule.mealCount || 0}회</td>
+      <td style="text-align:center;">${monthEndRule.specialFood ? "기능상태 음식" : "일반식"}</td>
       ${dayCells}
-      <td class="${overallClass}">${overallText}</td>
+      <td class="${overallClass}" style="text-align:center; font-weight:800;">${overallText}</td>
     `;
 
     mealResultBody.appendChild(row);
@@ -604,13 +651,14 @@ function applyMealStyle() {
       white-space: normal;
       text-align: center;
       padding: 10px 8px;
+      border: 1px solid #e2e8f0;
     }
 
     .meal-table th:nth-child(1),
     .meal-table td:nth-child(1) {
       min-width: 100px;
       width: 100px;
-      text-align: left;
+      text-align: center;
       position: sticky;
       left: 0;
       z-index: 4;
@@ -670,28 +718,24 @@ function applyMealStyle() {
     }
 
     .empty-day {
-      color: #999;
+      color: #64748b;
       background-color: #f8fafc;
-      font-weight: 700;
+      font-weight: 600;
       word-break: keep-all;
     }
 
-    .meal-day-blue {
-      color: #2563eb !important;
-    }
+    .status-ok { color: #2563eb; font-weight: 800; }
+    .status-warn { color: #ea580c; font-weight: 800; }
+    .status-danger { color: #e11d48; font-weight: 800; }
 
-    .meal-day-red {
-      color: #dc2626 !important;
-    }
+    .meal-day-blue { color: #2563eb !important; }
+    .meal-day-red { color: #dc2626 !important; }
   `;
 
   document.head.appendChild(style);
 }
 
 checkMealBtn.addEventListener("click", async () => {
-  await syncCarePlanLibraryFromGoogleSheet();
-  applyMealStyle();
-
   const checkMonth = checkMonthInput.value;
   const file = mealFileInput.files[0];
 
@@ -705,13 +749,19 @@ checkMealBtn.addEventListener("click", async () => {
     return;
   }
 
+  alert("구글 시트에서 계획서, 상담일지, 출석 데이터를 원격 동기화 중입니다...");
+  await syncCarePlanLibraryFromGoogleSheet();
+  await syncCounselLibraryFromGoogleSheet();
+  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+
+  applyMealStyle();
+
   const attendanceRows = getAttendanceMonth(checkMonth);
   if (attendanceRows.length === 0) {
-    alert("출석관리 저장 내역이 없습니다. 먼저 출석관리에서 해당 월 출석을 등록해주세요.");
+    alert("출석관리 저장 내역이 없습니다. 먼저 출석관리에서 해당 월 출석을 등록해 주세요.");
   }
 
   const reader = new FileReader();
-
   reader.onload = (event) => {
     const data = new Uint8Array(event.target.result);
     const workbook = XLSX.read(data, { type: "array", cellDates: true });
