@@ -61,6 +61,7 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
   }
 }
 
+// 초기 동기화 가동
 syncCarePlanLibraryFromGoogleSheet();
 syncCounselLibraryFromGoogleSheet();
 
@@ -201,7 +202,7 @@ function isRemoveCounsel(counsel) {
   return text.includes("제외") || text.includes("중단") || text.includes("삭제") || text.includes("미제공") || text.includes("하지않");
 }
 
-fn = function isAddCounsel(counsel) {
+function isAddCounsel(counsel) {
   if (!counsel) return false;
   const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
   return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
@@ -212,7 +213,7 @@ function isDiaperAllowedAtDate(plan, name, targetDate) {
   const counsel = getLatestDiaperCounsel(name, targetDate);
   if (counsel) {
     if (isRemoveCounsel(counsel)) allowed = false;
-    if (fn(counsel)) allowed = true;
+    if (isAddCounsel(counsel)) allowed = true;
   }
   return allowed;
 }
