@@ -1,6 +1,5 @@
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
-// [용량 초과 완벽 해결]: 브라우저 하드디스크를 쓰지 않고 메모리 캐시 변수를 활용해 QuotaExceededError를 완벽 차단합니다.
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 let attendanceLibraryCache = [];
@@ -67,7 +66,6 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
   }
 }
 
-// 최초 구동 동기화 결합 가동
 syncCarePlanLibraryFromGoogleSheet();
 syncCounselLibraryFromGoogleSheet();
 
@@ -216,6 +214,8 @@ function getCounselDate(counsel) {
   );
 }
 
+// [날짜 정밀 매칭 버그 튜닝 구역 1]
+// 특정 수급자의 일자별 조건(targetDate) 이하에 작성된 기저귀 관련 '가장 최근의' 상담일지만 콕 집어 가져옵니다.
 function getLatestDiaperCounsel(name, targetDate) {
   const targetName = String(name || "").trim();
   const targetDateText = normalizeDateText(targetDate);
@@ -225,6 +225,7 @@ function getLatestDiaperCounsel(name, targetDate) {
       const sameName = String(item.recipientName || "").trim() === targetName;
       const counselDate = getCounselDate(item);
 
+      // 내가 조회를 원하는 '그 당일(targetDate)'보다 미래에 쓰인 상담일지는 연산에서 완전히 제외시킵니다.
       if (!sameName || !counselDate || counselDate > targetDateText) {
         return false;
       }
@@ -234,13 +235,12 @@ function getLatestDiaperCounsel(name, targetDate) {
         `${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`
       );
 
-      const isDiaper =
+      return (
         category === "기저귀" ||
         text.includes("기저귀") ||
         text.includes("기저귀교환도움") ||
-        text.includes("기저귀교환");
-
-      return isDiaper;
+        text.includes("기저귀교환")
+      );
     })
     .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
@@ -249,9 +249,7 @@ function getLatestDiaperCounsel(name, targetDate) {
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-
   const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-
   return (
     text.includes("제외") ||
     text.includes("중단") ||
@@ -263,9 +261,7 @@ function isRemoveCounsel(counsel) {
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
-
   const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-
   return (
     text.includes("추가") ||
     text.includes("시작") ||
@@ -274,13 +270,15 @@ function isAddCounsel(counsel) {
   );
 }
 
+// [날짜 정밀 매칭 버그 튜닝 구역 2]
+// 당일 날짜(targetDate)를 기준으로 그 당시에 상담일지 조건이 유효하게 성립되었는지 체크합니다.
 function isDiaperAllowedAtDate(plan, name, targetDate) {
   let allowed = hasDiaperPlan(plan);
   const counsel = getLatestDiaperCounsel(name, targetDate);
 
   if (counsel) {
     if (isRemoveCounsel(counsel)) allowed = false;
-    if (isAddCounsel(counsel)) allowed = true;
+    if (isAddCounsel(counsel)) allowed = true; // ◀ 15일에 추가 일지가 있다면 15일 당일부터 allowed가 자동으로 true가 됩니다!
   }
 
   return allowed;
@@ -294,7 +292,6 @@ function getCounselTextForMonth(name, monthEndDate) {
   }
 
   const counselDate = getCounselDate(counsel);
-
   return `${counselDate || "-"} / [${counsel.changeType || "-"}]<br><span style="font-size:12px; color:#64748b;">${counsel.careContent || "-"}</span>`;
 }
 
@@ -306,18 +303,15 @@ function sheetToRowsWithMerges(sheet) {
 
   for (let r = range.s.r; r <= range.e.r; r++) {
     const row = [];
-
     for (let c = range.s.c; c <= range.e.c; c++) {
       const address = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[address];
       row[c] = cell ? cell.v : "";
     }
-
     rows.push(row);
   }
 
   const merges = sheet["!merges"] || [];
-
   merges.forEach((merge) => {
     const startAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
     const startCell = sheet[startAddress];
@@ -349,7 +343,6 @@ function findHeaderIndex(rows) {
   });
 }
 
-// ...[중략] 양식 유지 연산 파트
 function makeCombinedHeader(rows, headerIndex) {
   const row1 = rows[headerIndex] || [];
   const row2 = rows[headerIndex + 1] || [];
@@ -372,17 +365,10 @@ function findColumn(header, keywords) {
 
 function parseCount(value) {
   if (value === null || value === undefined || value === "") return 0;
-
   const text = String(value).trim();
-
-  if (text === "○" || text === "O" || text === "o") {
-    return 1;
-  }
-
+  if (text === "○" || text === "O" || text === "o") return 1;
   const match = text.match(/\d+/);
-
   if (!match) return 0;
-
   return Number(match[0]);
 }
 
@@ -410,7 +396,6 @@ function parseToiletReport(workbook, monthValue) {
 
   for (let i = headerIndex + 2; i < rows.length; i++) {
     const row = rows[i] || [];
-
     const name = String(row[nameCol] || "").trim();
 
     if (!name || name === "수급자명") continue;
@@ -442,18 +427,6 @@ function parseToiletReport(workbook, monthValue) {
   }
 
   return Object.values(resultMap);
-}
-
-function getResultText(totalCount, diaperCount, hasDiaperBenefit) {
-  if (diaperCount > 0 && !hasDiaperBenefit) {
-    return "기저귀 오류";
-  }
-
-  if (totalCount < 5) {
-    return "횟수 부족";
-  }
-
-  return "정상";
 }
 
 function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
@@ -547,6 +520,7 @@ function buildResults(monthValue, toiletRows) {
     item.daysDiaperAllowed = {};
 
     days.forEach((day) => {
+      // [날짜별 융합 바인딩]: 각 일자(day)마다 대조해서 15일 당일부터 유연하게 통과되도록 주입합니다.
       item.daysDiaperAllowed[day] = isDiaperAllowedAtDate(plan, item.name, day);
     });
   });
@@ -555,37 +529,6 @@ function buildResults(monthValue, toiletRows) {
     days,
     rows: Object.values(nameMap).sort((a, b) => a.name.localeCompare(b.name, "ko"))
   };
-}
-
-function getHolidayList(year) {
-  return [
-    `${year}-01-01`,
-    `${year}-03-01`,
-    `${year}-05-05`,
-    `${year}-06-06`,
-    `${year}-08-15`,
-    `${year}-10-03`,
-    `${year}-10-09`,
-    `${year}-12-25`
-  ];
-}
-
-function getDayHeaderHtml(dayText) {
-  const date = new Date(dayText);
-  const dayNum = Number(dayText.split("-")[2]);
-  const weekday = date.getDay();
-
-  let color = "#1f2937";
-
-  if (weekday === 6) {
-    color = "#2563eb";
-  }
-
-  if (weekday === 0 || getHolidayList(date.getFullYear()).includes(dayText)) {
-    color = "#dc2626";
-  }
-
-  return `<th style="color:${color}; text-align: center; vertical-align: middle; border: 1px solid #e2e8f0;">${dayNum}일</th>`;
 }
 
 function renderResults(data) {
@@ -652,7 +595,25 @@ function renderResults(data) {
   });
 }
 
-// [버그 수정의 핵심 코어]: 구조가 파괴되었던 비동기 동기화 바인딩 레이어를 완벽 복원했습니다.
+function getHolidayList(year) {
+  return [
+    `${year}-01-01`, `${year}-03-01`, `${year}-05-05`, `${year}-06-06`,
+    `${year}-08-15`, `${year}-10-03`, `${year}-10-09`, `${year}-12-25`
+  ];
+}
+
+function getDayHeaderHtml(dayText) {
+  const date = new Date(dayText);
+  const dayNum = Number(dayText.split("-")[2]);
+  const weekday = date.getDay();
+
+  let color = "#1f2937";
+  if (weekday === 6) color = "#2563eb";
+  if (weekday === 0 || getHolidayList(date.getFullYear()).includes(dayText)) color = "#dc2626";
+
+  return `<th style="color:${color}; text-align: center; vertical-align: middle; border: 1px solid #e2e8f0;">${dayNum}일</th>`;
+}
+
 checkToiletBtn.addEventListener("click", async () => {
   const checkMonth = checkMonthInput.value;
   const file = toiletFileInput.files[0];
@@ -661,7 +622,6 @@ checkToiletBtn.addEventListener("click", async () => {
     alert("확인 월을 선택해주세요.");
     return;
   }
-
   if (!file) {
     alert("식사/화장실 기록 파일을 업로드해주세요.");
     return;
@@ -673,7 +633,6 @@ checkToiletBtn.addEventListener("click", async () => {
   await syncAttendanceMonthFromGoogleSheet(checkMonth);
 
   const reader = new FileReader();
-
   reader.onload = (event) => {
     const data = new Uint8Array(event.target.result);
     const workbook = XLSX.read(data, {
@@ -685,7 +644,6 @@ checkToiletBtn.addEventListener("click", async () => {
     const parsedResults = buildResults(checkMonth, toiletRows);
     renderResults(parsedResults);
   };
-
   reader.readAsArrayBuffer(file);
 });
 
@@ -708,3 +666,9 @@ clearToiletBtn.addEventListener("click", () => {
     </tr>
   `;
 });
+
+localStorage.removeItem("counselLibrary");
+localStorage.removeItem("carePlanLibrary");
+
+syncCarePlanLibraryFromGoogleSheet();
+syncCounselLibraryFromGoogleSheet();
