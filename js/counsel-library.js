@@ -44,7 +44,7 @@ function getCellValueByLabel(rows, labelText) {
     for (let c = 0; c < row.length; c++) {
       const cellText = normalizeText(row[c]);
 
-      if (cellText.includes(target)) {
+    if (cellText.includes(target)) {
         for (let next = c + 1; next <= c + 8; next++) {
           if (row[next]) return row[next];
         }
@@ -191,13 +191,22 @@ function parseCounselSheet(rows, fileName, sheetName) {
 
       if (!recipientName || !reflectionDate || !item.category) return null;
 
+      // [줄바꿈 핵심 개선 구역]: 엑셀 내 엔터 개행을 보존하고, 엔터가 없더라도 여러 문장일 경우 줄바꿈을 주입합니다.
+      let formattedContent = item.careContent || item.joined;
+      if (formattedContent) {
+        // 기존 개행 문자 처리
+        formattedContent = formattedContent.replace(/\r?\n/g, "<br />");
+        // 두 문장 이상이 공백 하나로 이어져 있을 때 (예: ") 위") 한 줄 내리도록 매칭 교정
+        formattedContent = formattedContent.replace(/\)\s(?=[가-힣\w])/g, ")<br />");
+      }
+
       return {
         id: `${Date.now()}_${sheetName}_${index}_${Math.random().toString(36).slice(2, 8)}`,
         recipientName,
         consultDate: reflectionDate,
         category: item.category,
         changeType: item.changeType,
-        careContent: item.careContent || item.joined,
+        careContent: formattedContent,
         reason: item.reason || "",
         sheetName,
         fileName,
@@ -207,7 +216,7 @@ function parseCounselSheet(rows, fileName, sheetName) {
           counselDate,
           reflectionDate,
           careType: item.careType,
-          careContent: item.careContent,
+          careContent: formattedContent,
           reason: item.reason,
           joined: item.joined
         },
@@ -323,19 +332,20 @@ function renderCounselLibrary() {
   sortedList.forEach((item) => {
     const row = document.createElement("tr");
 
+    // HTML 태그(<br />)가 깨지지 않고 줄바꿈으로 정상 반영되도록 innerHTML 핏을 최적화하여 렌더링합니다.
     row.innerHTML = `
       <td class="checkbox-col">
         <input type="checkbox" class="counsel-checkbox" data-id="${item.id}" ${item.checked ? "checked" : ""} />
       </td>
-      <td>${item.recipientName || "-"}</td>
-      <td>${item.consultDate || "-"}</td>
-      <td>${item.category || "-"}</td>
-      <td>${item.changeType || "-"}</td>
-      <td>${item.careContent || "-"}</td>
-      <td>${item.reason || "-"}</td>
-      <td>${item.sheetName || "-"}</td>
-      <td>${item.fileName || "-"}</td>
-      <td>${item.uploadedAt || "-"}</td>
+      <td style="vertical-align: middle;">${item.recipientName || "-"}</td>
+      <td style="vertical-align: middle;">${item.consultDate || "-"}</td>
+      <td style="vertical-align: middle;">${item.category || "-"}</td>
+      <td style="vertical-align: middle;">${item.changeType || "-"}</td>
+      <td style="text-align: left; padding: 10px; vertical-align: middle; line-height: 1.4;">${item.careContent || "-"}</td>
+      <td style="text-align: left; padding: 10px; vertical-align: middle;">${item.reason || "-"}</td>
+      <td style="vertical-align: middle;">${item.sheetName || "-"}</td>
+      <td style="vertical-align: middle;">${item.fileName || "-"}</td>
+      <td style="vertical-align: middle;">${item.uploadedAt || "-"}</td>
     `;
 
     counselLibraryTableBody.appendChild(row);
