@@ -16,6 +16,36 @@
       text-align: center;
       vertical-align: middle;
     }
+    
+    /* 화장실 안내상자 디자인 팩과 완벽하게 일치하도록 전용 클래스를 추가 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
   </style>
 </head>
 <body>
@@ -76,14 +106,14 @@
           </div>
         </div>
 
-        <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 18px 20px; margin-top: 25px; margin-bottom: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.02);">
-          <h5 style="color: #334155; font-weight: 700; font-size: 15px; margin: 0 0 10px 0; display: flex; align-items: center; gap: 6px;">
-            💡 물리치료 주차별 점검 기준 안내
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 물리치료 확인 기준 안내
           </h5>
-          <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 13px; line-height: 1.6;">
-            <li style="margin-bottom: 4px;"><b style="color: #1e293b;">급여제공계획서 기준:</b> 계획서에 물리치료(기능회복훈련)가 수립된 수급자는 해당 주차(출석일 기준)에 물리치료 제공 기록이 있어야 <span style="color: #2563eb; font-weight: 600;">정상</span>으로 처리됩니다.</li>
-            <li style="margin-bottom: 4px;"><b style="color: #1e293b;">상담일지(반영일) 기준:</b> 상태 변화나 보호자 요청 등으로 물리치료가 <b style="color: #1e293b;">제외·중단</b>된 경우, 상담일지 반영일 이후 주차부터는 기록이 없어야 <span style="color: #2563eb; font-weight: 600;">정상</span>으로 처리됩니다.</li>
-            <li><b style="color: #1e293b;">오류 표시 대상:</b> 물리치료 계획이 없거나 상담일지로 제외된 분에게 제공 기록이 남아있는 경우, 또는 계획이 있음에도 출석한 주차에 기록이 누락된 경우 <span style="color: #e11d48; font-weight: 600;">점검 필요</span> 상태로 안내됩니다.</li>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">계획서 기준:</b> 계획서에 물리치료(기능회복훈련)가 있는 사람 &rarr; 해당 주차에 물리치료 기록이 있어야 <span style="color: #2563eb; font-weight: 600;">정상</span></li>
+            <li><b style="color: #1e293b;">상담일지 기준:</b> 상담일지에서 물리치료 제외가 반영된 사람 &rarr; 반영일 이후에는 물리치료 기록이 없어야 <span style="color: #2563eb; font-weight: 600;">정상</span></li>
+            <li>계획서에 물리치료가 없거나 상담일지로 제외된 사람에게 기록이 있으면 <span style="color: #e11d48; font-weight: 600;">오류</span>로 표시됩니다.</li>
           </ul>
         </div>
 
