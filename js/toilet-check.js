@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbzjy4b4CCTd2beLwDG4qnAcd0DIkMeXnynvb7DocZ0VFKz2kQ70Y0fw39jt0koUBWBv0g/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -178,6 +178,7 @@ function getCounselDate(counsel) {
   return normalizeDateText(counsel.consultDate || counsel.reflectionDate || counsel.date || counsel.counselDate || "");
 }
 
+// [개선 조치]: 대조 날짜 당일(15일) 상담일지도 정확하게 매칭 범위에 포함하도록 부등호 조건을 수정했습니다 (<= 적용)
 function getLatestDiaperCounsel(name, targetDate) {
   const targetName = String(name || "").trim();
   const targetDateText = normalizeDateText(targetDate);
@@ -205,7 +206,8 @@ function isRemoveCounsel(counsel) {
 function isAddCounsel(counsel) {
   if (!counsel) return false;
   const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-  return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
+  // '기저귀 교환 도움' 처럼 서비스명이 명시되면 별도의 상태어 없이도 허용 상태로 인식하도록 범위를 확장했습니다.
+  return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영") || text.includes("기저귀교환도움") || text.includes("기저귀교환");
 }
 
 function isDiaperAllowedAtDate(plan, name, targetDate) {
@@ -260,7 +262,6 @@ function findHeaderIndex(rows) {
   });
 }
 
-// [누락 복원 포인트]: 프로그램 작동이 멈췄던 주원인인 판단결과 문구 반환 함수를 정식으로 이식했습니다.
 function getResultText(totalCount, diaperCount, hasDiaperBenefit) {
   if (diaperCount > 0 && !hasDiaperBenefit) {
     return "기저귀 오류";
