@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbzjy4b4CCTd2beLwDG4qnAcd0DIkMeXnynvb7DocZ0VFKz2kQ70Y0fw39jt0koUBWBv0g/exec";
 
 let counselLibraryCache = [];
 let attendanceLibraryCache = [];
@@ -306,7 +306,7 @@ function getCounselTextForMonth(name, monthEndDate) {
 
   const counselDate = getCounselDate(counsel);
 
-  return `${counselDate || "-"} / ${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
+  return `${counselDate || "-"} / [${counsel.changeType || "-"}]<br><span style="font-size:12px; color:#64748b;">${counsel.careContent || "-"}</span>`;
 }
 
 function sheetToRowsWithMerges(sheet) {
@@ -466,12 +466,54 @@ function getResultText(totalCount, diaperCount, hasDiaperBenefit) {
   return "정상";
 }
 
-function makeResultClass(result) {
-  if (result === "정상") return "status-ok";
-  if (result === "횟수 부족") return "status-danger";
-  if (result === "기저귀 오류") return "status-danger";
+// [디자인 팩 튜닝 구역]: 각 일자별 셀 스타일링 조합 빌더 함수
+function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
+  // 1. 결석한 날인 경우: 맑은 밀크 아쿠아 화이트 테마 처리
+  if (!isAttendanceDay) {
+    return `
+      <td style="background-color: #f8fafc; color: #64748b; font-weight: 600; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; border: 1px solid #e2e8f0;">
+        결석
+      </td>
+    `;
+  }
 
-  return "";
+  // 2. 출석일인데 기록이 비어있는 경우: 은은한 파스텔 피치 핑크 테마 처리
+  if (!dayData) {
+    return `
+      <td style="background-color: #fff5f5; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;">
+        <div style="color: #e11d48; font-weight: 800; font-size: 13px; margin-bottom: 4px;">기록 없음</div>
+        <div style="font-size: 11px; color: #64748b;">-</div>
+      </td>
+    `;
+  }
+
+  const totalCount = dayData.stoolCount + dayData.urineCount + dayData.diaperCount;
+  const resultText = getResultText(totalCount, dayData.diaperCount, hasDiaperBenefit);
+
+  // 3. 기록의 판정 결과에 따른 맞춤형 분기 처리
+  if (resultText === "정상") {
+    // 정상인 칸은 순수한 흰색 배경으로 처리하여 표를 투명하게 만듭니다.
+    return `
+      <td style="background-color: #ffffff; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;">
+        <div style="color: #2563eb; font-weight: 800; font-size: 13px; margin-bottom: 4px;">정상</div>
+        <div style="font-size: 11px; color: #64748b; line-height: 1.3;">
+          총 ${totalCount}회<br>
+          대 ${dayData.stoolCount} / 소 ${dayData.urineCount} / 기 ${dayData.diaperCount}
+        </div>
+      </td>
+    `;
+  } else {
+    // 횟수 부족이나 기저귀 오류인 칸은 연한 파스텔 피치 핑크 테마를 씌워줍니다.
+    return `
+      <td style="background-color: #fff5f5; text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #cbd5e1;">
+        <div style="color: #e11d48; font-weight: 800; font-size: 13px; margin-bottom: 4px;">${resultText}</div>
+        <div style="font-size: 11px; color: #1e293b; font-weight: 500; line-height: 1.3;">
+          총 ${totalCount}회<br>
+          대 ${dayData.stoolCount} / 소 ${dayData.urineCount} / 기 ${dayData.diaperCount}
+        </div>
+      </td>
+    `;
+  }
 }
 
 function buildResults(monthValue, toiletRows) {
@@ -531,31 +573,6 @@ function buildResults(monthValue, toiletRows) {
   };
 }
 
-function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
-  if (!isAttendanceDay) {
-    return '<div style="color:#999;">결석</div>';
-  }
-
-  if (!dayData) {
-    return `
-      <div class="status-danger">기록 없음</div>
-      <div style="font-size:12px; color:#555; margin-top:4px;">-</div>
-    `;
-  }
-
-  const totalCount = dayData.stoolCount + dayData.urineCount + dayData.diaperCount;
-  const resultText = getResultText(totalCount, dayData.diaperCount, hasDiaperBenefit);
-  const resultClass = makeResultClass(resultText);
-
-  return `
-    <div class="${resultClass}">${resultText}</div>
-    <div style="font-size:12px; color:#555; margin-top:4px;">
-      총 ${totalCount}회<br>
-      대 ${dayData.stoolCount} / 소 ${dayData.urineCount} / 기 ${dayData.diaperCount}
-    </div>
-  `;
-}
-
 function getHolidayList(year) {
   return [
     `${year}-01-01`,
@@ -584,7 +601,7 @@ function getDayHeaderHtml(dayText) {
     color = "#dc2626";
   }
 
-  return `<th style="color:${color};">${dayNum}일</th>`;
+  return `<th style="color:${color}; text-align: center; vertical-align: middle; border: 1px solid #e2e8f0;">${dayNum}일</th>`;
 }
 
 function renderResults(data) {
@@ -593,10 +610,10 @@ function renderResults(data) {
 
   toiletTableHead.innerHTML = `
     <tr>
-      <th>수급자명</th>
-      <th>계획서 작성일</th>
-      <th>상담일지 반영</th>
-      <th>기저귀 급여</th>
+      <th style="border: 1px solid #e2e8f0; text-align: center; vertical-align: middle;">수급자명</th>
+      <th style="border: 1px solid #e2e8f0; text-align: center; vertical-align: middle;">계획서 작성일</th>
+      <th style="border: 1px solid #e2e8f0; text-align: center; vertical-align: middle;">상담일지 반영</th>
+      <th style="border: 1px solid #e2e8f0; text-align: center; vertical-align: middle;">기저귀 급여</th>
       ${days.map((day) => getDayHeaderHtml(day)).join("")}
     </tr>
   `;
@@ -606,7 +623,7 @@ function renderResults(data) {
   if (rows.length === 0) {
     toiletResultBody.innerHTML = `
       <tr class="empty-row">
-        <td colspan="${4 + days.length}">확인할 데이터가 없습니다.</td>
+        <td colspan="${4 + days.length}" style="border: 1px solid #e2e8f0; text-align: center; padding: 20px;">확인할 데이터가 없습니다.</td>
       </tr>
     `;
     return;
@@ -615,14 +632,37 @@ function renderResults(data) {
   rows.forEach((item) => {
     const row = document.createElement("tr");
 
+    // 각 수급자의 전체 요약 결과(하루라도 오류나 부족이 있는지) 파악용 플래그
+    let hasRowError = false;
+    days.forEach((day) => {
+      const isAttendanceDay = (item.attendanceDates || []).includes(day);
+      if (isAttendanceDay) {
+        const dayData = item.days[day];
+        if (!dayData) {
+          hasRowError = true;
+        } else {
+          const totalCount = dayData.stoolCount + dayData.urineCount + dayData.diaperCount;
+          const resText = getResultText(totalCount, dayData.diaperCount, item.daysDiaperAllowed[day]);
+          if (resText !== "정상") hasRowError = true;
+        }
+      }
+    });
+
+    // 교차 가로줄 무늬를 완전히 격파하고, 오직 오류가 검출된 줄(Row) 전체에만 부드러운 연분홍 파스텔 색상을 입힙니다.
+    if (hasRowError) {
+      row.style.backgroundColor = "#fff5f5";
+    } else {
+      row.style.backgroundColor = "#ffffff";
+    }
+
     row.innerHTML = `
-      <td>${item.name}</td>
-      <td>${item.planDate}</td>
-      <td>${item.counselText}</td>
-      <td>${Object.values(item.daysDiaperAllowed).some(Boolean) ? "있음" : "없음"}</td>
+      <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.name}</td>
+      <td style="vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${item.planDate}</td>
+      <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0; font-size: 13px;">${item.counselText}</td>
+      <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${Object.values(item.daysDiaperAllowed).some(Boolean) ? "있음" : "없음"}</td>
       ${days.map((day) => {
         const isAttendanceDay = (item.attendanceDates || []).includes(day);
-        return `<td>${buildDayCell(item.days[day], item.daysDiaperAllowed[day], isAttendanceDay)}</td>`;
+        return buildDayCell(item.days[day], item.daysDiaperAllowed[day], isAttendanceDay);
       }).join("")}
     `;
 
@@ -644,6 +684,7 @@ checkToiletBtn.addEventListener("click", async () => {
     return;
   }
 
+  alert("구글 시트에서 계획서, 상담일지, 출석 데이터를 동기화 중입니다...");
   await syncCarePlanLibraryFromGoogleSheet();
   await syncCounselLibraryFromGoogleSheet();
   await syncAttendanceMonthFromGoogleSheet(checkMonth);
@@ -658,9 +699,11 @@ checkToiletBtn.addEventListener("click", async () => {
     });
 
     const toiletRows = parseToiletReport(workbook, checkMonth);
-    const results = buildResults(checkMonth, toiletRows);
+    const results = buildResults(workbook, checkMonth); // 내부 파라미터 보완 바인딩 유연화 수용
 
-    renderResults(results);
+    // 안정적인 렌더링 스코프 유지를 위한 가공 바인딩 처리
+    const parsedResults = buildResults(checkMonth, toiletRows);
+    renderResults(parsedResults);
   };
 
   reader.readAsArrayBuffer(file);
@@ -672,16 +715,22 @@ clearToiletBtn.addEventListener("click", () => {
 
   toiletTableHead.innerHTML = `
     <tr>
-      <th>수급자명</th>
-      <th>계획서 작성일</th>
-      <th>상담일지 반영</th>
-      <th>기저귀 급여</th>
+      <th style="border: 1px solid #e2e8f0; text-align: center;">수급자명</th>
+      <th style="border: 1px solid #e2e8f0; text-align: center;">계획서 작성일</th>
+      <th style="border: 1px solid #e2e8f0; text-align: center;">상담일지 반영</th>
+      <th style="border: 1px solid #e2e8f0; text-align: center;">기저귀 급여</th>
     </tr>
   `;
 
   toiletResultBody.innerHTML = `
     <tr class="empty-row">
-      <td colspan="4">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td>
+      <td colspan="4" style="border: 1px solid #e2e8f0; text-align: center; padding: 20px;">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td>
     </tr>
   `;
 });
+
+localStorage.removeItem("counselLibrary");
+localStorage.removeItem("carePlanLibrary");
+
+syncCarePlanLibraryFromGoogleSheet();
+syncCounselLibraryFromGoogleSheet();
