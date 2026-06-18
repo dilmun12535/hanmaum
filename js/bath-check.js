@@ -328,6 +328,9 @@ function parseBathReport(workbook) {
 }
 
 function getWeekResult(required, weekData) {
+  // [수정 조치]: 급여개시전, 퇴소, 일정없음 등의 회색 블록 처리된 주차는 기록 매칭 유무와 상관없이 무조건 '정상'으로 반환합니다.
+  if (weekData && weekData.isGreyBlock) return "정상";
+  
   const hasRecord = weekData && weekData.hasBathRecord;
   if (required && hasRecord) return "정상";
   if (required && !hasRecord) return "누락";
@@ -335,7 +338,6 @@ function getWeekResult(required, weekData) {
   return "정상";
 }
 
-// [색상 리뉴얼 포인트 1]: '일정없음 / 급여개시' 칸을 아주 은은하고 투명한 아쿠아 화이트 톤으로 연하게 바꿉니다.
 function buildWeekTdHtml(required, weekData) {
   const result = getWeekResult(required, weekData);
   const recordText = weekData ? weekData.recordText : "-";
@@ -423,7 +425,6 @@ function buildResults(monthValue, bathRows) {
   return results.sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
-// [색상 리뉴얼 포인트 2]: 오류행 배경색을 아주 화사하고 투명도가 가미된 파스텔 핑크 테마(#fff5f5)로 전격 완화합니다.
 function renderResults(results) {
   bathResultBody.innerHTML = "";
   if (!results || results.length === 0) {
@@ -434,22 +435,22 @@ function renderResults(results) {
     const row = document.createElement("tr");
     
     if (item.overallResult === "확인 필요") {
-      row.style.backgroundColor = "#fff5f5"; // 투명하고 은은한 초연 파스텔 핑크
+      row.style.backgroundColor = "#fff5f5"; 
     } else {
       row.style.backgroundColor = "#ffffff";
     }
 
     row.innerHTML = `
-      <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0;">${item.name}</td>
-      <td style="vertical-align: middle; border: 1px solid #e2e8f0;">${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
-      <td style="text-align: left; line-height: 1.4; padding-left: 8px; vertical-align: middle; border: 1px solid #e2e8f0;">${item.counselText || "없음"}</td>
-      <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0;">${item.requiredText || "없음"}</td>
+      <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.name}</td>
+      <td style="vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
+      <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0;">${item.counselText || "없음"}</td>
+      <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.requiredText || "없음"}</td>
       ${buildWeekTdHtml(item.weekRequired.week1, item.weeks.week1)}
       ${buildWeekTdHtml(item.weekRequired.week2, item.weeks.week2)}
       ${buildWeekTdHtml(item.weekRequired.week3, item.weeks.week3)}
       ${buildWeekTdHtml(item.weekRequired.week4, item.weeks.week4)}
       ${buildWeekTdHtml(item.weekRequired.week5, item.weeks.week5)}
-      <td style="color:${item.overallResult === "정상" ? "#2563eb" : "#e11d48"}; font-weight:800; vertical-align: middle; border: 1px solid #e2e8f0;">${item.overallResult}</td>
+      <td style="color:${item.overallResult === "정상" ? "#2563eb" : "#e11d48"}; font-weight:800; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.overallResult}</td>
     `;
     bathResultBody.appendChild(row);
   });
