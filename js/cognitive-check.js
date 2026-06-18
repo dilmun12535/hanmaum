@@ -310,6 +310,7 @@ function renderHeader(monthValue) {
   `;
 }
 
+// [일자별 셀 개조]: 누락된 날짜 칸 자체에 부드러운 빨간 배경색을 심어 가독성을 높입니다.
 function buildDayCell(isAttendanceDay, cognitiveDay) {
   if (!isAttendanceDay) {
     return `<td class="cognitive-day-cell empty-day">-</td>`;
@@ -328,8 +329,9 @@ function buildDayCell(isAttendanceDay, cognitiveDay) {
     `;
   }
 
+  // 출석했는데 인지 기록이 비어있어 '누락'일 때 소프트 레드 배경 주입
   return `
-    <td class="cognitive-day-cell">
+    <td class="cognitive-day-cell" style="background-color: #fff5f5; border: 1px solid #fda4af !important;">
       <div class="status-danger">누락</div>
       <div class="small-cell-text">출석</div>
     </td>
@@ -371,13 +373,16 @@ function renderResults(monthValue, results) {
 
     const overallText = missingCount > 0 ? `확인 필요<br>${missingCount}일 누락` : "정상";
     const overallClass = missingCount > 0 ? "status-danger" : "status-ok";
+    
+    // 💡 [통일성 업그레이드]: 누락이 1일이라도 있으면 행 전체 구성품에 부드러운 빨간 배경 스타일 연동
+    const errorCellBg = missingCount > 0 ? 'background-color: #fff5f5;' : '';
 
     row.innerHTML = `
-      <td>${item.name || "-"}</td>
-      <td>${item.grade || "-"}</td>
-      <td class="status-info">${attendCount}일</td>
+      <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
+      <td style="text-align:center; ${errorCellBg}">${item.grade || "-"}</td>
+      <td class="status-info" style="text-align:center; ${errorCellBg}">${attendCount}일</td>
       ${dayCells}
-      <td class="${overallClass}">${overallText}</td>
+      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${overallText}</td>
     `;
 
     cognitiveResultBody.appendChild(row);
@@ -401,17 +406,17 @@ function applyCognitiveStyle() {
       white-space: normal;
       text-align: center;
       padding: 10px 8px;
+      border: 1px solid #e2e8f0;
     }
 
     .cognitive-table th:nth-child(1),
     .cognitive-table td:nth-child(1) {
       min-width: 100px;
       width: 100px;
-      text-align: left;
+      text-align: center;
       position: sticky;
       left: 0;
       z-index: 4;
-      background-color: #fff;
     }
 
     .cognitive-table th:nth-child(1) {
@@ -426,7 +431,6 @@ function applyCognitiveStyle() {
       position: sticky;
       left: 100px;
       z-index: 4;
-      background-color: #fff;
     }
 
     .cognitive-table th:nth-child(2) {
@@ -466,6 +470,9 @@ function applyCognitiveStyle() {
     .cognitive-day-red {
       color: #dc2626 !important;
     }
+
+    .status-ok { color: #2563eb; font-weight: 800; }
+    .status-danger { color: #e11d48; font-weight: 800; }
 
     .cognitive-table th:last-child,
     .cognitive-table td:last-child {
