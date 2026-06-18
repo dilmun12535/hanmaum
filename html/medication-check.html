@@ -9,6 +9,44 @@
   <link rel="stylesheet" href="../css/dashboard.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    /* 다른 확인 화면 메뉴들과 100% 일치하도록 일체형 안내상자 클래스를 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -68,26 +106,31 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p><strong>확인 기준</strong></p>
-          <p><strong>정확한 복약도움</strong> 급여가 있는 사람만 투약 기록이 있어야 합니다.</p>
-          <p>급여 횟수는 약 개수가 아니라 <strong>아침·점심·저녁 투약 횟수</strong> 기준입니다.</p>
-          <p>투약 제공 현황 파일의 시간①~시간⑧에 입력된 <strong>서로 다른 시간 개수</strong>로 실제 투약 횟수를 계산합니다.</p>
-          <p>결석일은 <strong>결석</strong>으로 표시하고 오류로 판단하지 않습니다.</p>
+        <!-- [디자인 통일 구역]: 화장실/물리치료/간호제공과 오차 없이 똑같은 통합 디자인 안내 상자 적용 -->
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 투약 확인 기준 안내
+          </h5>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">대상자 기준:</b> 급여 계약 및 계획서상에 <b style="color: #1e293b;">정확한 복약도움</b> 서비스가 잡혀있는 수급자 어르신만 투약 기록이 매칭되어야 합니다.</li>
+            <li><b style="color: #1e293b;">급여 횟수 판정:</b> 약의 개수가 아닌, 하루 중 <b style="color: #1e293b;">아침·점심·저녁 투약 횟수</b>를 실질적인 점검 기준으로 삼습니다.</li>
+            <li><b style="color: #1e293b;">연산 방식:</b> 투약 파일 내의 시간①~시간⑧ 영역에 기입된 <b>서로 다른 투약 시간의 개수</b>를 대조하여 연산합니다.</li>
+            <li><b style="color: #1e293b;">결석일 처리:</b> 등원하지 않으신 결석일은 시스템상에 <span style="color: #64748b; font-weight: 600;">결석</span>으로 우대 처리되어 오류(미제공)로 판단하지 않습니다.</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table split-check-table">
+          <table class="info-table split-check-table" style="border-collapse: collapse; width: 100%;">
             <thead id="medicationTableHead">
               <tr>
-                <th>수급자명</th>
-                <th>계획서 작성일</th>
-                <th>기준</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">기준</th>
               </tr>
             </thead>
             <tbody id="medicationResultBody">
               <tr class="empty-row">
-                <td colspan="4">확인 월과 파일을 선택해주세요.</td>
+                <td colspan="4" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 파일을 선택해주세요.</td>
               </tr>
             </tbody>
           </table>
