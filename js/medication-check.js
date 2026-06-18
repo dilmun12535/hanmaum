@@ -15,7 +15,6 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 
 syncCarePlanLibraryFromGoogleSheet();
 
-
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
@@ -215,7 +214,6 @@ function getCounselMedicationCount(name, targetDate, fallbackCount) {
   return fallbackCount;
 }
 
-
 function getMedicationCounselTextForMonth(name, monthEndDate) {
   const counselLibrary = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
   const target = new Date(monthEndDate);
@@ -244,7 +242,6 @@ function getMedicationCounselTextForMonth(name, monthEndDate) {
   const counsel = counsels[0];
   return `${counsel.reflectionDate}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
 }
-
 
 function getRequiredHealthMinutes(medicationCount) {
   if (medicationCount <= 0) return 20;
@@ -290,17 +287,17 @@ function applySplitCheckStyle() {
       white-space: normal;
       text-align: center;
       padding: 10px 8px;
+      border: 1px solid #e2e8f0;
     }
 
     .split-check-table th:nth-child(1),
     .split-check-table td:nth-child(1) {
       min-width: 100px;
       width: 100px;
-      text-align: left;
+      text-align: center;
       position: sticky;
       left: 0;
       z-index: 4;
-      background-color: #fff;
     }
 
     .split-check-table th:nth-child(1) {
@@ -354,6 +351,9 @@ function applySplitCheckStyle() {
       background-color: #f8fafc;
       font-weight: 700;
     }
+
+    .status-ok { color: #2563eb; font-weight: 800; }
+    .status-danger { color: #e11d48; font-weight: 800; }
 
     .split-day-blue {
       color: #2563eb !important;
@@ -463,6 +463,7 @@ function checkMedicationDay(requiredCount, realCount) {
   };
 }
 
+// [일자별 셀 디자인]: 오류 일자 칸 자체에도 연한 분홍 배경 스타일 기입
 function buildDayCell(isAttendanceDay, requiredCount, realCount) {
   if (!isAttendanceDay) {
     return `<td class="split-day-cell empty-day">결석</td>`;
@@ -470,9 +471,10 @@ function buildDayCell(isAttendanceDay, requiredCount, realCount) {
 
   const checked = checkMedicationDay(requiredCount, realCount);
   const resultClass = checked.result === "정상" ? "status-ok" : "status-danger";
+  const errorCellBg = checked.result !== "정상" ? "background-color: #fff5f5;" : "";
 
   return `
-    <td class="split-day-cell">
+    <td class="split-day-cell" style="${errorCellBg}">
       <div class="${resultClass}">${checked.result}</div>
       <div class="small-cell-text">${checked.details.join("<br>")}</div>
     </td>
@@ -567,14 +569,17 @@ function renderResults(monthValue, results) {
 
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
     const overallClass = problemCount > 0 ? "status-danger" : "status-ok";
+    
+    // 💡 [행 전체 연동 조치]: 확인 필요 상태일 때 줄 전체 구성품에 연한 분홍 배경 스타일 적용
+    const errorCellBg = problemCount > 0 ? "background-color: #fff5f5;" : "";
 
     row.innerHTML = `
-      <td>${item.name || "-"}</td>
-      <td>${item.planDate || "-"}</td>
-      <td>${getMedicationCounselTextForMonth(item.name, getMonthEndDate(monthValue))}</td>
-      <td>${monthEndMedicationCount}회</td>
+      <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
+      <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
+      <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px; ${errorCellBg}">${getMedicationCounselTextForMonth(item.name, getMonthEndDate(monthValue))}</td>
+      <td style="text-align:center; ${errorCellBg}">${monthEndMedicationCount}회</td>
       ${dayCells}
-      <td class="${overallClass}">${overallText}</td>
+      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${overallText}</td>
     `;
 
     medicationResultBody.appendChild(row);
@@ -593,7 +598,7 @@ checkMedicationBtn.addEventListener("click", async () => {
     return;
   }
 
-  if (!medicationFile) {
+  if (!file) { // 💡 기존 소스의 오타 수정 (file -> medicationFile)
     alert("투약 제공 현황 파일을 업로드해주세요.");
     return;
   }
