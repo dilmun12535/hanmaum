@@ -306,18 +306,20 @@ function planToFullText(plan) {
   return normalizeText(JSON.stringify(plan.rows || ""));
 }
 
+// 💡 [추출 로직 고도화]: 다양한 계약서 기재 형태(석식, 저녁, 중식석식, 2회 등)를 유연하게 찾아내도록 알고리즘을 튜닝했습니다.
 function getMealCountFromPlan(plan) {
   const text = planToFullText(plan);
-  if (!text.includes("식사도움") && !text.includes("식단관리") && !text.includes("식사") && !text.includes("식단")) {
+  if (!text.includes("식사도움") && !text.includes("식단관리") && !text.includes("식사") && !text.includes("식단") && !text.includes("급여제공계획")) {
     return 0;
   }
-  if (text.includes("점심저녁") || text.includes("2회") || text.includes("1일2회") || text.includes("점심,저녁")) {
+  // '석식', '저녁', '2회', '중식,석식' 등이 복합 검출되면 확실하게 2회로 파싱
+  if (text.includes("석식") || text.includes("저녁") || text.includes("2회") || text.includes("1일2회") || text.includes("점심저녁") || text.includes("중식석식")) {
     return 2;
   }
-  if (text.includes("점심") || text.includes("1회") || text.includes("1일1회")) {
+  if (text.includes("점심") || text.includes("중식") || text.includes("1회") || text.includes("1일1회")) {
     return 1;
   }
-  return 1;
+  return 1; 
 }
 
 function hasFoodPrepPlan(plan) {
@@ -385,10 +387,8 @@ function isAddCounsel(counsel) {
 
 function getMealCountFromText(text, fallback) {
   const clean = normalizeText(text);
-  if (clean.match(/2\s*회/) || clean.match(/2\s*일/) || clean.includes("점심저녁")) return 2;
-  if (clean.match(/1\s*회/) || clean.match(/1\s*일/) || clean.includes("점심")) return 1;
-  if (clean.includes("저녁추가")) return 2;
-  if (clean.includes("저녁제외")) return 1;
+  if (clean.match(/2\s*회/) || clean.match(/2\s*일/) || clean.includes("점심저녁") || clean.includes("석식추가") || clean.includes("저녁추가")) return 2;
+  if (clean.match(/1\s*회/) || clean.match(/1\s*일/) || clean.includes("점심") || clean.includes("저녁제외") || clean.includes("석식제외")) return 1;
   return fallback;
 }
 
@@ -401,7 +401,7 @@ function getMealRuleAtDate(plan, name, targetDate) {
   if (counsel) {
     const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
 
-    if (text.includes("균형잡힌식단") || text.includes("식단관리") || text.includes("식사")) {
+    if (text.includes("균형잡힌식단") || text.includes("식단관리") || text.includes("식사") || text.includes("석식") || text.includes("중식")) {
       if (isRemoveCounsel(counsel)) {
         mealCount = 0;
       } else if (isAddCounsel(counsel)) {
@@ -431,7 +431,6 @@ function getAttendanceMonth(monthValue) {
     .filter((item) => item.month === monthValue)
     .map((item) => ({
       name: String(item.recipientName || item.name || "").trim(),
-      // [교정 코어]: 동기화 시 이름뿐만 아니라 장기요양인정번호 정보도 함께 객체 구조에 포함하여 리턴합니다.
       careNum: String(item.managementNum || item.careNum || item.id || "").trim(),
       dates: Array.isArray(item.attendanceDates) ? item.attendanceDates : (Array.isArray(item.dates) ? item.dates : [])
     }))
@@ -478,7 +477,6 @@ function makeResultClass(result) {
   return "status-danger";
 }
 
-// [디자인 튜닝 포인트]: 목욕 확인서처럼 정상 및 결석을 제외한 오류 판단 셀에 부드러운 분홍빛 빨간 배경을 주입합니다.
 function buildDayCell(isAttendanceDay, dayData, rule) {
   if (!isAttendanceDay) {
     return `<td class="meal-day-cell empty-day">결석</td>`;
@@ -487,8 +485,7 @@ function buildDayCell(isAttendanceDay, dayData, rule) {
   const result = getDayResult(dayData, rule);
   const resultClass = makeResultClass(result);
   
-  // 오류 상태일 경우 주입할 부드러운 빨간 배경 인라인 CSS 세팅
-  const errorBgStyle = result !== "정상" ? `background-color: #fff5f5; border: 1px solid #fda4af !important;` : "";
+  const errorBgStyle = result !== "정상" ? `background-color: #fff5f5;` : "";
 
   const lunch = dayData ? (dayData.lunch || "-") : "-";
   const dinner = dayData ? (dayData.dinner || "-") : "-";
@@ -523,7 +520,6 @@ function buildResults(monthValue, mealRows) {
 
   return names
     .map((name) => {
-      // [동일인 판정 핵심 개선]: 이름뿐만 아니라 요양번호 캐시가 있는 경우 번호의 일치 여부까지 복합 대조를 수행하여 결석 찌꺼기를 방지합니다.
       const attendance = attendanceRows.find((item) => {
         const sameName = String(item.name).trim() === name;
         const plan = latestPlans[name];
@@ -601,20 +597,15 @@ function renderResults(monthValue, results) {
 
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
     const overallClass = problemCount > 0 ? "status-danger" : "status-ok";
-    
-    // 종합 결과에 따라 행 전체의 오류 가독성을 보완하기 위한 배경 지정
-    if (problemCount > 0) {
-      row.style.backgroundColor = "#fffbfb";
-    }
 
     row.innerHTML = `
-      <td style="font-weight:600; text-align:center;">${item.name || "-"}</td>
-      <td style="text-align:center;">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
-      <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px;">${item.counselText || "없음"}</td>
-      <td style="text-align:center; font-weight:700;">${monthEndRule.mealCount || 0}회</td>
-      <td style="text-align:center;">${monthEndRule.specialFood ? "기능상태 음식" : "일반식"}</td>
+      <td style="font-weight:600; text-align:center; ${problemCount > 0 ? 'background-color: #fff5f5;' : ''}">${item.name || "-"}</td>
+      <td style="text-align:center; ${problemCount > 0 ? 'background-color: #fff5f5;' : ''}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
+      <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px; ${problemCount > 0 ? 'background-color: #fff5f5;' : ''}">${item.counselText || "없음"}</td>
+      <td style="text-align:center; font-weight:700; ${problemCount > 0 ? 'background-color: #fff5f5;' : ''}">${monthEndRule.mealCount || 0}회</td>
+      <td style="text-align:center; ${problemCount > 0 ? 'background-color: #fff5f5;' : ''}">${monthEndRule.specialFood ? "기능상태 음식" : "일반식"}</td>
       ${dayCells}
-      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle;">${overallText}</td>
+      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${problemCount > 0 ? 'background-color: #fff5f5;' : ''}">${overallText}</td>
     `;
     mealResultBody.appendChild(row);
   });
@@ -628,8 +619,10 @@ function applyMealStyle() {
   style.textContent = `
     .meal-table { min-width: 2200px; table-layout: fixed; }
     .meal-table th, .meal-table td { vertical-align: middle; white-space: normal; text-align: center; padding: 10px 8px; border: 1px solid #e2e8f0; }
-    .meal-table th:nth-child(1), .meal-table td:nth-child(1) { min-width: 100px; width: 100px; text-align: center; position: sticky; left: 0; z-index: 4; background-color: #fff; }
+    
+    .meal-table th:nth-child(1), .meal-table td:nth-child(1) { min-width: 100px; width: 100px; text-align: center; position: sticky; left: 0; z-index: 4; }
     .meal-table th:nth-child(1) { background-color: #eaf0fb; z-index: 6; }
+    
     .meal-table th:nth-child(2), .meal-table td:nth-child(2) { min-width: 115px; width: 115px; }
     .meal-table th:nth-child(3), .meal-table td:nth-child(3) { min-width: 160px; width: 160px; text-align: left; }
     .meal-table th:nth-child(4), .meal-table td:nth-child(4) { min-width: 80px; width: 80px; }
