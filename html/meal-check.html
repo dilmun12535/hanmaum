@@ -9,6 +9,44 @@
   <link rel="stylesheet" href="../css/dashboard.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+    
+    /* 한마음 전산 전체 메뉴와 100% 일치하도록 일체형 안내상자 클래스를 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+  </style>
 </head>
 <body>
   <div class="topbar">
@@ -68,29 +106,33 @@
           </div>
         </div>
 
-        <div class="notice-box">
-          <p><strong>확인 기준</strong></p>
-          <p>급여제공계획서에 <strong>균형잡힌 식단 관리 1회</strong>가 있으면 출석일에 <strong>점심</strong>이 있어야 정상입니다.</p>
-          <p><strong>균형잡힌 식단 관리 2회</strong>가 있으면 출석일에 <strong>점심·저녁</strong>이 모두 있어야 정상입니다.</p>
-          <p><strong>기능상태에 맞는 음식 준비</strong>가 있으면 다진식 또는 죽식이어야 하며, 없으면 일반식이어야 정상입니다.</p>
-          <p>상담일지에서 식사 횟수 또는 음식 준비 내용이 바뀐 경우 반영일 이후 기준에 따라 판단합니다.</p>
-          <p>출석관리 자료를 기준으로 <strong>출석한 날만</strong> 식사 제공 여부를 확인하며, 결석일은 <strong>결석</strong>으로 표시합니다.</p>
+        <!-- [디자인 통일 구역]: 타 확인 메뉴들과 일체감을 가지도록 구조화된 독립형 파스텔 박스를 적용했습니다 -->
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 식사 확인 기준 안내
+          </h5>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">식사 횟수 기준:</b> 계획서에 <b style="color: #1e293b;">'균형잡힌 식단 관리 1회'</b>가 있으면 출석일에 점심이, <b style="color: #1e293b;">'2회'</b>가 있으면 점심과 저녁이 모두 기록되어야 <span style="color: #2563eb; font-weight: 600;">정상</span>입니다.</li>
+            <li><b style="color: #1e293b;">식사 형태 기준:</b> <b style="color: #1e293b;">'기능상태에 맞는 음식 준비'</b>가 수립되어 있다면 다진식 혹은 죽식이어야 하며, 해당 계획이 없다면 일반식 기록이어야 <span style="color: #2563eb; font-weight: 600;">정상</span>입니다.</li>
+            <li><b style="color: #1e293b;">상담일지 반영:</b> 상담일지 기록에 의해 중간에 식사 횟수나 형태 기준이 변경된 경우, 일지 반영일 이후 날짜부터는 변경된 기준을 추적하여 판정합니다.</li>
+            <li><b style="color: #1e293b;">출석 연동 및 결석:</b> 출석관리 데이터를 바탕으로 실질적으로 등원해 <b style="color: #1e293b;">출석한 날만 검증</b>하며, 결석일은 표에 <span style="color: #64748b; font-weight: 600;">결석</span>으로 예외 처리되어 오류로 잡히지 않습니다.</li>
+          </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table meal-table">
+          <table class="info-table meal-table" style="border-collapse: collapse; width: 100%;">
             <thead id="mealTableHead">
               <tr>
-                <th>수급자명</th>
-                <th>계획서 작성일</th>
-                <th>상담일지 반영</th>
-                <th>식사 횟수</th>
-                <th>음식 준비</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">상담일지 반영</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">식사 횟수</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">음식 준비</th>
               </tr>
             </thead>
             <tbody id="mealResultBody">
               <tr class="empty-row">
-                <td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td>
+                <td colspan="5" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td>
               </tr>
             </tbody>
           </table>
