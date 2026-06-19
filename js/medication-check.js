@@ -56,11 +56,11 @@ syncCarePlanLibraryFromGoogleSheet();
 syncCounselLibraryFromGoogleSheet();
 
 const checkMonthInput = document.getElementById("checkMonth");
-const mealFileInput = document.getElementById("mealFile");
-const checkMealBtn = document.getElementById("checkMealBtn");
-const clearMealBtn = document.getElementById("clearMealBtn");
-const mealTableHead = document.getElementById("mealTableHead");
-const mealResultBody = document.getElementById("mealResultBody");
+const mediFileInput = document.getElementById("mediFile");
+const checkMediBtn = document.getElementById("checkMediBtn");
+const clearMediBtn = document.getElementById("clearMediBtn");
+const mediTableHead = document.getElementById("mediTableHead");
+const mediResultBody = document.getElementById("mediResultBody");
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
@@ -161,8 +161,8 @@ function getDayColorClass(dateText) {
   const date = new Date(dateText);
   const weekday = date.getDay();
   const holidayList = getHolidayList(date.getFullYear());
-  if (weekday === 0 || holidayList.includes(dateText)) return "meal-day-red";
-  if (weekday === 6) return "meal-day-blue";
+  if (weekday === 0 || holidayList.includes(dateText)) return "medi-day-red";
+  if (weekday === 6) return "medi-day-blue";
   return "";
 }
 
@@ -200,7 +200,7 @@ function findHeaderIndex(rows) {
     const totalText = currentText + nextText;
     return (
       totalText.includes("수급자명") && totalText.includes("작성일") &&
-      totalText.includes("식사") && totalText.includes("점심") && totalText.includes("저녁")
+      totalText.includes("간호") && totalText.includes("복약확인")
     );
   });
 }
@@ -223,32 +223,21 @@ function findColumn(header, keywords) {
   });
 }
 
-function parseMealType(value) {
-  const text = normalizeText(value);
-  if (!text || text.includes("일정없음") || text.includes("미이용") || text.includes("급여개시전")) return "";
-  if (text.includes("다진")) return "다진식";
-  if (text.includes("죽")) return "죽식";
-  if (text.includes("일반")) return "일반식";
-  if (text.includes("미음")) return "죽식";
-  return String(value || "").trim();
-}
-
-function parseMealReport(workbook, monthValue) {
+function parseMediReport(workbook, monthValue) {
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
   const rows = sheetToRowsWithMerges(sheet);
   const headerIndex = findHeaderIndex(rows);
 
   if (headerIndex === -1) {
-    alert("식사/화장실 기록에서 표 머리글을 찾지 못했습니다.");
+    alert("간호일지/복약기록에서 표 머리글을 찾지 못했습니다.");
     return [];
   }
 
   const header = makeCombinedHeader(rows, headerIndex);
   const nameCol = findColumn(header, ["수급자명"]);
   const dateCol = findColumn(header, ["작성일"]);
-  const lunchCol = findColumn(header, ["식사", "점심"]);
-  const dinnerCol = findColumn(header, ["식사", "저녁"]);
+  const mediCol = findColumn(header, ["간호", "복약확인"]);
 
   const resultMap = {};
   let currentName = "";
@@ -263,13 +252,16 @@ function parseMealReport(workbook, monthValue) {
     const dateText = parseDate(row[dateCol]);
     if (!dateText || !dateText.startsWith(monthValue)) continue;
 
+    const rawMediValue = normalizeText(row[mediCol]);
+    let status = "미제공"; 
+    if (rawMediValue.includes("제공") || rawMediValue.includes("완료") || rawMediValue === "o" || rawMediValue === "○") {
+      status = "제공";
+    }
+
     if (!resultMap[name]) {
       resultMap[name] = { name, days: {} };
     }
-    resultMap[name].days[dateText] = {
-      lunch: parseMealType(row[lunchCol]),
-      dinner: parseMealType(row[dinnerCol])
-    };
+    resultMap[name].days[dateText] = status;
   }
   return Object.values(resultMap);
 }
@@ -286,48 +278,23 @@ function getLatestPlansByRecipient(name, checkDate) {
   return validPlans[0] || null;
 }
 
-// 💡 [2회 누락 결함 완벽 해결]: 데이터 타입을 추적하여 어떤 형식이든 중식/석식이 모두 감지되면 2회로 리턴합니다.
-function getMealCountFromPlan(plan) {
-  if (!plan) return 1;
-  
-  // 1. 객체 내부의 구조적 스캔 진행
-  let combinedText = "";
-  if (plan.rows) {
-    if (typeof plan.rows === "object") {
-      // 배열이거나 객체인 경우 모든 벨류값을 텍스트로 결합
-      combinedText = normalizeText(JSON.stringify(plan.rows));
-    } else {
-      combinedText = normalizeText(plan.rows);
-    }
-  }
-  
-  // 2. 추가 필드 (종합의견이나 세부항목)가 있다면 같이 검사 범위에 병합
-  const extraText = normalizeText(`${plan.opinion || ""} ${plan.content || ""} ${plan.mealType || ""}`);
-  const finalText = combinedText + " " + extraText;
-
-  // 3. 중식과 석식을 동시에 먹는 조건 정밀 판정
-  const hasLunch = finalText.includes("중식") || finalText.includes("점심");
-  const hasDinner = finalText.includes("석식") || finalText.includes("저녁");
-  const hasTwoTimes = finalText.includes("2회") || finalText.includes("1일2회");
-
-  if ((hasLunch && hasDinner) || hasTwoTimes) {
-    return 2;
-  }
-  return 1;
+function planToFullText(plan) {
+  if (!plan) return "";
+  if (typeof plan.rows === "string") return normalizeText(plan.rows);
+  return normalizeText(JSON.stringify(plan.rows || ""));
 }
 
-function hasFoodPrepPlan(plan) {
+function getMediRequirementFromPlan(plan) {
   if (!plan) return false;
-  let combinedText = "";
-  if (plan.rows) {
-    if (typeof plan.rows === "object") combinedText = normalizeText(JSON.stringify(plan.rows));
-    else combinedText = normalizeText(plan.rows);
-  }
-  const finalText = combinedText + " " + normalizeText(`${plan.opinion || ""} ${plan.content || ""}`);
-  return finalText.includes("음식준비") || finalText.includes("다진식") || finalText.includes("죽식") || finalText.includes("미음");
+  const rawRowsText = planToFullText(plan);
+  const extraText = normalizeText(`${plan.opinion || ""} ${plan.content || ""} ${plan.mediType || ""}`);
+  const cleanFinalText = (rawRowsText + " " + extraText).replace(/[^a-zA-Z0-9가-힣]/g, "");
+
+  // 간호관리, 복약돕기, 복약지도, 투약 등의 키워드가 포함되면 복약 필요 대상자로 지정
+  return cleanFinalText.includes("복약") || cleanFinalText.includes("투약") || cleanFinalText.includes("약챙겨") || cleanFinalText.includes("간호관리");
 }
 
-function getLatestMealCounsel(name, targetDate) {
+function getLatestMediCounsel(name, targetDate) {
   const targetDateText = normalizeDateText(targetDate);
   const counsels = counselLibraryCache.filter((item) => {
     if (!isSameRecipient(item.recipientName || item.name, name)) return false;
@@ -335,8 +302,8 @@ function getLatestMealCounsel(name, targetDate) {
     if (!refDate || refDate > targetDateText) return false;
 
     const category = item.category || "";
-    const text = normalizeText(`${item.careContent || ""} ${item.reason || ""} ${item.changeType || ""}`);
-    return category === "식사" || text.includes("식단") || text.includes("식사") || text.includes("음식준비") || text.includes("다진식") || text.includes("죽식");
+    const text = normalizeText(`${item.careContent || ""} ${item.reason || ""} ${item.changeType || ""}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
+    return category === "간호" || category === "복약" || text.includes("복약") || text.includes("투약") || text.includes("처방");
   }).sort((a, b) => {
     const dateA = normalizeDateText(a.reflection || a.reflectionDate || a.consultDate || a.date || "");
     const dateB = normalizeDateText(b.reflection || b.reflectionDate || b.consultDate || b.date || "");
@@ -348,7 +315,7 @@ function getLatestMealCounsel(name, targetDate) {
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
   const text = normalizeText(`${counsel.changeType} ${counsel.careContent} ${counsel.reason}`);
-  return text.includes("제외") || text.includes("중단") || text.includes("삭제") || text.includes("미제공") || text.includes("하지않");
+  return text.includes("제외") || text.includes("중단") || text.includes("삭제") || text.includes("미제공") || text.includes("하지않") || text.includes("종료");
 }
 
 function isAddCounsel(counsel) {
@@ -357,35 +324,19 @@ function isAddCounsel(counsel) {
   return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
 }
 
-function getMealCountFromText(text, fallback) {
-  const clean = normalizeText(text);
-  if (clean.match(/2\s*회/) || clean.match(/2\s*일/) || clean.includes("점심저녁") || clean.includes("석식추가") || clean.includes("저녁추가")) return 2;
-  if (clean.match(/1\s*회/) || clean.match(/1\s*일/) || clean.includes("점심") || clean.includes("저녁제외") || clean.includes("석식제외")) return 1;
-  return fallback;
-}
-
-function getMealRuleAtDate(plan, name, targetDate) {
-  let mealCount = getMealCountFromPlan(plan);
-  let specialFood = hasFoodPrepPlan(plan);
-  const counsel = getLatestMealCounsel(name, targetDate);
+function getMediRuleAtDate(plan, name, targetDate) {
+  let needMedi = getMediRequirementFromPlan(plan);
+  const counsel = getLatestMediCounsel(name, targetDate);
 
   if (counsel) {
-    const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-    if (text.includes("식단") || text.includes("식사") || text.includes("석식") || text.includes("중식")) {
-      if (isRemoveCounsel(counsel)) mealCount = 0;
-      else if (isAddCounsel(counsel)) mealCount = Math.max(1, mealCount);
-      mealCount = getMealCountFromText(text, mealCount);
-    }
-    if (text.includes("음식준비") || text.includes("다진식") || text.includes("죽식")) {
-      if (isRemoveCounsel(counsel)) specialFood = false;
-      if (isAddCounsel(counsel)) specialFood = true;
-    }
+    if (isRemoveCounsel(counsel)) needMedi = false;
+    else if (isAddCounsel(counsel)) needMedi = true;
   }
-  return { mealCount, specialFood };
+  return { needMedi };
 }
 
 function getCounselTextForMonth(name, monthEndDate) {
-  const counsel = getLatestMealCounsel(name, monthEndDate);
+  const counsel = getLatestMediCounsel(name, monthEndDate);
   if (!counsel) return "없음";
   const refDate = counsel.reflection || counsel.reflectionDate || counsel.consultDate || counsel.date || "-";
   return `${String(refDate).substring(0,10)}<br>[${counsel.changeType || "-"}]<br>${counsel.careContent || "-"}`;
@@ -402,69 +353,51 @@ function getAttendanceMonth(monthValue) {
     .sort((a, b) => safeCompare(a.name, b.name));
 }
 
-function getFoodTypeResult(mealValue, specialFood) {
-  if (!mealValue) return "누락";
-  if (specialFood) {
-    if (mealValue === "다진식" || mealValue === "죽식") return "정상";
-    return "식사형태 오류";
-  }
-  if (mealValue === "일반식") return "정상";
-  return "식사형태 오류";
-}
-
 function getDayResult(dayData, rule) {
   if (!rule) return "정상";
-  const mealCount = rule.mealCount;
-  const specialFood = rule.specialFood;
+  const needMedi = rule.needMedi;
+  const record = dayData || "미제공";
 
-  if (mealCount <= 0) {
-    if (dayData && (dayData.lunch || dayData.dinner)) return "오류";
+  if (needMedi) {
+    if (record === "제공") return "정상";
+    return "누락";
+  } else {
+    if (record === "제공") return "오류 기록";
     return "정상";
   }
-  if (!dayData || (!dayData.lunch && !dayData.dinner)) return "기록 없음";
-
-  const lunchResult = getFoodTypeResult(dayData.lunch, specialFood);
-  const dinnerResult = mealCount >= 2 ? getFoodTypeResult(dayData.dinner, specialFood) : "정상";
-
-  if (lunchResult === "누락" || dinnerResult === "누락") return "누락";
-  if (lunchResult === "식사형태 오류" || dinnerResult === "식사형태 오류") return "식사형태 오류";
-  if (mealCount === 1 && dayData.dinner) return "저녁 확인";
-  return "정상";
 }
 
 function makeResultClass(result) {
   if (result === "정상") return "status-ok";
-  if (result === "저녁 확인") return "status-warn";
   return "status-danger";
 }
 
 function buildDayCell(isAttendanceDay, dayData, rule) {
-  if (!isAttendanceDay) return `<td class="meal-day-cell empty-day">결석</td>`;
+  if (!isAttendanceDay) return `<td class="medi-day-cell empty-day">결석</td>`;
   const result = getDayResult(dayData, rule);
   const resultClass = makeResultClass(result);
   
   let cellBgStyle = "background-color: #ffffff !important;";
-  if (result !== "정상" && result !== "저녁 확인") cellBgStyle = "background-color: #fff5f5 !important;";
+  if (result !== "정상") cellBgStyle = "background-color: #fff5f5 !important;";
 
-  const lunch = dayData ? (dayData.lunch || "-") : "-";
-  const dinner = dayData ? (dayData.dinner || "-") : "-";
+  const displayRecord = dayData === "제공" ? "○ 제공" : "X 미제공";
 
   return `
-    <td class="meal-day-cell" style="${cellBgStyle}">
+    <td class="medi-day-cell" style="${cellBgStyle}">
       <div class="${resultClass}">${result}</div>
-      <div class="small-cell-text">점 ${lunch}<br>저 ${dinner}</div>
+      <div class="small-cell-text">${displayRecord}</div>
     </td>
   `;
 }
 
-function buildResults(monthValue, mealRows) {
+function buildResults(monthValue, mediRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const attendanceRows = getAttendanceMonth(monthValue);
 
   return attendanceRows.map((attendance) => {
     const name = attendance.name;
     const plan = getLatestPlansByRecipient(name, monthEndDate);
-    const meal = mealRows.find((item) => isSameRecipient(item.name, name));
+    const medi = mediRows.find((item) => isSameRecipient(item.name, name));
 
     return {
       name,
@@ -472,24 +405,23 @@ function buildResults(monthValue, mealRows) {
       counselText: getCounselTextForMonth(name, monthEndDate),
       attendanceDates: attendance.dates || [],
       plan,
-      mealDays: meal ? meal.days : {}
+      mediDays: medi ? medi.days : {}
     };
   }).sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function renderHeader(monthValue) {
   const days = getDaysInMonth(monthValue);
-  mealTableHead.innerHTML = `
+  mediTableHead.innerHTML = `
     <tr>
       <th>수급자명</th>
       <th>계획서 작성일</th>
       <th>상담일지 반영</th>
-      <th>식사 횟수</th>
-      <th>음식 준비</th>
+      <th>복약 대상</th>
       ${days.map((day) => {
         const dayNum = Number(day.split("-")[2]);
         const colorClass = getDayColorClass(day);
-        return `<th class="meal-day-head ${colorClass}">${dayNum}</th>`;
+        return `<th class="medi-day-head ${colorClass}">${dayNum}</th>`;
       }).join("")}
       <th>종합 결과</th>
     </tr>
@@ -498,26 +430,26 @@ function renderHeader(monthValue) {
 
 function renderResults(monthValue, results) {
   renderHeader(monthValue);
-  mealResultBody.innerHTML = "";
+  mediResultBody.innerHTML = "";
   const days = getDaysInMonth(monthValue);
 
   if (!results || results.length === 0) {
-    mealResultBody.innerHTML = `<tr><td colspan="${6 + days.length}">확인할 식사 대상자가 없습니다.</td></tr>`;
+    mediResultBody.innerHTML = `<tr><td colspan="${5 + days.length}">확인할 복약 대상자가 없습니다.</td></tr>`;
     return;
   }
 
   results.forEach((item) => {
     const row = document.createElement("tr");
     const attendanceSet = new Set(item.attendanceDates || []);
-    const monthEndRule = getMealRuleAtDate(item.plan, item.name, getMonthEndDate(monthValue));
+    const monthEndRule = getMediRuleAtDate(item.plan, item.name, getMonthEndDate(monthValue));
 
     let problemCount = 0;
     const dayCells = days.map((day) => {
       const isAttendanceDay = attendanceSet.has(day);
-      const rule = getMealRuleAtDate(item.plan, item.name, day);
-      const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule) : "정상";
-      if (isAttendanceDay && result !== "정상" && result !== "저녁 확인") problemCount += 1;
-      return buildDayCell(isAttendanceDay, item.mealDays[day], rule);
+      const rule = getMediRuleAtDate(item.plan, item.name, day);
+      const result = isAttendanceDay ? getDayResult(item.mediDays[day], rule) : "정상";
+      if (isAttendanceDay && result !== "정상") problemCount += 1;
+      return buildDayCell(isAttendanceDay, item.mediDays[day], rule);
     }).join("");
 
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
@@ -528,71 +460,68 @@ function renderResults(monthValue, results) {
       <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
       <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
       <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px; ${errorCellBg}">${item.counselText || "없음"}</td>
-      <td style="text-align:center; font-weight:700; ${errorCellBg}">${monthEndRule.mealCount || 0}회</td>
-      <td style="text-align:center; ${errorCellBg}">${monthEndRule.specialFood ? "기능상태" : "일반식"}</td>
+      <td style="text-align:center; font-weight:700; ${errorCellBg}">${monthEndRule.needMedi ? "대상자" : "비대상"}</td>
       ${dayCells}
       <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${overallText}</td>
     `;
-    mealResultBody.appendChild(row);
+    mediResultBody.appendChild(row);
   });
 }
 
-function applyMealStyle() {
-  if (document.getElementById("mealStyle")) return;
+function applyMediStyle() {
+  if (document.getElementById("mediStyle")) return;
   const style = document.createElement("style");
-  style.id = "mealStyle";
+  style.id = "mediStyle";
   style.textContent = `
-    .meal-table { min-width: 2200px; table-layout: fixed; }
-    .meal-table th, .meal-table td { vertical-align: middle; white-space: normal; text-align: center; padding: 10px 8px; border: 1px solid #e2e8f0; }
-    .meal-table th:nth-child(1), .meal-table td:nth-child(1) { min-width: 100px; width: 100px; text-align: center; position: sticky; left: 0; z-index: 4; }
-    .meal-table th:nth-child(1) { background-color: #eaf0fb; z-index: 6; }
-    .meal-table th:nth-child(2), .meal-table td:nth-child(2) { min-width: 115px; width: 115px; }
-    .meal-table th:nth-child(3), .meal-table td:nth-child(3) { min-width: 160px; width: 160px; text-align: left; }
-    .meal-table th:nth-child(4), .meal-table td:nth-child(4) { min-width: 80px; width: 80px; }
-    .meal-table th:nth-child(5), .meal-table td:nth-child(5) { min-width: 100px; width: 100px; }
-    .meal-day-head, .meal-day-cell { min-width: 95px; width: 95px; }
-    .meal-table th:last-child, .meal-table td:last-child { min-width: 115px; width: 115px; word-break: keep-all; line-height: 1.5; text-align: center; }
+    .medi-table { min-width: 2200px; table-layout: fixed; }
+    .medi-table th, .medi-table td { vertical-align: middle; white-space: normal; text-align: center; padding: 10px 8px; border: 1px solid #e2e8f0; }
+    .medi-table th:nth-child(1), .medi-table td:nth-child(1) { min-width: 100px; width: 100px; text-align: center; position: sticky; left: 0; z-index: 4; }
+    .medi-table th:nth-child(1) { background-color: #fef3c7; z-index: 6; }
+    .medi-table th:nth-child(2), .medi-table td:nth-child(2) { min-width: 115px; width: 115px; }
+    .medi-table th:nth-child(3), .medi-table td:nth-child(3) { min-width: 160px; width: 160px; text-align: left; }
+    .medi-table th:nth-child(4), .medi-table td:nth-child(4) { min-width: 90px; width: 90px; }
+    .medi-day-head, .medi-day-cell { min-width: 95px; width: 95px; }
+    .medi-table th:last-child, .medi-table td:last-child { min-width: 115px; width: 115px; word-break: keep-all; line-height: 1.5; text-align: center; }
     .small-cell-text { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; word-break: keep-all; }
     .empty-day { color: #64748b; background-color: #f8fafc !important; font-weight: 600; }
     
     .status-ok { color: #1e293b; font-weight: 700; }
-    .status-warn { color: #ea580c; font-weight: 800; }
     .status-danger { color: #e11d48; font-weight: 800; }
-    .meal-day-blue { color: #2563eb !important; }
-    .meal-day-red { color: #dc2626 !important; }
+    .medi-day-blue { color: #2563eb !important; }
+    .medi-day-red { color: #dc2626 !important; }
     
-    .meal-table tr:nth-child(even) td { background-color: #ffffff !important; }
+    .medi-table tr:nth-child(even) td { background-color: #ffffff !important; }
   `;
   document.head.appendChild(style);
 }
 
-checkMealBtn.addEventListener("click", async () => {
+checkMediBtn.addEventListener("click", async () => {
   const checkMonth = checkMonthInput.value;
-  const file = mealFileInput.files[0];
+  const file = mediFileInput.files[0];
 
   if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
-  if (!file) { alert("식사/화장실 기록 파일을 업로드해주세요."); return; }
+  if (!file) { alert("간호일지/복약기록 파일을 업로드해주세요."); return; }
 
   alert("구글 시트에서 계획서, 상담일지, 출석 데이터를 원격 동기화 중입니다...");
   await syncCarePlanLibraryFromGoogleSheet();
   await syncCounselLibraryFromGoogleSheet();
   await syncAttendanceMonthFromGoogleSheet(checkMonth);
-  applyMealStyle();
+  applyMediStyle();
 
   const reader = new FileReader();
   reader.onload = (event) => {
     const data = new Uint8Array(event.target.result);
     const workbook = XLSX.read(data, { type: "array", cellDates: true });
-    const mealRows = parseMealReport(workbook, checkMonth);
-    const results = buildResults(checkMonth, mealRows);
+    const mediRows = parseMediReport(workbook, checkMonth);
+    const results = buildResults(checkMonth, mediRows);
     renderResults(checkMonth, results);
   };
   reader.readAsArrayBuffer(file);
 });
 
-clearMealBtn.addEventListener("click", () => {
+clearMediBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
-  mealFileInput.value = "";
-  mealTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>식사 횟수</th><th>음식 준비</th></tr>`;
-  mealResultBody.innerHTML = `<tr><td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td></tr>`;
+  mediFileInput.value = "";
+  mediTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>복약 대상</th></tr>`;
+  mediResultBody.innerHTML = `<tr><td colspan="4">확인 월과 간호일지/복약기록 파일을 선택해주세요.</td></tr>`;
 });
