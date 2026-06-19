@@ -110,6 +110,18 @@ function getMonthEndDate(monthValue) {
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
+// 💡 [긴급 긴급 복구]: 전산 증발 원인이 되었던 한 달 날짜 배열 추출 함수를 완전 무결하게 하단에 다시 재배선했습니다.
+function getDaysInMonth(monthValue) {
+  if (!monthValue || typeof monthValue !== "string") return [];
+  const [year, month] = monthValue.split("-").map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  const days = [];
+  for (let day = 1; day <= lastDay; day++) {
+    days.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  }
+  return days;
+}
+
 function getWeekEndDates(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
@@ -367,7 +379,7 @@ function makeResultClass(result) {
   return "status-danger";
 }
 
-// 💡 [디자인 보완]: 외부를 한 번 더 두르던 불필요한 네모 박스 구조를 전부 삭제하고, td 셀 자체의 배경색만 부드럽게 채우도록 수정했습니다.
+// 💡 [박스 제거 완전 정형화]: 문자열 주위를 겉돌던 인형 상자 레이아웃을 걷어내고 순수 텍스트 줄바꿈 구조로 세팅했습니다.
 function buildWeekCell(result, weekData) {
   const resultClass = makeResultClass(result);
 
@@ -456,7 +468,6 @@ function applyTherapyReadableStyle() {
 function renderResults(monthValue, results) {
   applyTherapyReadableStyle();
   therapyResultBody.innerHTML = "";
-  const days = getDaysInMonth(monthValue);
 
   if (!results || results.length === 0) {
     therapyResultBody.innerHTML = `<tr><td colspan="10">확인할 데이터가 없습니다.</td></tr>`;
@@ -468,7 +479,6 @@ function renderResults(monthValue, results) {
     const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
     const errorCellBg = item.overallResult !== "정상" ? "background-color: #fff5f5;" : "";
 
-    // 💡 [배경색 매칭]: 주차별 td 칸 내부가 아닌 td 태그 자체에 인라인 스타일로 연동하도록 완전히 분리 조치했습니다.
     const getCellBgColor = (result) => {
       if (result === "결석") return "background-color: #f8fafc;";
       if (result !== "정상") return "background-color: #fff5f5;";
