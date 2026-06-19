@@ -666,6 +666,65 @@ function applyAttendanceStyle() {
   document.head.appendChild(style);
 }
 
+let attendanceUploadTimer = null;
+
+function showAttendanceUploadStatus(message) {
+  let box = document.getElementById("attendanceUploadStatusBox");
+
+  if (!box) {
+    box = document.createElement("div");
+    box.id = "attendanceUploadStatusBox";
+    box.style.position = "fixed";
+    box.style.left = "50%";
+    box.style.top = "50%";
+    box.style.transform = "translate(-50%, -50%)";
+    box.style.zIndex = "9999";
+    box.style.background = "#ffffff";
+    box.style.border = "1px solid #cbd5e1";
+    box.style.borderRadius = "12px";
+    box.style.boxShadow = "0 10px 30px rgba(0,0,0,0.18)";
+    box.style.padding = "22px 26px";
+    box.style.minWidth = "320px";
+    box.style.textAlign = "center";
+    box.style.fontSize = "14px";
+    box.style.color = "#1e293b";
+    box.innerHTML = `
+      <div style="font-weight:800; font-size:16px; margin-bottom:10px;">출석 파일 업로드 중입니다</div>
+      <div id="attendanceUploadStatusText" style="line-height:1.6;">${message}</div>
+      <div id="attendanceUploadElapsed" style="margin-top:10px; color:#64748b; font-size:12px;">경과 시간 0초</div>
+      <div style="margin-top:12px; color:#e11d48; font-size:12px;">창을 닫거나 새로고침하지 마세요.</div>
+    `;
+    document.body.appendChild(box);
+  }
+
+  const text = document.getElementById("attendanceUploadStatusText");
+  if (text) text.innerHTML = message;
+
+  const startTime = Date.now();
+  clearInterval(attendanceUploadTimer);
+  attendanceUploadTimer = setInterval(() => {
+    const seconds = Math.floor((Date.now() - startTime) / 1000);
+    const elapsed = document.getElementById("attendanceUploadElapsed");
+    if (elapsed) {
+      elapsed.textContent = `경과 시간 ${seconds}초 · 보통 10~60초 정도 걸릴 수 있습니다.`;
+    }
+  }, 1000);
+}
+
+function updateAttendanceUploadStatus(message) {
+  const text = document.getElementById("attendanceUploadStatusText");
+  if (text) text.innerHTML = message;
+}
+
+function hideAttendanceUploadStatus() {
+  clearInterval(attendanceUploadTimer);
+  attendanceUploadTimer = null;
+
+  const box = document.getElementById("attendanceUploadStatusBox");
+  if (box) box.remove();
+}
+
+
 registerAttendanceBtn.addEventListener("click", () => {
   applyAttendanceStyle();
 
@@ -682,6 +741,8 @@ registerAttendanceBtn.addEventListener("click", () => {
     return;
   }
 
+  showAttendanceUploadStatus("파일을 준비하는 중입니다...<br>잠시만 기다려주세요.");
+
   const reader = new FileReader();
 
   reader.onload = async (event) => {
@@ -691,6 +752,8 @@ registerAttendanceBtn.addEventListener("click", () => {
         type: "array",
         cellDates: true
       });
+
+      updateAttendanceUploadStatus("엑셀 파일을 읽는 중입니다...<br>잠시만 기다려주세요.");
 
       const items = parseAttendanceWorkbook(workbook, monthValue);
 
@@ -708,17 +771,28 @@ registerAttendanceBtn.addEventListener("click", () => {
         return;
       }
 
+      updateAttendanceUploadStatus("구글시트에 저장 중입니다...<br>데이터가 많으면 10~60초 정도 걸릴 수 있습니다.");
+
       await saveAttendanceMonth(monthValue, items, file.name);
+
+      updateAttendanceUploadStatus("저장 완료 후 화면을 정리하는 중입니다...");
 
       renderAttendance(items);
 
       attendanceFileInput.value = "";
+      hideAttendanceUploadStatus();
 
       alert("출석 내역이 구글시트에 업데이트 및 저장되었습니다.");
     } catch (error) {
+      hideAttendanceUploadStatus();
       console.error("출석 등록 오류:", error);
       alert("출석 등록 중 오류가 발생했습니다.");
     }
+  };
+
+  reader.onerror = () => {
+    hideAttendanceUploadStatus();
+    alert("파일을 읽는 중 오류가 발생했습니다.");
   };
 
   reader.readAsArrayBuffer(file);
