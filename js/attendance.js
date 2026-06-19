@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbzIkp9ZiNz8Tj0Ppw4OQBYqNV-UQ5ARgDoQ7NSz4V6UZgUtlTWcr7gGOfWXoWsHfnad4g/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwmRZBjhpYmC-KucogFJlaetCnqEA92QBx22CXumMIMPNuuVijxRxpif7xssapUxjUKCA/exec";
 
 const attendanceMonthInput = document.getElementById("attendanceMonth");
 const attendanceFileInput = document.getElementById("attendanceFile");
@@ -45,6 +45,19 @@ function parseDate(value) {
   return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
 }
 
+
+function getCellDisplayValue(cell) {
+  if (!cell) return "";
+
+  // 엑셀에서 시간이 숫자(0.6944)로 저장되어도, 화면에 보이는 값(cell.w)이 있으면 그 값을 우선 사용합니다.
+  if (cell.w !== undefined && cell.w !== null && String(cell.w).trim() !== "") {
+    return cell.w;
+  }
+
+  if (cell.v !== undefined && cell.v !== null) return cell.v;
+  return "";
+}
+
 function sheetToRowsWithMerges(sheet) {
   if (!sheet || !sheet["!ref"]) return [];
 
@@ -57,7 +70,7 @@ function sheetToRowsWithMerges(sheet) {
     for (let c = range.s.c; c <= range.e.c; c++) {
       const address = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[address];
-      row[c] = cell ? cell.v : "";
+      row[c] = getCellDisplayValue(cell);
     }
 
     rows.push(row);
@@ -68,7 +81,7 @@ function sheetToRowsWithMerges(sheet) {
   merges.forEach((merge) => {
     const startAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
     const startCell = sheet[startAddress];
-    const value = startCell ? startCell.v : "";
+    const value = getCellDisplayValue(startCell);
 
     for (let r = merge.s.r; r <= merge.e.r; r++) {
       for (let c = merge.s.c; c <= merge.e.c; c++) {
@@ -223,17 +236,29 @@ function normalizeTimeText(value) {
 
 function extractLeaveTime(serviceTime, provTime) {
   // 제공시간이 있으면 제공시간을 우선 사용하고, 없으면 서비스시간을 사용합니다.
-  // 예: "09:00 ~ 16:30" → "16:30"
-  const source = String(provTime || serviceTime || "").trim();
+  // 예: "09:00 ~ 16:30", "09:00-16:30", "09시00분~16시30분" → "16:30"
+  const rawSource = provTime || serviceTime || "";
+
+  // 엑셀 시간이 0.6944 같은 숫자로 들어온 경우
+  if (typeof rawSource === "number") {
+    return normalizeTimeText(rawSource);
+  }
+
+  const source = String(rawSource || "").trim();
   if (!source) return "";
 
-  const matches = source.match(/\d{1,2}\s*[:시]\s*\d{1,2}/g) || [];
+  // 엑셀 숫자 시간이 문자열로 들어온 경우
+  if (/^0\.\d+$/.test(source)) {
+    return normalizeTimeText(Number(source));
+  }
+
+  // 6:55 ~ 16:40 / 06시55분~16시40분 등 처리
+  const matches = source.match(/\d{1,2}\s*(?::|시)\s*\d{1,2}/g) || [];
   if (matches.length >= 2) return normalizeTimeText(matches[matches.length - 1]);
   if (matches.length === 1) return normalizeTimeText(matches[0]);
 
   return "";
 }
-
 
 function parseOneAttendanceSheet(sheet, monthValue) {
   const rows = sheetToRowsWithMerges(sheet);
