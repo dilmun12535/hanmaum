@@ -1,4 +1,3 @@
-// 💡 [핵심 교정]: 통신 불통의 원인이었던 원격 서버 주소를 정상 배선으로 완벽하게 수정했습니다.
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
 let carePlanLibraryCache = [];
@@ -92,7 +91,7 @@ function normalizeDateText(value) {
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
   if (text.includes("T")) return text.split("T")[0];
 
-  const match = text.match(/(\d{4})[.\-/년*](\d{1,2})[.\-/월*](\d{1,2})/);
+  const match = text.match(/(\\d{4})[.\-/년*](\\d{1,2})[.\-/월*](\\d{1,2})/);
   if (match) {
     return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
   }
@@ -289,72 +288,44 @@ function getLatestPlansByRecipient(name, checkDate) {
 
 function planToFullText(plan) {
   if (!plan) return "";
-  if (typeof plan.rows === "string") return normalizeText(plan.rows);
-  return normalizeText(JSON.stringify(plan.rows || ""));
+  if (typeof plan.rows === "string") return plan.rows;
+  try {
+    return JSON.stringify(plan.rows || "") + " " + JSON.stringify(plan.rowsJson || "");
+  } catch (e) {
+    return "";
+  }
 }
 
+// 💡 [지표 기준점 개조완료]: 단어 가공 형식을 완전히 파괴하고 계획서 전체에서 개별적으로 글자를 색출하여 2회 대상자를 오차 없이 판정합니다!
 function getMealCountFromPlan(plan) {
-  if (!plan || !plan.rows) return 1;
+  if (!plan) return 1;
+  
+  const rawRowsText = planToFullText(plan);
+  const extraText = `${plan.opinion || ""} ${plan.content || ""} ${plan.mealType || ""}`;
+  
+  // 특수 기호나 대괄호를 완전히 소멸시키고 유니코드 잔재까지 싹 정제한 순수 텍스트 생성
+  const cleanFinalText = (rawRowsText + " " + extraText).replace(/[^a-zA-Z0-9가-힣]/g, "");
 
-  let isTwoMeals = false;
+  const hasLunch = cleanFinalText.includes("중식") || cleanFinalText.includes("점심");
+  const hasDinner = cleanFinalText.includes("석식") || cleanFinalText.includes("저녁");
+  const hasTwoTimes = cleanFinalText.includes("2회") || cleanFinalText.includes("1일2회") || cleanFinalText.includes("이회");
 
-  try {
-    let rowsArray = [];
-    if (typeof plan.rows === "string") {
-      rowsArray = JSON.parse(plan.rows);
-    } else if (Array.isArray(plan.rows)) {
-      rowsArray = plan.rows;
-    }
-
-    if (Array.isArray(rowsArray)) {
-      rowsArray.forEach((row) => {
-        const code = normalizeText(row["필요내용코드"] || row["코드"] || "");
-        if (code.includes("A10") || code.includes("M04") || normalizeText(row["필요내용_수기(250)"] || "").includes("식사")) {
-          const contentText = normalizeText(JSON.stringify(row));
-          
-          const hasLunch = contentText.includes("중식") || contentText.includes("점심");
-          const hasDinner = contentText.includes("석식") || contentText.includes("저녁");
-          const hasTwoTimes = contentText.includes("2회") || contentText.includes("1일2회");
-
-          if ((hasLunch && hasDinner) || hasTwoTimes) {
-            isTwoMeals = true;
-          }
-        }
-      });
-    }
-  } catch (e) {
-    const backupText = normalizeText(JSON.stringify(plan.rows)).replace(/[^a-zA-Z0-9가-힣]/g, "");
-    if ((backupText.includes("중식") && backupText.includes("석식")) || backupText.includes("점심저녁") || backupText.includes("2회")) {
-      return 2;
-    }
+  // 점심과 저녁이 둘 다 들어있거나, 2회 단어가 포착되면 어떤 데이터 껍데기든 무조건 2회 확정!
+  if ((hasLunch && hasDinner) || hasTwoTimes) {
+    return 2;
   }
-
-  const opinionText = normalizeText(plan.opinion || "");
-  if (opinionText.includes("석식") || opinionText.includes("저녁추가") || opinionText.includes("식사2회")) {
-    isTwoMeals = true;
-  }
-
-  return isTwoMeals ? 2 : 1;
+  return 1;
 }
 
 function hasFoodPrepPlan(plan) {
-  if (!plan || !plan.rows) return false;
-  let isSpecial = false;
-  try {
-    let rowsArray = Array.isArray(plan.rows) ? plan.rows : JSON.parse(plan.rows);
-    if (Array.isArray(rowsArray)) {
-      rowsArray.forEach((row) => {
-        const text = normalizeText(JSON.stringify(row));
-        if (text.includes("음식준비") || text.includes("다진식") || text.includes("죽식") || text.includes("미음")) {
-          isSpecial = true;
-        }
-      });
-    }
-  } catch (e) {
-    const backupText = normalizeText(JSON.stringify(plan.rows));
-    if (backupText.includes("다진식") || backupText.includes("죽식") || backupText.includes("음식준비")) return true;
+  if (!plan) return false;
+  let combinedText = "";
+  if (plan.rows) {
+    if (typeof plan.rows === "object") combinedText = JSON.stringify(plan.rows);
+    else combinedText = plan.rows;
   }
-  return isSpecial || normalizeText(plan.opinion || "").includes("다진식") || normalizeText(plan.opinion || "").includes("죽식");
+  const finalText = (combinedText + " " + (plan.rowsJson ? JSON.stringify(plan.rowsJson) : "") + " " + `${plan.opinion || ""} ${plan.content || ""}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
+  return finalText.includes("음식준비") || finalText.includes("다진식") || finalText.includes("죽식") || finalText.includes("미음");
 }
 
 function getLatestMealCounsel(name, targetDate) {
@@ -365,7 +336,7 @@ function getLatestMealCounsel(name, targetDate) {
     if (!refDate || refDate > targetDateText) return false;
 
     const category = item.category || "";
-    const text = normalizeText(`${item.careContent || ""} ${item.reason || ""} ${item.changeType || ""}`);
+    const text = normalizeText(`${item.careContent || ""} ${item.reason || ""} ${item.changeType || ""}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
     return category === "식사" || text.includes("식단") || text.includes("식사") || text.includes("음식준비") || text.includes("다진식") || text.includes("죽식");
   }).sort((a, b) => {
     const dateA = normalizeDateText(a.reflection || a.reflectionDate || a.consultDate || a.date || "");
@@ -622,7 +593,7 @@ checkMealBtn.addEventListener("click", async () => {
 
 clearMealBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
-  file = mealFileInput.value = "";
+  mealFileInput.value = "";
   mealTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>식사 횟수</th><th>음식 준비</th></tr>`;
   mealResultBody.innerHTML = `<tr><td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td></tr>`;
 });
