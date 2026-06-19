@@ -110,7 +110,6 @@ function getMonthEndDate(monthValue) {
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
-// 💡 [긴급 긴급 복구]: 전산 증발 원인이 되었던 한 달 날짜 배열 추출 함수를 완전 무결하게 하단에 다시 재배선했습니다.
 function getDaysInMonth(monthValue) {
   if (!monthValue || typeof monthValue !== "string") return [];
   const [year, month] = monthValue.split("-").map(Number);
@@ -379,7 +378,7 @@ function makeResultClass(result) {
   return "status-danger";
 }
 
-// 💡 [박스 제거 완전 정형화]: 문자열 주위를 겉돌던 인형 상자 레이아웃을 걷어내고 순수 텍스트 줄바꿈 구조로 세팅했습니다.
+// 💡 [정상 핏 튜닝]: 요구하신 대로 정상일 때 튀는 파란색 스타일링이나 겉박스를 배제하고, 자연스러운 검정 텍스트 구조로 변경했습니다.
 function buildWeekCell(result, weekData) {
   const resultClass = makeResultClass(result);
 
@@ -389,8 +388,8 @@ function buildWeekCell(result, weekData) {
   }
 
   return `
-    <div class="${resultClass}" style="font-weight:700;">${result}</div>
-    ${recordText ? `<div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">${recordText}</div>` : ""}
+    <div class="${resultClass}">${result}</div>
+    ${recordText ? `<div style="font-size:11px; color:#555; margin-top:4px; white-space:normal; word-break:keep-all; line-height:1.5;">${recordText}</div>` : ""}
   `;
 }
 
@@ -458,7 +457,9 @@ function applyTherapyReadableStyle() {
     .therapy-check-table th:nth-child(3), .therapy-check-table td:nth-child(3) { min-width: 180px; width: 180px; text-align: left; }
     .therapy-check-table th:nth-child(n+4):nth-child(-n+9), .therapy-check-table td:nth-child(n+4):nth-child(-n+9) { min-width: 210px; width: 210px; text-align: center; }
     .therapy-check-table th:nth-child(10), .therapy-check-table td:nth-child(10) { min-width: 90px; width: 90px; text-align: center; vertical-align: middle; }
-    .status-ok { color: #2563eb; font-weight: 800; }
+    
+    /* 💡 [글씨색 핏 조정]: 정상 상태의 단어 텍스트에 강한 색상을 빼서 일반 텍스트로 녹아들게 교정했습니다. */
+    .status-ok { color: #1e293b; font-weight: 700; }
     .status-absent { color: #64748b; font-weight: 600; }
     .status-danger { color: #e11d48; font-weight: 800; }
   `;
@@ -468,6 +469,7 @@ function applyTherapyReadableStyle() {
 function renderResults(monthValue, results) {
   applyTherapyReadableStyle();
   therapyResultBody.innerHTML = "";
+  const days = getDaysInMonth(monthValue);
 
   if (!results || results.length === 0) {
     therapyResultBody.innerHTML = `<tr><td colspan="10">확인할 데이터가 없습니다.</td></tr>`;
@@ -482,7 +484,7 @@ function renderResults(monthValue, results) {
     const getCellBgColor = (result) => {
       if (result === "결석") return "background-color: #f8fafc;";
       if (result !== "정상") return "background-color: #fff5f5;";
-      return "background-color: #ffffff;";
+      return "background-color: #ffffff;"; // 정상일 때 티 없이 깨끗한 하얀색 배경 연동
     };
 
     row.innerHTML = `
