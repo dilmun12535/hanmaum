@@ -7,7 +7,6 @@ function makePayloadUrl(payload) {
   return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
-// 💡 [영구 조치]: 브라우저 저장 한도를 터트리던 localStorage 구문을 걷어내고 실시간 메모리 변수 수신 방식으로 리모델링했습니다.
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
@@ -50,7 +49,6 @@ function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
 
-// 💡 [안전 장치]: 정렬(sort) 시 이름 데이터가 누락되었거나 깨져있어도 에러가 나지 않도록 방어 로직을 선언합니다.
 function safeCompare(a, b) {
   const nameA = String(a || "").trim();
   const nameB = String(b || "").trim();
@@ -283,8 +281,11 @@ function renderHeader(monthValue) {
   `;
 }
 
+// 💡 [출력 핏 교정]: 기존에 대시(-) 기호로 뜨던 부분을 다른 화면 메뉴들과 마찬가지로 명확하게 "결석"이라는 단어로 교체했습니다!
 function buildDayCell(isAttendanceDay, cognitiveDay) {
-  if (!isAttendanceDay) return `<td class="cognitive-day-cell empty-day">-</td>`;
+  if (!isAttendanceDay) {
+    return `<td class="cognitive-day-cell empty-day">결석</td>`;
+  }
   if (cognitiveDay && cognitiveDay.count > 0) {
     const programText = cognitiveDay.programs && cognitiveDay.programs.length > 0 ? cognitiveDay.programs.join("<br>") : `${cognitiveDay.count}회`;
     return `
@@ -355,7 +356,7 @@ function applyCognitiveStyle() {
     .cognitive-table th:nth-child(3), .cognitive-table td:nth-child(3) { min-width: 80px; width: 80px; }
     .cognitive-day-head, .cognitive-day-cell { min-width: 90px; width: 90px; }
     .small-cell-text { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; word-break: keep-all; }
-    .empty-day { color: #999; background-color: #f8fafc; }
+    .empty-day { color: #999; background-color: #f8fafc; font-weight: 700; }
     .cognitive-day-blue { color: #2563eb !important; }
     .cognitive-day-red { color: #dc2626 !important; }
     .status-ok { color: #2563eb; font-weight: 800; }
