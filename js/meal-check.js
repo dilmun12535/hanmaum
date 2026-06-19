@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbx4ZrUg65tAdpMWLdPH30LBxLehX4331VIy81-OqL45b8oA0cdi4gHtByhO9K-rViF8Mw/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -91,7 +91,8 @@ function normalizeDateText(value) {
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
   if (text.includes("T")) return text.split("T")[0];
 
-  const match = text.match(/(\\d{4})[.\-/년*](\\d{1,2})[.\\-/월*](\\d{1,2})/);
+  // 💡 정규식 문법 완벽 오류 수정 완료
+  const match = text.match(/^(\d{4})[.\-/년*](\d{1,2})[.\-/월*](\d{1,2})/);
   if (match) {
     return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
   }
