@@ -85,40 +85,28 @@ function excelDateToJSDate(serial) {
   const utcDays = Math.floor(serial - 25569);
   const utcValue = utcDays * 86400;
   const dateInfo = new Date(utcValue * 1000);
-
-  const year = dateInfo.getFullYear();
-  const month = String(dateInfo.getMonth() + 1).padStart(2, "0");
-  const day = String(dateInfo.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
+  return `${dateInfo.getFullYear()}-${String(dateInfo.getMonth() + 1).padStart(2, "0")}-${String(dateInfo.getDate()).padStart(2, "0")}`;
 }
 
 function parseDate(value) {
   if (!value) return "";
-
   if (value instanceof Date) {
-    const year = value.getFullYear();
-    const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(dateInfo.getDate()).padStart(2, "0"); // 보완
-    return `${year}-${month}-${day}`;
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
   }
-
-  if (typeof value === "number") {
-    return excelDateToJSDate(value);
-  }
-
-  const text = String(value);
+  if (typeof value === "number") return excelDateToJSDate(value);
+  
+  const text = String(value).replace(/\s/g, "").replace(/^'/, "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
+  
   const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
-
   if (!match) return "";
-
   return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
 }
 
 function getMonthEndDate(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
-
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
@@ -134,11 +122,9 @@ function getWeekEndDates(monthValue) {
   anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
   const ranges = {};
-
   for (let i = 0; i < 6; i++) {
     const weekStart = new Date(anchorMonday);
     weekStart.setDate(anchorMonday.getDate() + i * 7);
-
     const weekFriday = new Date(weekStart);
     weekFriday.setDate(weekStart.getDate() + 4);
 
@@ -148,14 +134,36 @@ function getWeekEndDates(monthValue) {
     if (currentStart.getTime() > currentEnd.getTime()) {
       ranges[`week${i + 1}`] = null;
     } else {
-      const y = currentEnd.getFullYear();
-      const m = String(currentEnd.getMonth() + 1).padStart(2, "0");
-      const d = String(currentEnd.getDate()).padStart(2, "0");
-      ranges[`week${i + 1}`] = `${y}-${m}-${d}`;
+      ranges[`week${i + 1}`] = `${currentEnd.getFullYear()}-${String(currentEnd.getMonth() + 1).padStart(2, "0")}-${String(currentEnd.getDate()).padStart(2, "0")}`;
     }
   }
-
   return ranges;
+}
+
+// 💡 [주차별 일자 회수 기능 추가]: 특정 주차 범위 내에 등원한 날(출석일)이 단 하루라도 있는지 정교하게 카운정하기 위한 주차별 날짜 판정 로직
+function getDaysInWeekRange(monthValue, weekKey) {
+  const [year, month] = monthValue.split("-").map(Number);
+  const monthStart = new Date(year, month - 1, 1);
+  const monthEnd = new Date(year, month, 0);
+
+  const dayOfWeek = monthStart.getDay();
+  const daysFromMonday = (dayOfWeek + 6) % 7;
+  const anchorMonday = new Date(monthStart);
+  anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
+
+  const weekIdx = parseInt(weekKey.replace("week", "")) - 1;
+  const weekStart = new Date(anchorMonday);
+  weekStart.setDate(anchorMonday.getDate() + weekIdx * 7);
+
+  const days = [];
+  for (let i = 0; i < 5; i++) { // 월~금
+    const current = new Date(weekStart);
+    current.setDate(weekStart.getDate() + i);
+    if (current >= monthStart && current <= monthEnd) {
+      days.push(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`);
+    }
+  }
+  return days;
 }
 
 function getWeekKey(dateText) {
@@ -165,7 +173,6 @@ function getWeekKey(dateText) {
 
   const dayOfWeek = monthStart.getDay();
   const daysFromMonday = (dayOfWeek + 6) % 7;
-
   const anchorMonday = new Date(monthStart);
   anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
@@ -185,7 +192,6 @@ function getLatestPlansByRecipient(name, checkDate) {
   const validPlans = library.filter((plan) => {
     return new Date(plan.writtenDate) <= new Date(checkDate) && isSameRecipient(plan.recipientName, name);
   });
-
   validPlans.sort((a, b) => new Date(b.writtenDate) - new Date(a.writtenDate));
   return validPlans[0] || null;
 }
@@ -204,11 +210,8 @@ function getLatestTherapyCounsel(name, targetDate) {
     .filter((item) => {
       const sameName = isSameRecipient(item.recipientName || item.name, name);
       const reflectionDate = new Date(item.reflectionDate);
-      const category = item.category || "";
       const text = normalizeText(`${item.careContent} ${item.reason} ${item.changeType}`);
-      const isTherapy = category === "물리치료" || text.includes("물리치료");
-
-      return sameName && isTherapy && reflectionDate <= target;
+      return sameName && (item.category === "물리치료" || text.includes("물리치료")) && reflectionDate <= target;
     })
     .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
 
@@ -230,7 +233,6 @@ function isAddCounsel(counsel) {
 function isTherapyRequiredAtDate(plan, name, targetDate) {
   let required = hasTherapyPlan(plan);
   const counsel = getLatestTherapyCounsel(name, targetDate);
-
   if (counsel) {
     if (isRemoveCounsel(counsel)) required = false;
     if (isAddCounsel(counsel)) required = true;
@@ -238,7 +240,6 @@ function isTherapyRequiredAtDate(plan, name, targetDate) {
   return required;
 }
 
-// 💡 [줄바꿈 보완 완료]: 날짜 바로 뒤에 유형을 붙이고, 상세 내용은 엔터 쳐서 분리하도록 설계했습니다.
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestTherapyCounsel(name, monthEndDate);
   if (!counsel) return "없음";
@@ -251,6 +252,16 @@ function getCounselTextForMonth(name, monthEndDate) {
     content = content.replace(", 작업치료", "<br>작업치료").replace("), 작업치료", ")<br>작업치료");
   }
   return `<span style="font-weight: 700; color: #1e293b;">${rawDate} [${changeType}]</span><br>${content}`;
+}
+
+function getAttendanceMonth(monthValue) {
+  return attendanceLibraryCache
+    .filter((item) => item.month === monthValue)
+    .map((item) => ({
+      name: String(item.name || item.recipientName || "").trim(),
+      dates: item.dates || item.attendanceDates || []
+    }))
+    .filter((item) => item.name !== "");
 }
 
 function sheetToRowsWithMerges(sheet) {
@@ -305,7 +316,6 @@ function parseTherapyReport(workbook, monthValue) {
   const noteCol = header.findIndex((cell) => normalizeText(cell).includes("특이사항"));
 
   const therapyMap = {};
-
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i] || [];
     const name = String(row[nameCol] || "").trim();
@@ -343,7 +353,10 @@ function parseTherapyReport(workbook, monthValue) {
   return Object.values(therapyMap);
 }
 
-function getWeekResult(required, weekData) {
+// 💡 [출석 연동 판정 커스텀]: 주차 범위 내에 출석(등원)한 날이 전혀 없으면 '결석'으로 최우선 마스킹하도록 로직 개조
+function getWeekResult(required, weekData, hasAttendanceInWeek) {
+  if (!hasAttendanceInWeek) return "결석"; // 등원 안 한 주차는 무조건 결석
+
   const hasRecord = weekData && weekData.hasRecord;
   if (required && hasRecord) return "정상";
   if (required && !hasRecord) return "누락";
@@ -353,24 +366,25 @@ function getWeekResult(required, weekData) {
 
 function makeResultClass(result) {
   if (result === "정상") return "status-ok";
-  if (result === "누락") return "status-danger";
-  if (result === "오류") return "status-danger";
-  return "";
+  if (result === "결석") return "status-absent";
+  return "status-danger";
 }
 
-function buildWeekCell(required, weekData) {
-  const result = getWeekResult(required, weekData);
+function buildWeekCell(result, weekData) {
   const resultClass = makeResultClass(result);
 
   let recordText = "-";
-  if (weekData && weekData.recordText) {
+  if (weekData && weekData.recordText && result !== "결석") {
     recordText = weekData.recordText.replaceAll(" / ", "<br>").replaceAll("~", " ~ ");
   }
 
-  const errorCellBg = result !== "정상" ? "background-color: #fff5f5;" : "";
+  // 결석일 때는 차분한 회색 배경색, 오류/누락일 때는 연분홍 배경색 세팅
+  let cellBgStyle = "";
+  if (result === "결석") cellBgStyle = "background-color: #f8fafc; color: #64748b;";
+  else if (result !== "정상") UsefulBg = "background-color: #fff5f5;";
 
   return `
-    <div style="width: 100%; height: 100%; padding: 4px; ${errorCellBg}">
+    <div style="width: 100%; height: 100%; padding: 4px; ${cellBgStyle}">
       <div class="${resultClass}" style="font-weight:700;">${result}</div>
       <div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">${recordText}</div>
     </div>
@@ -378,35 +392,45 @@ function buildWeekCell(required, weekData) {
 }
 
 function buildOverallResult(weekResults) {
-  return weekResults.some((result) => result !== "정상") ? "확인 필요" : "정상";
+  // 결석을 제외하고 누락이나 오류가 단 하나라도 포착되면 '확인 필요'
+  const hasRealError = weekResults.some((r) => r === "누락" || r === "오류");
+  return hasRealError ? "확인 필요" : "정상";
 }
 
 function buildResults(monthValue, therapyRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const weekEndDates = getWeekEndDates(monthValue);
+  const attendanceRows = getAttendanceMonth(monthValue);
 
   const results = therapyRows.map((therapy) => {
     const name = therapy.name;
     const plan = getLatestPlansByRecipient(name, monthEndDate);
+    const myAttendance = attendanceRows.find((item) => isSameRecipient(item.name, name));
+    const attendDatesSet = new Set(myAttendance ? myAttendance.dates : []);
 
     const weeks = therapy.weeks;
-    const weekRequired = {
-      week1: weekEndDates.week1 ? isTherapyRequiredAtDate(plan, name, weekEndDates.week1) : false,
-      week2: weekEndDates.week2 ? isTherapyRequiredAtDate(plan, name, weekEndDates.week2) : false,
-      week3: weekEndDates.week3 ? isTherapyRequiredAtDate(plan, name, weekEndDates.week3) : false,
-      week4: weekEndDates.week4 ? isTherapyRequiredAtDate(plan, name, weekEndDates.week4) : false,
-      week5: weekEndDates.week5 ? isTherapyRequiredAtDate(plan, name, weekEndDates.week5) : false,
-      week6: weekEndDates.week6 ? isTherapyRequiredAtDate(plan, name, weekEndDates.week6) : false
-    };
+    const weekKeys = ["week1", "week2", "week3", "week4", "week5", "week6"];
+    
+    const weekRequired = {};
+    const weekResultsMap = {};
 
-    const weekResults = [
-      getWeekResult(weekRequired.week1, weeks.week1),
-      getWeekResult(weekRequired.week2, weeks.week2),
-      getWeekResult(weekRequired.week3, weeks.week3),
-      getWeekResult(weekRequired.week4, weeks.week4),
-      getWeekResult(weekRequired.week5, weeks.week5),
-      getWeekResult(weekRequired.week6, weeks.week6)
-    ];
+    weekKeys.forEach((wk) => {
+      if (!weekEndDates[wk]) {
+        weekResultsMap[wk] = "정상";
+        return;
+      }
+      // 해당 주차의 평일 중 등원한 날이 하루라도 있는지 판정
+      const weekDays = getDaysInWeekRange(monthValue, wk);
+      const hasAttend = weekDays.some((d) => attendDatesSet.has(day = d));
+      
+      const req = isTherapyRequiredAtDate(plan, name, weekEndDates[wk]);
+      weekRequired[wk] = req;
+      weekResultsMap[wk] = getWeekResult(req, weeks[wk], hasAttend);
+    });
+
+    const weekResultsArray = weekEndDates.week5 ? 
+      [weekResultsMap.week1, weekResultsMap.week2, weekResultsMap.week3, weekResultsMap.week4, weekResultsMap.week5] : 
+      [weekResultsMap.week1, weekResultsMap.week2, weekResultsMap.week3, weekResultsMap.week4];
 
     return {
       name,
@@ -414,7 +438,8 @@ function buildResults(monthValue, therapyRows) {
       counselText: getCounselTextForMonth(name, monthEndDate),
       weekRequired,
       weeks,
-      overallResult: buildOverallResult(weekResults)
+      weekResultsMap,
+      overallResult: buildOverallResult(weekResultsArray)
     };
   });
 
@@ -433,17 +458,18 @@ function applyTherapyReadableStyle() {
     .therapy-check-table th:nth-child(n+4):nth-child(-n+9), .therapy-check-table td:nth-child(n+4):nth-child(-n+9) { min-width: 210px; width: 210px; text-align: center; padding: 0px !important; }
     .therapy-check-table th:nth-child(10), .therapy-check-table td:nth-child(10) { min-width: 90px; width: 90px; text-align: center; vertical-align: middle; }
     .status-ok { color: #2563eb; font-weight: 800; }
+    .status-absent { color: #64748b; font-weight: 600; }
     .status-danger { color: #e11d48; font-weight: 800; }
   `;
   document.head.appendChild(style);
 }
 
-function renderResults(results) {
+function renderResults(monthValue, results) {
   applyTherapyReadableStyle();
   therapyResultBody.innerHTML = "";
 
   if (!results || results.length === 0) {
-    therapyResultBody.innerHTML = `<tr><td colspan="9">확인할 데이터가 없습니다.</td></tr>`;
+    therapyResultBody.innerHTML = `<tr><td colspan="10">확인할 데이터가 없습니다.</td></tr>`;
     return;
   }
 
@@ -455,14 +481,12 @@ function renderResults(results) {
     row.innerHTML = `
       <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name}</td>
       <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
-      
       <td style="font-size:12px; line-height:1.4; ${errorCellBg}">${item.counselText}</td>
-      
-      <td>${buildWeekCell(item.weekRequired.week1, item.weeks.week1)}</td>
-      <td>${buildWeekCell(item.weekRequired.week2, item.weeks.week2)}</td>
-      <td>${buildWeekCell(item.weekRequired.week3, item.weeks.week3)}</td>
-      <td>${buildWeekCell(item.weekRequired.week4, item.weeks.week4)}</td>
-      <td>${buildWeekCell(item.weekRequired.week5, item.weeks.week5)}</td>
+      <td>${buildWeekCell(item.weekResultsMap.week1, item.weeks.week1)}</td>
+      <td>${buildWeekCell(item.weekResultsMap.week2, item.weeks.week2)}</td>
+      <td>${buildWeekCell(item.weekResultsMap.week3, item.weeks.week3)}</td>
+      <td>${buildWeekCell(item.weekResultsMap.week4, item.weeks.week4)}</td>
+      <td>${buildWeekCell(item.weekResultsMap.week5, item.weeks.week5)}</td>
       <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${item.overallResult}</td>
     `;
     therapyResultBody.appendChild(row);
@@ -470,14 +494,17 @@ function renderResults(results) {
 }
 
 checkTherapyBtn.addEventListener("click", async () => {
-  alert("구글 시트에서 계획서 및 상담일지 데이터 보관함을 동기화 중입니다...");
-  await syncCarePlanLibraryFromGoogleSheet();
-  await syncCounselLibraryFromGoogleSheet(); 
   const checkMonth = checkMonthInput.value;
   const file = therapyFileInput.files[0];
 
   if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
   if (!file) { alert("물리치료 기록 파일을 업로드해주세요."); return; }
+
+  alert("구글 시트에서 계획서, 상담일지 및 출석 데이터 보관함을 동기화 중입니다...");
+  await syncCarePlanLibraryFromGoogleSheet();
+  await syncCounselLibraryFromGoogleSheet(); 
+  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+  applyTherapyReadableStyle();
 
   const reader = new FileReader();
   reader.onload = (event) => {
@@ -485,7 +512,7 @@ checkTherapyBtn.addEventListener("click", async () => {
     const workbook = XLSX.read(data, { type: "array", cellDates: true });
     const therapyRows = parseTherapyReport(workbook, checkMonth);
     const results = buildResults(checkMonth, therapyRows);
-    renderResults(results);
+    renderResults(checkMonth, results);
   };
   reader.readAsArrayBuffer(file);
 });
@@ -493,5 +520,5 @@ checkTherapyBtn.addEventListener("click", async () => {
 clearTherapyBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
   therapyFileInput.value = "";
-  therapyResultBody.innerHTML = `<tr><td colspan="9">확인 월과 물리치료 기록 파일을 선택해주세요.</td></tr>`;
+  therapyResultBody.innerHTML = `<tr><td colspan="10">확인 월과 물리치료 기록 파일을 선택해주세요.</td></tr>`;
 });
