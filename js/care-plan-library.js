@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbx11o-xtue76vaZWrfoGlVcAxVz8CvgD6-y2LTwRbueCJ0ysKDoWqh5ukaQ7ltfs5J38w/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxFfVUr6hOEpYJbPxJxCW_TOMR144lqoz7Gir9kDZMTFOCy-ygrfrQ0YLzPxfx5aEzZbQ/exec";
 
 // HTML 내부 변수와 부딪히지 않도록 스크립트 전용 고유 이름으로 안전하게 요소를 매칭합니다.
 const elPlanFileSelector = document.getElementById("planFile");
