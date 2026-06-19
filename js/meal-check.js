@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbx4ZrUg65tAdpMWLdPH30LBxLehX4331VIy81-OqL45b8oA0cdi4gHtByhO9K-rViF8Mw/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -91,7 +91,7 @@ function normalizeDateText(value) {
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
   if (text.includes("T")) return text.split("T")[0];
 
-  const match = text.match(/(\\d{4})[.\-/년*](\\d{1,2})[.\-/월*](\\d{1,2})/);
+  const match = text.match(/(\\d{4})[.\-/년*](\\d{1,2})[.\\-/월*](\\d{1,2})/);
   if (match) {
     return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
   }
@@ -290,27 +290,24 @@ function planToFullText(plan) {
   if (!plan) return "";
   if (typeof plan.rows === "string") return plan.rows;
   try {
-    return JSON.stringify(plan.rows || "") + " " + JSON.stringify(plan.rowsJson || "");
+    return JSON.stringify(plan.rows || "") + " " + String(plan.rowsJson || "");
   } catch (e) {
     return "";
   }
 }
 
-// 💡 [지표 기준점 개조완료]: 단어 가공 형식을 완전히 파괴하고 계획서 전체에서 개별적으로 글자를 색출하여 2회 대상자를 오차 없이 판정합니다!
 function getMealCountFromPlan(plan) {
   if (!plan) return 1;
   
   const rawRowsText = planToFullText(plan);
   const extraText = `${plan.opinion || ""} ${plan.content || ""} ${plan.mealType || ""}`;
   
-  // 특수 기호나 대괄호를 완전히 소멸시키고 유니코드 잔재까지 싹 정제한 순수 텍스트 생성
   const cleanFinalText = (rawRowsText + " " + extraText).replace(/[^a-zA-Z0-9가-힣]/g, "");
 
   const hasLunch = cleanFinalText.includes("중식") || cleanFinalText.includes("점심");
   const hasDinner = cleanFinalText.includes("석식") || cleanFinalText.includes("저녁");
   const hasTwoTimes = cleanFinalText.includes("2회") || cleanFinalText.includes("1일2회") || cleanFinalText.includes("이회");
 
-  // 점심과 저녁이 둘 다 들어있거나, 2회 단어가 포착되면 어떤 데이터 껍데기든 무조건 2회 확정!
   if ((hasLunch && hasDinner) || hasTwoTimes) {
     return 2;
   }
@@ -324,7 +321,7 @@ function hasFoodPrepPlan(plan) {
     if (typeof plan.rows === "object") combinedText = JSON.stringify(plan.rows);
     else combinedText = plan.rows;
   }
-  const finalText = (combinedText + " " + (plan.rowsJson ? JSON.stringify(plan.rowsJson) : "") + " " + `${plan.opinion || ""} ${plan.content || ""}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
+  const finalText = (combinedText + " " + (plan.rowsJson ? String(plan.rowsJson) : "") + " " + `${plan.opinion || ""} ${plan.content || ""}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
   return finalText.includes("음식준비") || finalText.includes("다진식") || finalText.includes("죽식") || finalText.includes("미음");
 }
 
