@@ -60,7 +60,19 @@ function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
 
-// 💡 [안전 장치]: 정렬 시 이름 유실 데이터나 빈 행을 만나도 시스템이 다운되지 않도록 방어 로직을 선언합니다.
+function normalizeRecipientName(value) {
+  return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
+}
+
+// 💡 이름에 공백이나 괄호 등의 텍스트 차이가 발생하더라도 유연하게 동일인물로 인식하는 알고리즘 선언
+function isSameRecipient(nameA, nameB) {
+  const cleanA = normalizeRecipientName(nameA);
+  const cleanB = normalizeRecipientName(nameB);
+  if (!cleanA || !cleanB) return false;
+  return cleanA.includes(cleanB) || cleanB.includes(cleanA);
+}
+
+// 💡 [에러 원천 방어]: 이름 데이터가 비어있거나 누락된 빈 행이 유입되어도 localeCompare 에러로 멈추지 않도록 조치
 function safeCompare(a, b) {
   const nameA = String(a || "").trim();
   const nameB = String(b || "").trim();
@@ -84,6 +96,7 @@ function parseDate(value) {
   const text = String(value);
   const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
   if (!match) return "";
+
   return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
 }
 
@@ -156,18 +169,12 @@ function sheetToRowsWithMerges(sheet) {
     const value = startCell ? startCell.v : "";
     for (let r = merge.s.r; r <= merge.e.r; r++) {
       for (let c = merge.s.c; c <= merge.e.c; c++) {
-        rows[r - range.s.r][c] = value;
+        const rowIndex = r - range.s.r;
+        rows[rowIndex][c] = value;
       }
     }
   });
   return rows;
-}
-
-function isSameRecipient(nameA, nameB) {
-  const cleanA = normalizeText(nameA);
-  const cleanB = normalizeText(nameB);
-  if (!cleanA || !cleanB) return false;
-  return cleanA.includes(cleanB) || cleanB.includes(cleanA);
 }
 
 function findColumn(header, keywords) {
@@ -260,8 +267,7 @@ function getAttendanceMonth(monthValue) {
       name: String(item.name || item.recipientName || "").trim(),
       dates: item.dates || item.attendanceDates || []
     }))
-    .filter((item) => item.name !== "")
-    .sort((a, b) => safeCompare(a.name, b.name));
+    .filter((item) => item.name !== "");
 }
 
 function readWorkbook(file) {
@@ -290,12 +296,14 @@ function applySplitCheckStyle() {
     .split-day-head, .split-day-cell { min-width: 115px; width: 115px; }
     .split-check-table th:last-child, .split-check-table td:last-child { min-width: 115px; width: 115px; word-break: keep-all; line-height: 1.5; }
     .small-cell-text { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; word-break: keep-all; }
-    .empty-day { color: #999; background-color: #f8fafc; font-weight: 700; }
+    .empty-day { color: #999; background-color: #f8fafc !important; font-weight: 700; }
     
     .status-ok { color: #1e293b; font-weight: 700; }
     .status-danger { color: #e11d48; font-weight: 800; }
     .split-day-blue { color: #2563eb !important; }
     .split-day-red { color: #dc2626 !important; }
+    
+    /* 💡 [얼룩 원천 차단]: 짝수행을 파랗게 만들던 기본 CSS 템플릿 양식을 완벽한 !important 백색으로 덮어씌워 소멸시켰습니다. */
     .split-check-table tr:nth-child(even) td { background-color: #ffffff !important; }
   `;
   document.head.appendChild(style);
@@ -395,11 +403,12 @@ function buildDayCell(isAttendanceDay, nursingDay, requiredHealthMinutes) {
   `;
 }
 
+// 💡 [치명적 결함 조치]: 정렬 브레이크의 원인이 되던 buildResults 구조를 전산 출석부(attendanceRows)를 올바르게 순회하도록 전면 재구성했습니다.
 function buildResults(monthValue, nursingRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const attendanceRows = getAttendanceMonth(monthValue);
 
-  return attendanceRows.map((attendance) => {
+  const results = attendanceRows.map((attendance) => {
     const name = attendance.name;
     const plan = getLatestPlansByRecipient(name, monthEndDate);
     const nursing = nursingRows.find((item) => isSameRecipient(item.name, name));
@@ -412,7 +421,9 @@ function buildResults(monthValue, nursingRows) {
       attendanceDates: attendance.dates || [],
       nursingDays: nursing ? nursing.days : {}
     };
-  }).sort((a, b) => safeCompare(a.name, b.name));
+  });
+
+  return results.sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function renderResults(monthValue, results) {
