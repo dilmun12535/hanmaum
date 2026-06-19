@@ -8,20 +8,31 @@ function makePayloadUrl(payload) {
   return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
+// 💡 [영구 조치]: 브라우저 저장 용량을 터트리던 localStorage 구문을 완전히 삭제하고 안전한 메모리 변수 수신 방식으로 리모델링했습니다.
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
     carePlanLibraryCache = JSON.parse(text);
-    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibraryCache));
     return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
-    return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+    return [];
   }
 }
 
-// 💡 [동기화망 추가]: 간호제공 화면 역시 캐시 락에 갇혀 팝업 경고창이 뜨지 않도록 실시간 서버 원격 동기화 수신망을 개설했습니다.
+async function syncCounselLibraryFromGoogleSheet() {
+  try {
+    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, { method: "GET", redirect: "follow" });
+    const text = await response.text();
+    counselLibraryCache = JSON.parse(text);
+    return counselLibraryCache;
+  } catch (error) {
+    console.error("상담일지 동기화 오류:", error);
+    return [];
+  }
+}
+
 async function syncAttendanceMonthFromGoogleSheet(monthValue) {
   try {
     const response = await fetch(
@@ -43,9 +54,17 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
 
 // 초기 기본 동기화 가동
 syncCarePlanLibraryFromGoogleSheet();
+syncCounselLibraryFromGoogleSheet();
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
+}
+
+// 💡 [안전 장치]: 정렬 시 이름 유실 데이터나 빈 행을 만나도 시스템이 다운되지 않도록 방어 로직을 선언합니다.
+function safeCompare(a, b) {
+  const nameA = String(a || "").trim();
+  const nameB = String(b || "").trim();
+  return nameA.localeCompare(nameB, "ko");
 }
 
 function excelDateToJSDate(serial) {
@@ -57,17 +76,14 @@ function excelDateToJSDate(serial) {
 
 function parseDate(value) {
   if (!value) return "";
-
   if (value instanceof Date) {
     return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
   }
-
   if (typeof value === "number") return excelDateToJSDate(value);
 
   const text = String(value);
   const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
   if (!match) return "";
-
   return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
 }
 
@@ -81,11 +97,9 @@ function getDaysInMonth(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   const days = [];
-
   for (let day = 1; day <= lastDay; day++) {
     days.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
   }
-
   return days;
 }
 
@@ -118,7 +132,6 @@ function getDayColorClass(dateText) {
   const date = new Date(dateText);
   const weekday = date.getDay();
   const holidayList = getHolidayList(date.getFullYear());
-
   if (weekday === 0 || holidayList.includes(dateText)) return "split-day-red";
   if (weekday === 6) return "split-day-blue";
   return "";
@@ -127,7 +140,6 @@ function getDayColorClass(dateText) {
 function sheetToRowsWithMerges(sheet) {
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const rows = [];
-
   for (let r = range.s.r; r <= range.e.r; r++) {
     const row = [];
     for (let c = range.s.c; c <= range.e.c; c++) {
@@ -137,22 +149,25 @@ function sheetToRowsWithMerges(sheet) {
     }
     rows.push(row);
   }
-
   const merges = sheet["!merges"] || [];
   merges.forEach((merge) => {
     const startAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
     const startCell = sheet[startAddress];
     const value = startCell ? startCell.v : "";
-
     for (let r = merge.s.r; r <= merge.e.r; r++) {
       for (let c = merge.s.c; c <= merge.e.c; c++) {
-        const rowIndex = r - range.s.r;
-        rows[rowIndex][c] = value;
+        rows[r - range.s.r][c] = value;
       }
     }
   });
-
   return rows;
+}
+
+function isSameRecipient(nameA, nameB) {
+  const cleanA = normalizeText(nameA);
+  const cleanB = normalizeText(nameB);
+  if (!cleanA || !cleanB) return false;
+  return cleanA.includes(cleanB) || cleanB.includes(cleanA);
 }
 
 function findColumn(header, keywords) {
@@ -168,106 +183,65 @@ function parseMinutes(value) {
   return match ? Number(match[0]) : 0;
 }
 
-function getLatestPlansByRecipient(checkDate) {
-  const library = carePlanLibraryCache.length > 0 ? carePlanLibraryCache : JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
-  const validPlans = library.filter((plan) => new Date(plan.writtenDate) <= new Date(checkDate));
-  const latestByName = {};
-
-  validPlans.forEach((plan) => {
-    const name = plan.recipientName;
-    const current = latestByName[name];
-
-    if (!current || new Date(plan.writtenDate) > new Date(current.writtenDate)) {
-      latestByName[name] = plan;
-    }
+function getLatestPlansByRecipient(name, checkDate) {
+  const library = carePlanLibraryCache || [];
+  const validPlans = library.filter((plan) => {
+    return new Date(plan.writtenDate) <= new Date(checkDate) && isSameRecipient(plan.recipientName, name);
   });
-
-  return latestByName;
+  validPlans.sort((a, b) => new Date(b.writtenDate) - new Date(a.writtenDate));
+  return validPlans[0] || null;
 }
 
 function getMedicationCountFromPlan(plan) {
   if (!plan || !plan.rows) return 0;
-
   let result = 0;
-
   (plan.rows || []).forEach((row) => {
     const text = normalizeText(JSON.stringify(row));
-
-    if (
-      text.includes("정확한복약도움") ||
-      text.includes("복약도움") ||
-      text.includes("약복용")
-    ) {
+    if (text.includes("정확한복약도움") || text.includes("복약도움") || text.includes("약복용")) {
       const countValue = row["횟수"] || row["12"] || row[12];
       const parsed = Number(String(countValue || "").replace(/[^0-9]/g, ""));
-
       if (parsed > result) result = parsed;
     }
   });
-
   return Math.min(result, 3);
 }
 
 function getCounselMedicationCount(name, targetDate, fallbackCount) {
-  const counselLibrary = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+  const counselLibrary = counselLibraryCache || [];
   const target = new Date(targetDate);
 
   const counsels = counselLibrary
     .filter((item) => {
-      const sameName = item.recipientName === name;
+      const sameName = isSameRecipient(item.recipientName || item.name, name);
       const reflectionDate = new Date(item.reflectionDate);
       const text = normalizeText(`${item.category} ${item.changeType} ${item.careContent} ${item.reason}`);
-
-      return (
-        sameName &&
-        reflectionDate <= target &&
-        (
-          text.includes("복약") ||
-          text.includes("투약") ||
-          text.includes("정확한복약도움") ||
-          text.includes("건강관리")
-        )
-      );
+      return sameName && reflectionDate <= target && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
     })
     .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
 
   if (counsels.length === 0) return fallbackCount;
-
   const text = normalizeText(`${counsels[0].changeType} ${counsels[0].careContent} ${counsels[0].reason}`);
-
   if (text.includes("제외") || text.includes("중단") || text.includes("미제공") || text.includes("삭제")) return 0;
   if (text.match(/3\s*회/) || text.includes("아침점심저녁")) return 3;
   if (text.match(/2\s*회/) || text.includes("아침저녁") || text.includes("점심저녁")) return 2;
   if (text.match(/1\s*회/) || text.includes("아침") || text.includes("점심") || text.includes("저녁")) return 1;
-
   return fallbackCount;
 }
 
 function getMedicationCounselTextForMonth(name, monthEndDate) {
-  const counselLibrary = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+  const counselLibrary = counselLibraryCache || [];
   const target = new Date(monthEndDate);
 
   const counsels = counselLibrary
     .filter((item) => {
-      const sameName = item.recipientName === name;
+      const sameName = isSameRecipient(item.recipientName || item.name, name);
       const reflectionDate = new Date(item.reflectionDate);
       const text = normalizeText(`${item.category} ${item.changeType} ${item.careContent} ${item.reason}`);
-
-      return (
-        sameName &&
-        reflectionDate <= target &&
-        (
-          text.includes("복약") ||
-          text.includes("투약") ||
-          text.includes("정확한복약도움") ||
-          text.includes("건강관리")
-        )
-      );
+      return sameName && reflectionDate <= target && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
     })
     .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
 
   if (counsels.length === 0) return "없음";
-
   const counsel = counsels[0];
   return `${counsel.reflectionDate}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
 }
@@ -280,124 +254,50 @@ function getRequiredHealthMinutes(medicationCount) {
 }
 
 function getAttendanceMonth(monthValue) {
-  // 💡 [캐시 결함 해제]: 브라우저 캐시 외에 실시간 연동 원격 배열 데이터도 함께 스캔하도록 수급 구조를 안전하게 개조했습니다.
-  const localLibrary = JSON.parse(localStorage.getItem("attendanceLibrary") || "[]");
-  const activeLibrary = attendanceLibraryCache.length > 0 ? attendanceLibraryCache : localLibrary;
-
-  return activeLibrary
+  return attendanceLibraryCache
     .filter((item) => item.month === monthValue)
-    .sort((a, b) => a.name.localeCompare(b.name, "ko"));
+    .map((item) => ({
+      name: String(item.name || item.recipientName || "").trim(),
+      dates: item.dates || item.attendanceDates || []
+    }))
+    .filter((item) => item.name !== "")
+    .sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function readWorkbook(file) {
   return new Promise((resolve) => {
     const reader = new FileReader();
-
     reader.onload = (event) => {
       const data = new Uint8Array(event.target.result);
       resolve(XLSX.read(data, { type: "array", cellDates: true }));
     };
-
     reader.readAsArrayBuffer(file);
   });
 }
 
 function applySplitCheckStyle() {
   if (document.getElementById("splitCheckStyle")) return;
-
   const style = document.createElement("style");
   style.id = "splitCheckStyle";
   style.textContent = `
-    .split-check-table {
-      min-width: 2200px;
-      table-layout: fixed;
-    }
-
-    .split-check-table th,
-    .split-check-table td {
-      vertical-align: middle;
-      white-space: normal;
-      text-align: center;
-      padding: 10px 8px;
-      border: 1px solid #e2e8f0;
-    }
-
-    .split-check-table th:nth-child(1),
-    .split-check-table td:nth-child(1) {
-      min-width: 100px;
-      width: 100px;
-      text-align: center;
-      position: sticky;
-      left: 0;
-      z-index: 4;
-    }
-
-    .split-check-table th:nth-child(1) {
-      background-color: #eaf0fb;
-      z-index: 6;
-    }
-
-    .split-check-table th:nth-child(2),
-    .split-check-table td:nth-child(2) {
-      min-width: 115px;
-      width: 115px;
-    }
-
-    .split-check-table th:nth-child(3),
-    .split-check-table td:nth-child(3) {
-      min-width: 160px;
-      width: 160px;
-      text-align: left;
-    }
-
-    .split-check-table th:nth-child(4),
-    .split-check-table td:nth-child(4),
-    .split-check-table th:nth-child(5),
-    .split-check-table td:nth-child(5) {
-      min-width: 100px;
-      width: 100px;
-    }
-
-    .split-day-head,
-    .split-day-cell {
-      min-width: 115px;
-      width: 115px;
-    }
-
-    .split-check-table th:last-child,
-    .split-check-table td:last-child {
-      min-width: 115px;
-      width: 115px;
-      word-break: keep-all;
-      line-height: 1.5;
-    }
-
-    .small-cell-text {
-      font-size: 11px;
-      color: #555;
-      margin-top: 4px;
-      line-height: 1.4;
-      word-break: keep-all;
-    }
-
-    .empty-day {
-      color: #999;
-      background-color: #f8fafc;
-      font-weight: 700;
-    }
-
-    .status-ok { color: #2563eb; font-weight: 800; }
+    .split-check-table { min-width: 2200px; table-layout: fixed; }
+    .split-check-table th, .split-check-table td { vertical-align: middle; white-space: normal; text-align: center; padding: 10px 8px; border: 1px solid #e2e8f0; }
+    .split-check-table th:nth-child(1), .split-check-table td:nth-child(1) { min-width: 100px; width: 100px; text-align: center; position: sticky; left: 0; z-index: 4; }
+    .split-check-table th:nth-child(1) { background-color: #eaf0fb; z-index: 6; }
+    .split-check-table th:nth-child(2), .split-check-table td:nth-child(2) { min-width: 115px; width: 115px; }
+    .split-check-table th:nth-child(3), .split-check-table td:nth-child(3) { min-width: 160px; width: 160px; text-align: left; }
+    .split-check-table th:nth-child(4), .split-check-table td:nth-child(4), .split-check-table th:nth-child(5), .split-check-table td:nth-child(5) { min-width: 100px; width: 100px; }
+    .split-day-head, .split-day-cell { min-width: 115px; width: 115px; }
+    .split-check-table th:last-child, .split-check-table td:last-child { min-width: 115px; width: 115px; word-break: keep-all; line-height: 1.5; }
+    .small-cell-text { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; word-break: keep-all; }
+    .empty-day { color: #999; background-color: #f8fafc; font-weight: 700; }
+    
+    .status-ok { color: #1e293b; font-weight: 700; }
     .status-danger { color: #e11d48; font-weight: 800; }
-
-    .split-day-blue {
-      color: #2563eb !important;
-    }
-
-    .split-day-red {
-      color: #dc2626 !important;
-    }
+    .split-day-blue { color: #2563eb !important; }
+    .split-day-red { color: #dc2626 !important; }
+    .split-check-table tr:nth-child(even) td { background-color: #ffffff !important; }
   `;
-
   document.head.appendChild(style);
 }
 
@@ -411,7 +311,6 @@ const nursingVitalResultBody = document.getElementById("nursingVitalResultBody")
 function parseNursingReport(workbook, monthValue) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = sheetToRowsWithMerges(sheet);
-
   const headerIndex = rows.findIndex((row) => {
     const text = normalizeText(row.join(" "));
     return text.includes("제공일") && text.includes("수급자명") && text.includes("혈압") && text.includes("건강관리");
@@ -436,10 +335,8 @@ function parseNursingReport(workbook, monthValue) {
 
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i] || [];
-
     const parsedDate = parseDate(row[dateCol]);
     if (parsedDate) currentDate = parsedDate;
-
     if (!currentDate || !currentDate.startsWith(monthValue)) continue;
 
     const name = String(row[nameCol] || "").trim();
@@ -448,7 +345,6 @@ function parseNursingReport(workbook, monthValue) {
     if (!resultMap[name]) {
       resultMap[name] = { name, days: {} };
     }
-
     resultMap[name].days[currentDate] = {
       bloodPressure: String(row[bloodPressureCol] || "").trim(),
       pulse: String(row[pulseCol] || "").trim(),
@@ -457,7 +353,6 @@ function parseNursingReport(workbook, monthValue) {
       healthMinutes: parseMinutes(row[healthCol])
     };
   }
-
   return Object.values(resultMap);
 }
 
@@ -465,44 +360,33 @@ function checkVitalDay(nursingDay, requiredHealthMinutes) {
   if (!nursingDay) {
     return { result: "기록 없음", details: ["간호기록 없음"] };
   }
-
   const problems = [];
   if (!nursingDay.bloodPressure) problems.push("혈압 누락");
   if (!nursingDay.pulse) problems.push("맥박 누락");
   if (!nursingDay.temperature) problems.push("체온 누락");
   if (!nursingDay.breath) problems.push("호흡 누락");
-
   if (nursingDay.healthMinutes !== requiredHealthMinutes) {
     problems.push(`${requiredHealthMinutes}분 필요`);
   }
-
-  return {
-    result: problems.length > 0 ? "오류" : "정상",
-    details: problems
-  };
+  return { result: problems.length > 0 ? "오류" : "정상", details: problems };
 }
 
 function buildDayCell(isAttendanceDay, nursingDay, requiredHealthMinutes) {
   if (!isAttendanceDay) {
     return `<td class="split-day-cell empty-day">결석</td>`;
   }
-
   const checked = checkVitalDay(nursingDay, requiredHealthMinutes);
   const resultClass = checked.result === "정상" ? "status-ok" : "status-danger";
-  const errorCellBg = checked.result !== "정상" ? "background-color: #fff5f5;" : "";
+  const errorCellBg = checked.result !== "정상" ? "background-color: #fff5f5 !important;" : "background-color: #ffffff !important;";
 
   if (checked.result === "정상") {
     return `
-      <td class="split-day-cell">
+      <td class="split-day-cell" style="${errorCellBg}">
         <div class="${resultClass}">정상</div>
-        <div class="small-cell-text">
-          V/S O<br>
-          ${nursingDay.healthMinutes}분
-        </div>
+        <div class="small-cell-text">V/S O<br>${nursingDay.healthMinutes}분</div>
       </td>
     `;
   }
-
   return `
     <td class="split-day-cell" style="${errorCellBg}">
       <div class="${resultClass}">${checked.result}</div>
@@ -513,66 +397,31 @@ function buildDayCell(isAttendanceDay, nursingDay, requiredHealthMinutes) {
 
 function buildResults(monthValue, nursingRows) {
   const monthEndDate = getMonthEndDate(monthValue);
-  const latestPlans = getLatestPlansByRecipient(monthEndDate);
   const attendanceRows = getAttendanceMonth(monthValue);
 
-  const nursingMap = {};
-  nursingRows.forEach((row) => nursingMap[row.name] = row);
-
-  let names = [];
-  if (attendanceRows.length > 0) {
-    names = attendanceRows.map((item) => item.name);
-  } else {
-    names = Array.from(new Set([...Object.keys(latestPlans), ...Object.keys(nursingMap)]));
-  }
-
-  return names.map((name) => {
-    const plan = latestPlans[name];
-    const attendance = attendanceRows.find((item) => item.name === name);
+  return attendanceRows.map((attendance) => {
+    const name = attendance.name;
+    const plan = getLatestPlansByRecipient(name, monthEndDate);
+    const nursing = nursingRows.find((item) => isSameRecipient(item.name, name));
     const baseMedicationCount = getMedicationCountFromPlan(plan);
 
     return {
       name,
       planDate: plan ? plan.writtenDate : "-",
       baseMedicationCount,
-      attendanceDates: attendance ? attendance.dates : (nursingMap[name] ? Object.keys(nursingMap[name].days) : []),
-      nursingDays: nursingMap[name] ? nursingMap[name].days : {}
+      attendanceDates: attendance.dates || [],
+      nursingDays: nursing ? nursing.days : {}
     };
-  }).sort((a, b) => a.name.localeCompare(b.name, "ko"));
-}
-
-function renderHeader(monthValue) {
-  const days = getDaysInMonth(monthValue);
-
-  nursingVitalTableHead.innerHTML = `
-    <tr>
-      <th>수급자명</th>
-      <th>계획서 작성일</th>
-      <th>상담일지 반영</th>
-      <th>복약도움</th>
-      <th>건강관리 기준</th>
-      ${days.map((day) => {
-        const dayNum = Number(day.split("-")[2]);
-        const colorClass = getDayColorClass(day);
-        return `<th class="split-day-head ${colorClass}">${dayNum}</th>`;
-      }).join("")}
-      <th>종합 결과</th>
-    </tr>
-  `;
+  }).sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function renderResults(monthValue, results) {
   renderHeader(monthValue);
   nursingVitalResultBody.innerHTML = "";
-
   const days = getDaysInMonth(monthValue);
 
   if (!results || results.length === 0) {
-    nursingVitalResultBody.innerHTML = `
-      <tr class="empty-row">
-        <td colspan="${5 + days.length}">확인할 간호 대상자가 없습니다.</td>
-      </tr>
-    `;
+    nursingVitalResultBody.innerHTML = `<tr><td colspan="${6 + days.length}">확인할 간호 대상자가 없습니다.</td></tr>`;
     return;
   }
 
@@ -583,7 +432,6 @@ function renderResults(monthValue, results) {
     const monthEndHealthMinutes = getRequiredHealthMinutes(monthEndMedicationCount);
 
     let problemCount = 0;
-
     const dayCells = days.map((day) => {
       const isAttendanceDay = attendanceSet.has(day);
       const medicationCount = getCounselMedicationCount(item.name, day, item.baseMedicationCount);
@@ -593,14 +441,12 @@ function renderResults(monthValue, results) {
         const checked = checkVitalDay(item.nursingDays[day], requiredHealthMinutes);
         if (checked.result !== "정상") problemCount += 1;
       }
-
       return buildDayCell(isAttendanceDay, item.nursingDays[day], requiredHealthMinutes);
     }).join("");
 
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
     const overallClass = problemCount > 0 ? "status-danger" : "status-ok";
-    
-    const errorCellBg = problemCount > 0 ? "background-color: #fff5f5;" : "";
+    const errorCellBg = problemCount > 0 ? "background-color: #fff5f5 !important;" : "background-color: #ffffff !important;";
 
     row.innerHTML = `
       <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
@@ -611,30 +457,22 @@ function renderResults(monthValue, results) {
       ${dayCells}
       <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${overallText}</td>
     `;
-
     nursingVitalResultBody.appendChild(row);
   });
 }
 
 checkNursingVitalBtn.addEventListener("click", async () => {
-  // 💡 [실시간 연동 가동]: 버튼 클릭 즉시 구글 시트 원격 데이터베이스와 통신하여 출석부를 강제 갱신합니다.
-  alert("구글 시트에서 계획서 및 월 출석 데이터 보관함을 동기화 중입니다...");
-  await syncCarePlanLibraryFromGoogleSheet();
-  await syncAttendanceMonthFromGoogleSheet(checkMonthInput.value);
-  applySplitCheckStyle();
-
   const checkMonth = checkMonthInput.value;
   const nursingFile = nursingFileInput.files[0];
 
-  if (!checkMonth) {
-    alert("확인 월을 선택해주세요.");
-    return;
-  }
+  if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
+  if (!nursingFile) { alert("간호제공 현황 파일을 업로드해주세요."); return; }
 
-  if (!nursingFile) {
-    alert("간호제공 현황 파일을 업로드해주세요.");
-    return;
-  }
+  alert("구글 시트에서 계획서, 상담일지 및 출석 데이터 보관함을 동기화 중입니다...");
+  await syncCarePlanLibraryFromGoogleSheet();
+  await syncCounselLibraryFromGoogleSheet(); 
+  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+  applySplitCheckStyle();
 
   const attendanceRows = getAttendanceMonth(checkMonth);
   if (attendanceRows.length === 0) {
@@ -644,27 +482,12 @@ checkNursingVitalBtn.addEventListener("click", async () => {
   const nursingWorkbook = await readWorkbook(nursingFile);
   const nursingRows = parseNursingReport(nursingWorkbook, checkMonth);
   const results = buildResults(checkMonth, nursingRows);
-
   renderResults(checkMonth, results);
 });
 
 clearNursingVitalBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
   nursingFileInput.value = "";
-
-  nursingVitalTableHead.innerHTML = `
-    <tr>
-      <th>수급자명</th>
-      <th>계획서 작성일</th>
-      <th>상담일지 반영</th>
-      <th>복약도움</th>
-      <th>건강관리 기준</th>
-    </tr>
-  `;
-
-  nursingVitalResultBody.innerHTML = `
-    <tr class="empty-row">
-      <td colspan="5">확인 월과 간호제공 현황 파일을 선택해주세요.</td>
-    </tr>
-  `;
+  nursingVitalTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>복약도움</th><th>건강관리 기준</th></tr>`;
+  nursingVitalResultBody.innerHTML = `<tr><td colspan="5">확인 월과 간호제공 현황 파일을 선택해주세요.</td></tr>`;
 });
