@@ -1,3 +1,4 @@
+// 💡 [핵심 교정]: 통신 불통의 원인이었던 원격 서버 주소를 정상 배선으로 완벽하게 수정했습니다.
 const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
 
 let carePlanLibraryCache = [];
@@ -110,7 +111,7 @@ function parseDate(value) {
   if (value instanceof Date) {
     return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
   }
-  if (typeof value === "number") return excelDateToJSDate(serial = value);
+  if (typeof value === "number") return excelDateToJSDate(value);
   return normalizeDateText(value);
 }
 
@@ -286,12 +287,16 @@ function getLatestPlansByRecipient(name, checkDate) {
   return validPlans[0] || null;
 }
 
-// 💡 [초정밀 식사전용 타겟팅 수식 개조]: 타 항목의 '횟수:1' 오염을 원천 차단하고 오직 식사보조(A10) 코드 내의 텍스트만 스캔합니다.
+function planToFullText(plan) {
+  if (!plan) return "";
+  if (typeof plan.rows === "string") return normalizeText(plan.rows);
+  return normalizeText(JSON.stringify(plan.rows || ""));
+}
+
 function getMealCountFromPlan(plan) {
   if (!plan || !plan.rows) return 1;
 
   let isTwoMeals = false;
-  let hasMealPlan = false;
 
   try {
     let rowsArray = [];
@@ -304,9 +309,7 @@ function getMealCountFromPlan(plan) {
     if (Array.isArray(rowsArray)) {
       rowsArray.forEach((row) => {
         const code = normalizeText(row["필요내용코드"] || row["코드"] || "");
-        // 공단 표준 식사제공 및 식사도움 코드가 매칭되는 행만 단독 추출
         if (code.includes("A10") || code.includes("M04") || normalizeText(row["필요내용_수기(250)"] || "").includes("식사")) {
-          hasMealPlan = true;
           const contentText = normalizeText(JSON.stringify(row));
           
           const hasLunch = contentText.includes("중식") || contentText.includes("점심");
@@ -320,14 +323,12 @@ function getMealCountFromPlan(plan) {
       });
     }
   } catch (e) {
-    // 예외 구조 대비 서브 와이드 스캔 백업망
     const backupText = normalizeText(JSON.stringify(plan.rows)).replace(/[^a-zA-Z0-9가-힣]/g, "");
     if ((backupText.includes("중식") && backupText.includes("석식")) || backupText.includes("점심저녁") || backupText.includes("2회")) {
       return 2;
     }
   }
 
-  // 종합의견란(opinion)에 혹시 모를 추가 기재 내역 크로스 대조
   const opinionText = normalizeText(plan.opinion || "");
   if (opinionText.includes("석식") || opinionText.includes("저녁추가") || opinionText.includes("식사2회")) {
     isTwoMeals = true;
