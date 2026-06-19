@@ -299,19 +299,30 @@ function planToFullText(plan) {
 
 function getMealCountFromPlan(plan) {
   if (!plan) return 1;
-  
+
   const rawRowsText = planToFullText(plan);
   const extraText = `${plan.opinion || ""} ${plan.content || ""} ${plan.mealType || ""}`;
-  
-  const cleanFinalText = (rawRowsText + " " + extraText).replace(/[^a-zA-Z0-9가-힣]/g, "");
 
-  const hasLunch = cleanFinalText.includes("중식") || cleanFinalText.includes("점심");
-  const hasDinner = cleanFinalText.includes("석식") || cleanFinalText.includes("저녁");
-  const hasTwoTimes = cleanFinalText.includes("2회") || cleanFinalText.includes("1일2회") || cleanFinalText.includes("이회");
+  const text = (rawRowsText + " " + extraText)
+    .replace(/\s/g, "")
+    .replace(/[^a-zA-Z0-9가-힣]/g, "");
 
-  if ((hasLunch && hasDinner) || hasTwoTimes) {
+  if (
+    text.includes("1일2회") ||
+    text.includes("2회") ||
+    text.includes("중식석식") ||
+    text.includes("점심저녁")
+  ) {
     return 2;
   }
+
+  if (
+    text.includes("1일1회") ||
+    text.includes("1회")
+  ) {
+    return 1;
+  }
+
   return 1;
 }
 
