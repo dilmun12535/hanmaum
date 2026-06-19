@@ -378,7 +378,6 @@ function makeResultClass(result) {
   return "status-danger";
 }
 
-// 💡 [정상 핏 튜닝]: 요구하신 대로 정상일 때 튀는 파란색 스타일링이나 겉박스를 배제하고, 자연스러운 검정 텍스트 구조로 변경했습니다.
 function buildWeekCell(result, weekData) {
   const resultClass = makeResultClass(result);
 
@@ -458,7 +457,9 @@ function applyTherapyReadableStyle() {
     .therapy-check-table th:nth-child(n+4):nth-child(-n+9), .therapy-check-table td:nth-child(n+4):nth-child(-n+9) { min-width: 210px; width: 210px; text-align: center; }
     .therapy-check-table th:nth-child(10), .therapy-check-table td:nth-child(10) { min-width: 90px; width: 90px; text-align: center; vertical-align: middle; }
     
-    /* 💡 [글씨색 핏 조정]: 정상 상태의 단어 텍스트에 강한 색상을 빼서 일반 텍스트로 녹아들게 교정했습니다. */
+    /* 💡 [긴급 긴급 조치]: 전산 메인 테이블에서 짝수 행을 푸르스름하게 강제 변조하던 css 속성을 !important 백색으로 덮어써서 원천 제거했습니다. */
+    .therapy-check-table tr:nth-child(even) td { background-color: #ffffff !important; }
+
     .status-ok { color: #1e293b; font-weight: 700; }
     .status-absent { color: #64748b; font-weight: 600; }
     .status-danger { color: #e11d48; font-weight: 800; }
@@ -479,12 +480,15 @@ function renderResults(monthValue, results) {
   results.forEach((item) => {
     const row = document.createElement("tr");
     const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
-    const errorCellBg = item.overallResult !== "정상" ? "background-color: #fff5f5;" : "";
+    
+    // 종합 결과가 정상이 아닐 때만 분홍색을 주고, 정상이면 강제 흰색 지정
+    const errorCellBg = item.overallResult !== "정상" ? "background-color: #fff5f5 !important;" : "background-color: #ffffff !important;";
 
+    // 💡 [배경 락 주입]: !important를 붙여 외부 테마의 파란색 짝수행 얼룩 습격을 완벽 차단했습니다.
     const getCellBgColor = (result) => {
-      if (result === "결석") return "background-color: #f8fafc;";
-      if (result !== "정상") return "background-color: #fff5f5;";
-      return "background-color: #ffffff;"; // 정상일 때 티 없이 깨끗한 하얀색 배경 연동
+      if (result === "결석") return "background-color: #f8fafc !important;";
+      if (result !== "정상") return "background-color: #fff5f5 !important;";
+      return "background-color: #ffffff !important;";
     };
 
     row.innerHTML = `
