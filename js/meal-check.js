@@ -297,30 +297,137 @@ function planToFullText(plan) {
   }
 }
 
-function getMealCountFromPlan(plan) {
-  if (!plan) return 1;
+function tryParseJson(value) {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (!text) return value;
 
-  const rawRowsText = planToFullText(plan);
-  const extraText = `${plan.opinion || ""} ${plan.content || ""} ${plan.mealType || ""}`;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return value;
+  }
+}
 
-  const text = (rawRowsText + " " + extraText)
+function collectPlanObjects(value, result = []) {
+  const parsed = tryParseJson(value);
+
+  if (Array.isArray(parsed)) {
+    parsed.forEach((item) => collectPlanObjects(item, result));
+    return result;
+  }
+
+  if (parsed && typeof parsed === "object") {
+    result.push(parsed);
+    Object.values(parsed).forEach((item) => {
+      if (Array.isArray(item) || (item && typeof item === "object")) {
+        collectPlanObjects(item, result);
+      }
+    });
+  }
+
+  return result;
+}
+
+function objectToCleanText(obj) {
+  return String(JSON.stringify(obj || ""))
     .replace(/\s/g, "")
     .replace(/[^a-zA-Z0-9가-힣]/g, "");
+}
+
+function extractMealCountFromObject(obj) {
+  if (!obj || typeof obj !== "object") return null;
+
+  // 1순위: 객체 안에 있는 '횟수' 관련 칸을 직접 읽음
+  for (const [key, value] of Object.entries(obj)) {
+    const keyText = normalizeText(key);
+    const valueText = normalizeText(value);
+
+    if (
+      keyText.includes("횟수") ||
+      keyText.includes("회수") ||
+      keyText.includes("제공횟수") ||
+      keyText.toLowerCase().includes("count")
+    ) {
+      const numberMatch = String(value).match(/[1-9]/);
+      if (numberMatch) return Number(numberMatch[0]);
+    }
+
+    // 키와 값이 합쳐져 '횟수2', '횟수:2'처럼 들어오는 경우
+    const combined = `${keyText}${valueText}`;
+    const combinedMatch = combined.match(/(?:횟수|회수|제공횟수)([1-9])/);
+    if (combinedMatch) return Number(combinedMatch[1]);
+  }
+
+  // 2순위: 해당 행 텍스트 안에서 식사 시간/횟수 표현 확인
+  const rawText = JSON.stringify(obj || "");
+  const cleanText = objectToCleanText(obj);
 
   if (
-    text.includes("1일2회") ||
-    text.includes("2회") ||
-    text.includes("중식석식") ||
-    text.includes("점심저녁")
+    /1\s*일\s*2\s*회/.test(rawText) ||
+    /2\s*회/.test(rawText) ||
+    cleanText.includes("1일2회") ||
+    cleanText.includes("2회") ||
+    cleanText.includes("중식석식") ||
+    cleanText.includes("점심저녁") ||
+    (cleanText.includes("중식") && cleanText.includes("석식")) ||
+    (cleanText.includes("점심") && cleanText.includes("저녁"))
   ) {
     return 2;
   }
 
   if (
-    text.includes("1일1회") ||
-    text.includes("1회")
+    /1\s*일\s*1\s*회/.test(rawText) ||
+    /1\s*회/.test(rawText) ||
+    cleanText.includes("1일1회") ||
+    cleanText.includes("1회")
   ) {
     return 1;
+  }
+
+  return null;
+}
+
+function getMealCountFromPlan(plan) {
+  if (!plan) return 1;
+
+  const sourceObjects = [
+    ...collectPlanObjects(plan.rows || []),
+    ...collectPlanObjects(plan.rowsJson || [])
+  ];
+
+  // rowsJson 한 칸 안에서 '균형잡힌 식단 관리' 또는 식사 관련 행만 골라서 확인
+  const mealObjects = sourceObjects.filter((obj) => {
+    const text = objectToCleanText(obj);
+    return (
+      text.includes("균형잡힌식단관리") ||
+      text.includes("식단관리") ||
+      text.includes("식사도움") ||
+      text.includes("식사제공") ||
+      text.includes("중식") ||
+      text.includes("석식")
+    );
+  });
+
+  for (const obj of mealObjects) {
+    const count = extractMealCountFromObject(obj);
+    if (count) return Math.min(count, 2);
+  }
+
+  // 예외적으로 객체 분리가 안 된 경우만 기존 전체 텍스트를 보조적으로 확인
+  const rawRowsText = planToFullText(plan);
+  const extraText = `${plan.opinion || ""} ${plan.content || ""} ${plan.mealType || ""}`;
+  const fallbackText = (rawRowsText + " " + extraText)
+    .replace(/\s/g, "")
+    .replace(/[^a-zA-Z0-9가-힣]/g, "");
+
+  if (
+    fallbackText.includes("균형잡힌식단관리2회") ||
+    fallbackText.includes("식단관리2회") ||
+    fallbackText.includes("중식석식") ||
+    fallbackText.includes("점심저녁")
+  ) {
+    return 2;
   }
 
   return 1;
