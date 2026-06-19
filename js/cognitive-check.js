@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFaEN0MkkWd_NnDif5LXlCVbIxqgllvGLoJturv0FlXtgX1FG0QTVQNArI5DyR5RTZaA/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbx4ZrUg65tAdpMWLdPH30LBxLehX4331VIy81-OqL45b8oA0cdi4gHtByhO9K-rViF8Mw/exec";
 
 let carePlanLibraryCache = [];
 let attendanceLibraryCache = [];
