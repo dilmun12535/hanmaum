@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbwmRZBjhpYmC-KucogFJlaetCnqEA92QBx22CXumMIMPNuuVijxRxpif7xssapUxjUKCA/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbyxbQ7GeDm7pq9SkYDSgGkt7GiKic878En8-niDDFuRg7-lyxo5F3E7LE5qYpqi2_Z14g/exec";
 
 const attendanceMonthInput = document.getElementById("attendanceMonth");
 const attendanceFileInput = document.getElementById("attendanceFile");
@@ -260,6 +260,19 @@ function extractLeaveTime(serviceTime, provTime) {
   return "";
 }
 
+function extractLeaveTimeFromRow(row) {
+  // 서비스시간 컬럼을 못 찾는 파일도 있어서, 해당 행 전체에서 "07:46~16:48" 같은 시간 범위를 다시 찾습니다.
+  const values = (row || []).map((value) => String(value || "").trim()).filter(Boolean);
+
+  for (const value of values) {
+    const leaveTime = extractLeaveTime(value, "");
+    if (leaveTime) return leaveTime;
+  }
+
+  return "";
+}
+
+
 function parseOneAttendanceSheet(sheet, monthValue) {
   const rows = sheetToRowsWithMerges(sheet);
 
@@ -299,7 +312,9 @@ function parseOneAttendanceSheet(sheet, monthValue) {
     if (!normalizedServiceTime || normalizedServiceTime.includes("일정없음") || normalizedServiceTime.includes("미이용")) continue;
     if (normalizedProvTime.includes("미이용") || normalizedProvTime.includes("일정없음")) continue;
 
-    const leaveTime = extractLeaveTime(serviceTime, provTime);
+    let leaveTime = extractLeaveTime(serviceTime, "");
+    if (!leaveTime) leaveTime = extractLeaveTime(provTime, "");
+    if (!leaveTime) leaveTime = extractLeaveTimeFromRow(row);
 
     attendanceDates.push(dateText);
     if (leaveTime) leaveTimes[dateText] = leaveTime;
@@ -374,6 +389,7 @@ async function saveAttendanceMonth(monthValue, items, fileName) {
         serviceStartDate: item.startDate,
         attendanceDates: item.dates,
         attendanceCount: item.count,
+        leaveTimes: item.leaveTimes || {},
         leaveTimesJson: JSON.stringify(item.leaveTimes || {}),
         attendanceTimeRows: item.attendanceTimeRows || {},
         fileName
@@ -677,6 +693,14 @@ registerAttendanceBtn.addEventListener("click", () => {
       });
 
       const items = parseAttendanceWorkbook(workbook, monthValue);
+
+      const detectedLeaveCount = items.reduce((sum, item) => {
+        return sum + Object.keys(item.leaveTimes || {}).length;
+      }, 0);
+
+      if (detectedLeaveCount === 0) {
+        alert("출석일은 읽었지만 하원시간을 찾지 못했습니다. 파일의 서비스시간 위치를 확인해야 합니다.");
+      }
 
       if (items.length === 0) {
         alert("선택한 월의 출석 내역을 찾지 못했습니다.");
