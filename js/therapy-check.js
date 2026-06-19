@@ -117,7 +117,6 @@ function getWeekEndDates(monthValue) {
 
   const dayOfWeek = monthStart.getDay();
   const daysFromMonday = (dayOfWeek + 6) % 7;
-
   const anchorMonday = new Date(monthStart);
   anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
@@ -140,7 +139,6 @@ function getWeekEndDates(monthValue) {
   return ranges;
 }
 
-// 💡 [주차별 일자 회수 기능 추가]: 특정 주차 범위 내에 등원한 날(출석일)이 단 하루라도 있는지 정교하게 카운정하기 위한 주차별 날짜 판정 로직
 function getDaysInWeekRange(monthValue, weekKey) {
   const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
@@ -156,7 +154,7 @@ function getDaysInWeekRange(monthValue, weekKey) {
   weekStart.setDate(anchorMonday.getDate() + weekIdx * 7);
 
   const days = [];
-  for (let i = 0; i < 5; i++) { // 월~금
+  for (let i = 0; i < 5; i++) {
     const current = new Date(weekStart);
     current.setDate(weekStart.getDate() + i);
     if (current >= monthStart && current <= monthEnd) {
@@ -353,9 +351,8 @@ function parseTherapyReport(workbook, monthValue) {
   return Object.values(therapyMap);
 }
 
-// 💡 [출석 연동 판정 커스텀]: 주차 범위 내에 출석(등원)한 날이 전혀 없으면 '결석'으로 최우선 마스킹하도록 로직 개조
 function getWeekResult(required, weekData, hasAttendanceInWeek) {
-  if (!hasAttendanceInWeek) return "결석"; // 등원 안 한 주차는 무조건 결석
+  if (!hasAttendanceInWeek) return "결석";
 
   const hasRecord = weekData && weekData.hasRecord;
   if (required && hasRecord) return "정상";
@@ -370,29 +367,33 @@ function makeResultClass(result) {
   return "status-danger";
 }
 
+// 💡 [디자인 보완 포인트]: 요구하신 대로 결석 밑에 기호를 완전히 없애고 회색 통배경만 매칭되게 하였으며, 정상 세트는 깔끔한 흰색 바탕으로 정렬했습니다.
 function buildWeekCell(result, weekData) {
   const resultClass = makeResultClass(result);
 
-  let recordText = "-";
+  let recordText = "";
   if (weekData && weekData.recordText && result !== "결석") {
     recordText = weekData.recordText.replaceAll(" / ", "<br>").replaceAll("~", " ~ ");
   }
 
-  // 결석일 때는 차분한 회색 배경색, 오류/누락일 때는 연분홍 배경색 세팅
   let cellBgStyle = "";
-  if (result === "결석") cellBgStyle = "background-color: #f8fafc; color: #64748b;";
-  else if (result !== "정상") UsefulBg = "background-color: #fff5f5;";
+  if (result === "결석") {
+    cellBgStyle = "background-color: #f8fafc; color: #64748b;";
+  } else if (result !== "정상") {
+    cellBgStyle = "background-color: #fff5f5;";
+  } else {
+    cellBgStyle = "background-color: #ffffff;"; // 정상일 때 하얀 배경 보완
+  }
 
   return `
-    <div style="width: 100%; height: 100%; padding: 4px; ${cellBgStyle}">
+    <div style="width: 100%; height: 100%; padding: 10px 4px; ${cellBgStyle}">
       <div class="${resultClass}" style="font-weight:700;">${result}</div>
-      <div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">${recordText}</div>
+      ${recordText ? `<div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">${recordText}</div>` : ""}
     </div>
   `;
 }
 
 function buildOverallResult(weekResults) {
-  // 결석을 제외하고 누락이나 오류가 단 하나라도 포착되면 '확인 필요'
   const hasRealError = weekResults.some((r) => r === "누락" || r === "오류");
   return hasRealError ? "확인 필요" : "정상";
 }
@@ -419,9 +420,8 @@ function buildResults(monthValue, therapyRows) {
         weekResultsMap[wk] = "정상";
         return;
       }
-      // 해당 주차의 평일 중 등원한 날이 하루라도 있는지 판정
       const weekDays = getDaysInWeekRange(monthValue, wk);
-      const hasAttend = weekDays.some((d) => attendDatesSet.has(day = d));
+      const hasAttend = weekDays.some((d) => attendDatesSet.has(d));
       
       const req = isTherapyRequiredAtDate(plan, name, weekEndDates[wk]);
       weekRequired[wk] = req;
