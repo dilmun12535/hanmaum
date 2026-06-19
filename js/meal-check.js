@@ -586,7 +586,7 @@ function getDayResult(dayData, rule, leaveTime) {
 
 function makeResultClass(result) {
   if (result === "정상" || result === "일찍 하원") return "status-ok";
-  if (result === "저녁 확인") return "status-warn";
+  if (result === "저녁 확인") return "status-danger";
   return "status-danger";
 }
 
@@ -596,11 +596,11 @@ function buildDayCell(isAttendanceDay, dayData, rule, leaveTime) {
   const resultClass = makeResultClass(result);
 
   let cellBgStyle = "background-color: #ffffff !important;";
-  if (result !== "정상" && result !== "저녁 확인" && result !== "일찍 하원") cellBgStyle = "background-color: #fff5f5 !important;";
+  if (result !== "정상" && result !== "일찍 하원") cellBgStyle = "background-color: #fff5f5 !important;";
 
   const lunch = dayData ? (dayData.lunch || "-") : "-";
   const dinner = dayData ? (dayData.dinner || "-") : "-";
-  const leaveLine = leaveTime ? `<br><span class="leave-time-badge">🕒 ${leaveTime}</span>` : "";
+  const leaveLine = leaveTime && rule && rule.mealCount >= 2 ? `<br><span class="leave-time-badge">🕒 ${leaveTime}</span>` : "";
 
   return `
     <td class="meal-day-cell" style="${cellBgStyle}">
@@ -671,7 +671,7 @@ function renderResults(monthValue, results) {
       const rule = getMealRuleAtDate(item.plan, item.name, day);
       const leaveTime = item.leaveTimes ? item.leaveTimes[day] : "";
       const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule, leaveTime) : "정상";
-      if (isAttendanceDay && result !== "정상" && result !== "저녁 확인" && result !== "일찍 하원") problemCount += 1;
+      if (isAttendanceDay && result !== "정상" && result !== "일찍 하원") problemCount += 1;
       return buildDayCell(isAttendanceDay, item.mealDays[day], rule, leaveTime);
     }).join("");
 
