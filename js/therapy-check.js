@@ -367,7 +367,7 @@ function makeResultClass(result) {
   return "status-danger";
 }
 
-// 💡 [디자인 보완 포인트]: 요구하신 대로 결석 밑에 기호를 완전히 없애고 회색 통배경만 매칭되게 하였으며, 정상 세트는 깔끔한 흰색 바탕으로 정렬했습니다.
+// 💡 [디자인 보완]: 외부를 한 번 더 두르던 불필요한 네모 박스 구조를 전부 삭제하고, td 셀 자체의 배경색만 부드럽게 채우도록 수정했습니다.
 function buildWeekCell(result, weekData) {
   const resultClass = makeResultClass(result);
 
@@ -376,20 +376,9 @@ function buildWeekCell(result, weekData) {
     recordText = weekData.recordText.replaceAll(" / ", "<br>").replaceAll("~", " ~ ");
   }
 
-  let cellBgStyle = "";
-  if (result === "결석") {
-    cellBgStyle = "background-color: #f8fafc; color: #64748b;";
-  } else if (result !== "정상") {
-    cellBgStyle = "background-color: #fff5f5;";
-  } else {
-    cellBgStyle = "background-color: #ffffff;"; // 정상일 때 하얀 배경 보완
-  }
-
   return `
-    <div style="width: 100%; height: 100%; padding: 10px 4px; ${cellBgStyle}">
-      <div class="${resultClass}" style="font-weight:700;">${result}</div>
-      ${recordText ? `<div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">${recordText}</div>` : ""}
-    </div>
+    <div class="${resultClass}" style="font-weight:700;">${result}</div>
+    ${recordText ? `<div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">${recordText}</div>` : ""}
   `;
 }
 
@@ -451,11 +440,11 @@ function applyTherapyReadableStyle() {
   const style = document.createElement("style");
   style.id = "therapyReadableStyle";
   style.textContent = `
-    .therapy-check-table th, .therapy-check-table td { vertical-align: top; white-space: normal; border: 1px solid #e2e8f0; padding: 10px 8px; }
+    .therapy-check-table th, .therapy-check-table td { vertical-align: top; white-space: normal; border: 1px solid #e2e8f0; padding: 12px 8px; }
     .therapy-check-table th:nth-child(1), .therapy-check-table td:nth-child(1) { min-width: 90px; width: 90px; text-align: center; }
     .therapy-check-table th:nth-child(2), .therapy-check-table td:nth-child(2) { min-width: 115px; width: 115px; text-align: center; }
     .therapy-check-table th:nth-child(3), .therapy-check-table td:nth-child(3) { min-width: 180px; width: 180px; text-align: left; }
-    .therapy-check-table th:nth-child(n+4):nth-child(-n+9), .therapy-check-table td:nth-child(n+4):nth-child(-n+9) { min-width: 210px; width: 210px; text-align: center; padding: 0px !important; }
+    .therapy-check-table th:nth-child(n+4):nth-child(-n+9), .therapy-check-table td:nth-child(n+4):nth-child(-n+9) { min-width: 210px; width: 210px; text-align: center; }
     .therapy-check-table th:nth-child(10), .therapy-check-table td:nth-child(10) { min-width: 90px; width: 90px; text-align: center; vertical-align: middle; }
     .status-ok { color: #2563eb; font-weight: 800; }
     .status-absent { color: #64748b; font-weight: 600; }
@@ -467,6 +456,7 @@ function applyTherapyReadableStyle() {
 function renderResults(monthValue, results) {
   applyTherapyReadableStyle();
   therapyResultBody.innerHTML = "";
+  const days = getDaysInMonth(monthValue);
 
   if (!results || results.length === 0) {
     therapyResultBody.innerHTML = `<tr><td colspan="10">확인할 데이터가 없습니다.</td></tr>`;
@@ -478,15 +468,24 @@ function renderResults(monthValue, results) {
     const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
     const errorCellBg = item.overallResult !== "정상" ? "background-color: #fff5f5;" : "";
 
+    // 💡 [배경색 매칭]: 주차별 td 칸 내부가 아닌 td 태그 자체에 인라인 스타일로 연동하도록 완전히 분리 조치했습니다.
+    const getCellBgColor = (result) => {
+      if (result === "결석") return "background-color: #f8fafc;";
+      if (result !== "정상") return "background-color: #fff5f5;";
+      return "background-color: #ffffff;";
+    };
+
     row.innerHTML = `
       <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name}</td>
       <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
       <td style="font-size:12px; line-height:1.4; ${errorCellBg}">${item.counselText}</td>
-      <td>${buildWeekCell(item.weekResultsMap.week1, item.weeks.week1)}</td>
-      <td>${buildWeekCell(item.weekResultsMap.week2, item.weeks.week2)}</td>
-      <td>${buildWeekCell(item.weekResultsMap.week3, item.weeks.week3)}</td>
-      <td>${buildWeekCell(item.weekResultsMap.week4, item.weeks.week4)}</td>
-      <td>${buildWeekCell(item.weekResultsMap.week5, item.weeks.week5)}</td>
+      
+      <td style="${getCellBgColor(item.weekResultsMap.week1)}">${buildWeekCell(item.weekResultsMap.week1, item.weeks.week1)}</td>
+      <td style="${getCellBgColor(item.weekResultsMap.week2)}">${buildWeekCell(item.weekResultsMap.week2, item.weeks.week2)}</td>
+      <td style="${getCellBgColor(item.weekResultsMap.week3)}">${buildWeekCell(item.weekResultsMap.week3, item.weeks.week3)}</td>
+      <td style="${getCellBgColor(item.weekResultsMap.week4)}">${buildWeekCell(item.weekResultsMap.week4, item.weeks.week4)}</td>
+      <td style="${getCellBgColor(item.weekResultsMap.week5)}">${buildWeekCell(item.weekResultsMap.week5, item.weeks.week5)}</td>
+      
       <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${item.overallResult}</td>
     `;
     therapyResultBody.appendChild(row);
