@@ -8,7 +8,6 @@ function makePayloadUrl(payload) {
   return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
-// 💡 [영구 조치]: 브라우저 저장 한도를 터트리던 localStorage 구문을 원천 배제하고 실시간 원격 메모리 연동망으로 리모델링했습니다.
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
@@ -66,7 +65,14 @@ const clearTherapyBtn = document.getElementById("clearTherapyBtn");
 const therapyResultBody = document.getElementById("therapyResultBody");
 
 function normalizeText(value) {
-  return String(value || "").replace(/\s/g, "").trim();
+  return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
+}
+
+function isSameRecipient(nameA, nameB) {
+  const cleanA = normalizeText(nameA);
+  const cleanB = normalizeText(nameB);
+  if (!cleanA || !cleanB) return false;
+  return cleanA.includes(cleanB) || cleanB.includes(cleanA);
 }
 
 function safeCompare(a, b) {
@@ -93,7 +99,7 @@ function parseDate(value) {
   if (value instanceof Date) {
     const year = value.getFullYear();
     const month = String(value.getMonth() + 1).padStart(2, "0");
-    const day = String(value.getDate()).padStart(2, "0");
+    const day = String(dateInfo.getDate()).padStart(2, "0"); // 보완
     return `${year}-${month}-${day}`;
   }
 
@@ -174,48 +180,32 @@ function getWeekKey(dateText) {
   return "week6";
 }
 
-function getLatestPlansByRecipient(checkDate) {
-  // 💡 [수정 완료]: 셧다운을 유발하던 로컬스토리지를 배제하고 실시간 캐시 배열 변수에서 직접 필터링을 집행합니다.
+function getLatestPlansByRecipient(name, checkDate) {
   const library = carePlanLibraryCache || [];
-
   const validPlans = library.filter((plan) => {
-    return new Date(plan.writtenDate) <= new Date(checkDate);
+    return new Date(plan.writtenDate) <= new Date(checkDate) && isSameRecipient(plan.recipientName, name);
   });
 
-  const latestByName = {};
-
-  validPlans.forEach((plan) => {
-    const name = plan.recipientName;
-    const current = latestByName[name];
-
-    if (!current || new Date(plan.writtenDate) > new Date(current.writtenDate)) {
-      latestByName[name] = plan;
-    }
-  });
-
-  return latestByName;
+  validPlans.sort((a, b) => new Date(b.writtenDate) - new Date(a.writtenDate));
+  return validPlans[0] || null;
 }
 
 function hasTherapyPlan(plan) {
   if (!plan || !plan.rows) return false;
-
   const text = normalizeText(JSON.stringify(plan.rows));
-
-  return text.includes("물리치료") || text.includes("M10");
+  return text.includes("물리치료") || text.includes("M10") || text.includes("기능회복훈련");
 }
 
 function getLatestTherapyCounsel(name, targetDate) {
-  // 💡 [수정 완료]: 셧다운을 유발하던 로컬스토리지를 배제하고 실시간 캐시 배열 변수에서 직접 필터링을 집행합니다.
   const counselLibrary = counselLibraryCache || [];
   const target = new Date(targetDate);
 
   const counsels = counselLibrary
     .filter((item) => {
-      const sameName = item.recipientName === name;
+      const sameName = isSameRecipient(item.recipientName || item.name, name);
       const reflectionDate = new Date(item.reflectionDate);
       const category = item.category || "";
       const text = normalizeText(`${item.careContent} ${item.reason} ${item.changeType}`);
-
       const isTherapy = category === "물리치료" || text.includes("물리치료");
 
       return sameName && isTherapy && reflectionDate <= target;
@@ -227,29 +217,14 @@ function getLatestTherapyCounsel(name, targetDate) {
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-
   const text = normalizeText(`${counsel.changeType} ${counsel.careContent} ${counsel.reason}`);
-
-  return (
-    text.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공") ||
-    text.includes("하지않")
-  );
+  return text.includes("제외") || text.includes("중단") || text.includes("삭제") || text.includes("미제공") || text.includes("하지않");
 }
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
-
   const text = normalizeText(`${counsel.changeType} ${counsel.careContent} ${counsel.reason}`);
-
-  return (
-    text.includes("추가") ||
-    text.includes("시작") ||
-    text.includes("제공") ||
-    text.includes("반영")
-  );
+  return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
 }
 
 function isTherapyRequiredAtDate(plan, name, targetDate) {
@@ -257,79 +232,64 @@ function isTherapyRequiredAtDate(plan, name, targetDate) {
   const counsel = getLatestTherapyCounsel(name, targetDate);
 
   if (counsel) {
-    if (isRemoveCounsel(counsel)) {
-      required = false;
-    }
-
-    if (isAddCounsel(counsel)) {
-      required = true;
-    }
+    if (isRemoveCounsel(counsel)) required = false;
+    if (isAddCounsel(counsel)) required = true;
   }
-
   return required;
 }
 
+// 💡 [줄바꿈 보완 완료]: 날짜 바로 뒤에 유형을 붙이고, 상세 내용은 엔터 쳐서 분리하도록 설계했습니다.
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestTherapyCounsel(name, monthEndDate);
+  if (!counsel) return "없음";
 
-  if (!counsel) {
-    return "없음";
+  const rawDate = counsel.reflectionDate ? String(counsel.reflectionDate).substring(0, 10) : "-";
+  const changeType = counsel.changeType || "-";
+  let content = counsel.careContent || "-";
+
+  if (content.includes("물리치료") && content.includes("작업치료")) {
+    content = content.replace(", 작업치료", "<br>작업치료").replace("), 작업치료", ")<br>작업치료");
   }
-
-  return `${counsel.reflectionDate}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
+  return `<span style="font-weight: 700; color: #1e293b;">${rawDate} [${changeType}]</span><br>${content}`;
 }
 
 function sheetToRowsWithMerges(sheet) {
   if (!sheet || !sheet["!ref"]) return [];
   const range = XLSX.utils.decode_range(sheet["!ref"]);
   const rows = [];
-
   for (let r = range.s.r; r <= range.e.r; r++) {
     const row = [];
-
     for (let c = range.s.c; c <= range.e.c; c++) {
       const address = XLSX.utils.encode_cell({ r, c });
       const cell = sheet[address];
       row[c] = cell ? cell.v : "";
     }
-
     rows.push(row);
   }
-
   const merges = sheet["!merges"] || [];
-
   merges.forEach((merge) => {
     const startAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
     const startCell = sheet[startAddress];
     const value = startCell ? startCell.v : "";
-
     for (let r = merge.s.r; r <= merge.e.r; r++) {
       for (let c = merge.s.c; c <= merge.e.c; c++) {
         rows[r - range.s.r][c] = value;
       }
     }
   });
-
   return rows;
 }
 
 function findHeaderIndex(rows) {
   return rows.findIndex((row) => {
     const text = normalizeText(row.join(" "));
-
-    return (
-      text.includes("연번") &&
-      text.includes("수급자명") &&
-      text.includes("제공일") &&
-      text.includes("제공시간")
-    );
+    return text.includes("연번") && text.includes("수급자명") && text.includes("제공일") && text.includes("제공시간");
   });
 }
 
 function parseTherapyReport(workbook, monthValue) {
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-
   const rows = sheetToRowsWithMerges(sheet);
   const headerIndex = findHeaderIndex(rows);
 
@@ -339,7 +299,6 @@ function parseTherapyReport(workbook, monthValue) {
   }
 
   const header = rows[headerIndex];
-
   const nameCol = header.findIndex((cell) => normalizeText(cell).includes("수급자명"));
   const dateCol = header.findIndex((cell) => normalizeText(cell).includes("제공일"));
   const timeCol = header.findIndex((cell) => normalizeText(cell).includes("제공시간"));
@@ -349,14 +308,11 @@ function parseTherapyReport(workbook, monthValue) {
 
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i] || [];
-
     const name = String(row[nameCol] || "").trim();
     if (!name || name === "수급자명") continue;
 
     const dateText = parseDate(row[dateCol]);
-    if (!dateText) continue;
-
-    if (!dateText.startsWith(monthValue)) continue;
+    if (!dateText || !dateText.startsWith(monthValue)) continue;
 
     const weekKey = getWeekKey(dateText);
     const timeText = String(row[timeCol] || "").trim();
@@ -384,13 +340,11 @@ function parseTherapyReport(workbook, monthValue) {
       recordText: oldText && oldText !== "-" ? `${oldText} / ${label}` : label
     };
   }
-
   return Object.values(therapyMap);
 }
 
 function getWeekResult(required, weekData) {
   const hasRecord = weekData && weekData.hasRecord;
-
   if (required && hasRecord) return "정상";
   if (required && !hasRecord) return "누락";
   if (!required && hasRecord) return "오류";
@@ -409,65 +363,33 @@ function buildWeekCell(required, weekData) {
   const resultClass = makeResultClass(result);
 
   let recordText = "-";
-
   if (weekData && weekData.recordText) {
-    recordText = weekData.recordText
-      .replaceAll(" / ", "<br>")
-      .replaceAll("~", " ~ ");
+    recordText = weekData.recordText.replaceAll(" / ", "<br>").replaceAll("~", " ~ ");
   }
 
   const errorCellBg = result !== "정상" ? "background-color: #fff5f5;" : "";
 
   return `
     <div style="width: 100%; height: 100%; padding: 4px; ${errorCellBg}">
-      <div class="${resultClass}" style="font-weight:700;">
-        ${result}
-      </div>
-      <div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">
-        ${recordText}
-      </div>
+      <div class="${resultClass}" style="font-weight:700;">${result}</div>
+      <div style="font-size:11px;color:#555;margin-top:4px;white-space:normal;word-break:keep-all;line-height:1.5;">${recordText}</div>
     </div>
   `;
 }
 
 function buildOverallResult(weekResults) {
-  const hasError = weekResults.some((result) => result !== "정상");
-
-  return hasError ? "확인 필요" : "정상";
+  return weekResults.some((result) => result !== "정상") ? "확인 필요" : "정상";
 }
 
 function buildResults(monthValue, therapyRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const weekEndDates = getWeekEndDates(monthValue);
-  const latestPlans = getLatestPlansByRecipient(monthEndDate);
 
-  const therapyMap = {};
-  therapyRows.forEach((row) => {
-    therapyMap[row.name] = row;
-  });
+  const results = therapyRows.map((therapy) => {
+    const name = therapy.name;
+    const plan = getLatestPlansByRecipient(name, monthEndDate);
 
-  const allNames = new Set([
-    ...Object.keys(latestPlans),
-    ...Object.keys(therapyMap)
-  ]);
-
-  const results = [];
-
-  allNames.forEach((name) => {
-    const plan = latestPlans[name];
-    const therapy = therapyMap[name];
-
-    const weeks = therapy
-      ? therapy.weeks
-      : {
-          week1: { hasRecord: false, recordText: "-" },
-          week2: { hasRecord: false, recordText: "-" },
-          week3: { hasRecord: false, recordText: "-" },
-          week4: { hasRecord: false, recordText: "-" },
-          week5: { hasRecord: false, recordText: "-" },
-          week6: { hasRecord: false, recordText: "-" }
-        };
-
+    const weeks = therapy.weeks;
     const weekRequired = {
       week1: weekEndDates.week1 ? isTherapyRequiredAtDate(plan, name, weekEndDates.week1) : false,
       week2: weekEndDates.week2 ? isTherapyRequiredAtDate(plan, name, weekEndDates.week2) : false,
@@ -486,72 +408,30 @@ function buildResults(monthValue, therapyRows) {
       getWeekResult(weekRequired.week6, weeks.week6)
     ];
 
-    results.push({
+    return {
       name,
       planDate: plan ? plan.writtenDate : "-",
       counselText: getCounselTextForMonth(name, monthEndDate),
       weekRequired,
       weeks,
       overallResult: buildOverallResult(weekResults)
-    });
+    };
   });
 
   return results.sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function applyTherapyReadableStyle() {
-  if (document.getElementById("therapyReadableStyle")) {
-    return;
-  }
-
+  if (document.getElementById("therapyReadableStyle")) return;
   const style = document.createElement("style");
   style.id = "therapyReadableStyle";
   style.textContent = `
-    .therapy-check-table th,
-    .therapy-check-table td {
-      vertical-align: top;
-      white-space: normal;
-      border: 1px solid #e2e8f0;
-      padding: 10px 8px;
-    }
-
-    .therapy-check-table th:nth-child(1),
-    .therapy-check-table td:nth-child(1) {
-      min-width: 90px;
-      width: 90px;
-      text-align: center;
-    }
-
-    .therapy-check-table th:nth-child(2),
-    .therapy-check-table td:nth-child(2) {
-      min-width: 115px;
-      width: 115px;
-      text-align: center;
-    }
-
-    .therapy-check-table th:nth-child(3),
-    .therapy-check-table td:nth-child(3) {
-      min-width: 150px;
-      width: 150px;
-      text-align: left;
-    }
-
-    .therapy-check-table th:nth-child(n+4):nth-child(-n+9),
-    .therapy-check-table td:nth-child(n+4):nth-child(-n+9) {
-      min-width: 210px;
-      width: 210px;
-      text-align: center;
-      padding: 0px !important;
-    }
-
-    .therapy-check-table th:nth-child(10),
-    .therapy-check-table td:nth-child(10) {
-      min-width: 90px;
-      width: 90px;
-      text-align: center;
-      vertical-align: middle;
-    }
-    
+    .therapy-check-table th, .therapy-check-table td { vertical-align: top; white-space: normal; border: 1px solid #e2e8f0; padding: 10px 8px; }
+    .therapy-check-table th:nth-child(1), .therapy-check-table td:nth-child(1) { min-width: 90px; width: 90px; text-align: center; }
+    .therapy-check-table th:nth-child(2), .therapy-check-table td:nth-child(2) { min-width: 115px; width: 115px; text-align: center; }
+    .therapy-check-table th:nth-child(3), .therapy-check-table td:nth-child(3) { min-width: 180px; width: 180px; text-align: left; }
+    .therapy-check-table th:nth-child(n+4):nth-child(-n+9), .therapy-check-table td:nth-child(n+4):nth-child(-n+9) { min-width: 210px; width: 210px; text-align: center; padding: 0px !important; }
+    .therapy-check-table th:nth-child(10), .therapy-check-table td:nth-child(10) { min-width: 90px; width: 90px; text-align: center; vertical-align: middle; }
     .status-ok { color: #2563eb; font-weight: 800; }
     .status-danger { color: #e11d48; font-weight: 800; }
   `;
@@ -563,24 +443,21 @@ function renderResults(results) {
   therapyResultBody.innerHTML = "";
 
   if (!results || results.length === 0) {
-    therapyResultBody.innerHTML = `
-      <tr class="empty-row">
-        <td colspan="10">확인할 데이터가 없습니다.</td>
-      </tr>
-    `;
+    therapyResultBody.innerHTML = `<tr><td colspan="9">확인할 데이터가 없습니다.</td></tr>`;
     return;
   }
 
   results.forEach((item) => {
     const row = document.createElement("tr");
     const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
-    
     const errorCellBg = item.overallResult !== "정상" ? "background-color: #fff5f5;" : "";
 
     row.innerHTML = `
       <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name}</td>
       <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
+      
       <td style="font-size:12px; line-height:1.4; ${errorCellBg}">${item.counselText}</td>
+      
       <td>${buildWeekCell(item.weekRequired.week1, item.weeks.week1)}</td>
       <td>${buildWeekCell(item.weekRequired.week2, item.weeks.week2)}</td>
       <td>${buildWeekCell(item.weekRequired.week3, item.weeks.week3)}</td>
@@ -588,7 +465,6 @@ function renderResults(results) {
       <td>${buildWeekCell(item.weekRequired.week5, item.weeks.week5)}</td>
       <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${item.overallResult}</td>
     `;
-
     therapyResultBody.appendChild(row);
   });
 }
@@ -596,42 +472,26 @@ function renderResults(results) {
 checkTherapyBtn.addEventListener("click", async () => {
   alert("구글 시트에서 계획서 및 상담일지 데이터 보관함을 동기화 중입니다...");
   await syncCarePlanLibraryFromGoogleSheet();
-  await syncCounselLibraryFromGoogleSheet(); // 💡 상담일지 실시간 연동라인 배선 완료!
+  await syncCounselLibraryFromGoogleSheet(); 
   const checkMonth = checkMonthInput.value;
   const file = therapyFileInput.files[0];
 
-  if (!checkMonth) {
-    alert("확인 월을 선택해주세요.");
-    return;
-  }
-
-  if (!file) {
-    alert("물리치료 기록 파일을 업로드해주세요.");
-    return;
-  }
+  if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
+  if (!file) { alert("물리치료 기록 파일을 업로드해주세요."); return; }
 
   const reader = new FileReader();
-
   reader.onload = (event) => {
     const data = new Uint8Array(event.target.result);
     const workbook = XLSX.read(data, { type: "array", cellDates: true });
-
     const therapyRows = parseTherapyReport(workbook, checkMonth);
     const results = buildResults(checkMonth, therapyRows);
-
     renderResults(results);
   };
-
   reader.readAsArrayBuffer(file);
 });
 
 clearTherapyBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
   therapyFileInput.value = "";
-
-  therapyResultBody.innerHTML = `
-    <tr class="empty-row">
-      <td colspan="10">확인 월과 물리치료 기록 파일을 선택해주세요.</td>
-    </tr>
-  `;
+  therapyResultBody.innerHTML = `<tr><td colspan="9">확인 월과 물리치료 기록 파일을 선택해주세요.</td></tr>`;
 });
