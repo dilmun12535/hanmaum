@@ -495,33 +495,49 @@ function applyMediStyle() {
   document.head.appendChild(style);
 }
 
-checkMediBtn.addEventListener("click", async () => {
-  const checkMonth = checkMonthInput.value;
-  const file = mediFileInput.files[0];
+if (checkMediBtn) {
+  checkMediBtn.addEventListener("click", async () => {
+    const checkMonth = checkMonthInput.value;
+    const file = mediFileInput.files[0];
 
-  if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
-  if (!file) { alert("간호일지/복약기록 파일을 업로드해주세요."); return; }
+    if (!checkMonth) {
+      alert("확인 월을 선택해주세요.");
+      return;
+    }
 
-  alert("구글 시트에서 계획서, 상담일지, 출석 데이터를 원격 동기화 중입니다...");
-  await syncCarePlanLibraryFromGoogleSheet();
-  await syncCounselLibraryFromGoogleSheet();
-  await syncAttendanceMonthFromGoogleSheet(checkMonth);
-  applyMediStyle();
+    if (!file) {
+      alert("간호일지/복약기록 파일을 업로드해주세요.");
+      return;
+    }
 
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const data = new Uint8Array(event.target.result);
-    const workbook = XLSX.read(data, { type: "array", cellDates: true });
-    const mediRows = parseMediReport(workbook, checkMonth);
-    const results = buildResults(checkMonth, mediRows);
-    renderResults(checkMonth, results);
-  };
-  reader.readAsArrayBuffer(file);
-});
+    alert("구글 시트에서 계획서, 상담일지, 출석 데이터를 원격 동기화 중입니다...");
 
-clearMediBtn.addEventListener("click", () => {
-  checkMonthInput.value = "";
-  mediFileInput.value = "";
-  mediTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>복약 대상</th></tr>`;
-  mediResultBody.innerHTML = `<tr><td colspan="4">확인 월과 간호일지/복약기록 파일을 선택해주세요.</td></tr>`;
-});
+    await syncCarePlanLibraryFromGoogleSheet();
+    await syncCounselLibraryFromGoogleSheet();
+    await syncAttendanceMonthFromGoogleSheet(checkMonth);
+
+    applyMediStyle();
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const data = new Uint8Array(event.target.result);
+      const workbook = XLSX.read(data, { type: "array", cellDates: true });
+      const mediRows = parseMediReport(workbook, checkMonth);
+      const results = buildResults(checkMonth, mediRows);
+      renderResults(checkMonth, results);
+    };
+
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+if (clearMediBtn) {
+  clearMediBtn.addEventListener("click", () => {
+    checkMonthInput.value = "";
+    mediFileInput.value = "";
+    mediTableHead.innerHTML =
+      `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>복약 대상</th></tr>`;
+    mediResultBody.innerHTML =
+      `<tr><td colspan="4">확인 월과 간호일지/복약기록 파일을 선택해주세요.</td></tr>`;
+  });
+}
