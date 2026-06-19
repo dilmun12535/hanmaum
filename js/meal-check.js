@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFfVUr6hOEpYJbPxJxCW_TOMR144lqoz7Gir9kDZMTFOCy-ygrfrQ0YLzPxfx5aEzZbQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbwPzdlpnsyEX4nr1nliw_8JQX6J2Fgcv0B6t0dGKxuUtCCVrTjLnnHAreWBErgrUs2a_A/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -508,13 +508,41 @@ function getCounselTextForMonth(name, monthEndDate) {
   return `${String(refDate).substring(0,10)}<br>[${counsel.changeType || "-"}]<br>${counsel.careContent || "-"}`;
 }
 
+
+function parseJsonObject(value) {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) return value;
+  try {
+    const parsed = JSON.parse(String(value));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+function timeToMinutes(timeText) {
+  const match = String(timeText || "").match(/(\d{1,2})\s*[:시]\s*(\d{1,2})/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function isEarlyLeave(leaveTime) {
+  const minutes = timeToMinutes(leaveTime);
+  if (minutes === null) return false;
+  return minutes < (16 * 60 + 40);
+}
+
 function getAttendanceMonth(monthValue) {
   return attendanceLibraryCache
     .filter((item) => item.month === monthValue)
-    .map((item) => ({
-      name: String(item.recipientName || item.name || "").trim(),
-      dates: item.dates || item.attendanceDates || []
-    }))
+    .map((item) => {
+      const leaveTimes = parseJsonObject(item.leaveTimes || item.leaveTimesJson);
+      return {
+        name: String(item.recipientName || item.name || "").trim(),
+        dates: item.dates || item.attendanceDates || [],
+        leaveTimes
+      };
+    })
     .filter((item) => item.name !== "")
     .sort((a, b) => safeCompare(a.name, b.name));
 }
@@ -529,7 +557,7 @@ function getFoodTypeResult(mealValue, specialFood) {
   return "식사형태 오류";
 }
 
-function getDayResult(dayData, rule) {
+function getDayResult(dayData, rule, leaveTime) {
   if (!rule) return "정상";
   const mealCount = rule.mealCount;
   const specialFood = rule.specialFood;
@@ -541,6 +569,13 @@ function getDayResult(dayData, rule) {
   if (!dayData || (!dayData.lunch && !dayData.dinner)) return "기록 없음";
 
   const lunchResult = getFoodTypeResult(dayData.lunch, specialFood);
+
+  if (mealCount >= 2 && !dayData.dinner && isEarlyLeave(leaveTime)) {
+    if (lunchResult === "누락") return "누락";
+    if (lunchResult === "식사형태 오류") return "식사형태 오류";
+    return "일찍 하원";
+  }
+
   const dinnerResult = mealCount >= 2 ? getFoodTypeResult(dayData.dinner, specialFood) : "정상";
 
   if (lunchResult === "누락" || dinnerResult === "누락") return "누락";
@@ -550,26 +585,27 @@ function getDayResult(dayData, rule) {
 }
 
 function makeResultClass(result) {
-  if (result === "정상") return "status-ok";
+  if (result === "정상" || result === "일찍 하원") return "status-ok";
   if (result === "저녁 확인") return "status-warn";
   return "status-danger";
 }
 
-function buildDayCell(isAttendanceDay, dayData, rule) {
+function buildDayCell(isAttendanceDay, dayData, rule, leaveTime) {
   if (!isAttendanceDay) return `<td class="meal-day-cell empty-day">결석</td>`;
-  const result = getDayResult(dayData, rule);
+  const result = getDayResult(dayData, rule, leaveTime);
   const resultClass = makeResultClass(result);
-  
+
   let cellBgStyle = "background-color: #ffffff !important;";
-  if (result !== "정상" && result !== "저녁 확인") cellBgStyle = "background-color: #fff5f5 !important;";
+  if (result !== "정상" && result !== "저녁 확인" && result !== "일찍 하원") cellBgStyle = "background-color: #fff5f5 !important;";
 
   const lunch = dayData ? (dayData.lunch || "-") : "-";
   const dinner = dayData ? (dayData.dinner || "-") : "-";
+  const leaveLine = leaveTime ? `<br>하원 ${leaveTime}` : "";
 
   return `
     <td class="meal-day-cell" style="${cellBgStyle}">
       <div class="${resultClass}">${result}</div>
-      <div class="small-cell-text">점 ${lunch}<br>저 ${dinner}</div>
+      <div class="small-cell-text">점 ${lunch}<br>저 ${dinner}${leaveLine}</div>
     </td>
   `;
 }
@@ -588,6 +624,7 @@ function buildResults(monthValue, mealRows) {
       planDate: plan ? plan.writtenDate : "-",
       counselText: getCounselTextForMonth(name, monthEndDate),
       attendanceDates: attendance.dates || [],
+      leaveTimes: attendance.leaveTimes || {},
       plan,
       mealDays: meal ? meal.days : {}
     };
@@ -632,9 +669,10 @@ function renderResults(monthValue, results) {
     const dayCells = days.map((day) => {
       const isAttendanceDay = attendanceSet.has(day);
       const rule = getMealRuleAtDate(item.plan, item.name, day);
-      const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule) : "정상";
-      if (isAttendanceDay && result !== "정상" && result !== "저녁 확인") problemCount += 1;
-      return buildDayCell(isAttendanceDay, item.mealDays[day], rule);
+      const leaveTime = item.leaveTimes ? item.leaveTimes[day] : "";
+      const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule, leaveTime) : "정상";
+      if (isAttendanceDay && result !== "정상" && result !== "저녁 확인" && result !== "일찍 하원") problemCount += 1;
+      return buildDayCell(isAttendanceDay, item.mealDays[day], rule, leaveTime);
     }).join("");
 
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
