@@ -8,7 +8,6 @@ function makePayloadUrl(payload) {
   return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
-// 💡 [영구 조치]: 브라우저 저장 용량을 터트리던 localStorage 구문을 완전히 삭제하고 안전한 메모리 변수 수신 방식으로 리모델링했습니다.
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
@@ -64,7 +63,6 @@ function normalizeRecipientName(value) {
   return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
 }
 
-// 💡 이름에 공백이나 괄호 등의 텍스트 차이가 발생하더라도 유연하게 동일인물로 인식하는 알고리즘 선언
 function isSameRecipient(nameA, nameB) {
   const cleanA = normalizeRecipientName(nameA);
   const cleanB = normalizeRecipientName(nameB);
@@ -72,7 +70,6 @@ function isSameRecipient(nameA, nameB) {
   return cleanA.includes(cleanB) || cleanB.includes(cleanA);
 }
 
-// 💡 [에러 원천 방어]: 이름 데이터가 비어있거나 누락된 빈 행이 유입되어도 localeCompare 에러로 멈추지 않도록 조치
 function safeCompare(a, b) {
   const nameA = String(a || "").trim();
   const nameB = String(b || "").trim();
@@ -281,6 +278,25 @@ function readWorkbook(file) {
   });
 }
 
+function renderHeader(monthValue) {
+  const days = getDaysInMonth(monthValue);
+  nursingVitalTableHead.innerHTML = `
+    <tr>
+      <th>수급자명</th>
+      <th>계획서 작성일</th>
+      <th>상담일지 반영</th>
+      <th>복약도움</th>
+      <th>건강관리 기준</th>
+      ${days.map((day) => {
+        const dayNum = Number(day.split("-")[2]);
+        const colorClass = getDayColorClass(day);
+        return `<th class="split-day-head ${colorClass}">${dayNum}</th>`;
+      }).join("")}
+      <th>종합 결과</th>
+    </tr>
+  `;
+}
+
 function applySplitCheckStyle() {
   if (document.getElementById("splitCheckStyle")) return;
   const style = document.createElement("style");
@@ -303,7 +319,6 @@ function applySplitCheckStyle() {
     .split-day-blue { color: #2563eb !important; }
     .split-day-red { color: #dc2626 !important; }
     
-    /* 💡 [얼룩 원천 차단]: 짝수행을 파랗게 만들던 기본 CSS 템플릿 양식을 완벽한 !important 백색으로 덮어씌워 소멸시켰습니다. */
     .split-check-table tr:nth-child(even) td { background-color: #ffffff !important; }
   `;
   document.head.appendChild(style);
@@ -403,7 +418,6 @@ function buildDayCell(isAttendanceDay, nursingDay, requiredHealthMinutes) {
   `;
 }
 
-// 💡 [치명적 결함 조치]: 정렬 브레이크의 원인이 되던 buildResults 구조를 전산 출석부(attendanceRows)를 올바르게 순회하도록 전면 재구성했습니다.
 function buildResults(monthValue, nursingRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const attendanceRows = getAttendanceMonth(monthValue);
@@ -418,7 +432,7 @@ function buildResults(monthValue, nursingRows) {
       name,
       planDate: plan ? plan.writtenDate : "-",
       baseMedicationCount,
-      attendanceDates: attendance.dates || [],
+      attendanceDates: attendance.dates || [], // 💡 [안전 장치 추가] 날짜가 없거나 깨져 있어도 무조건 빈 배열 처리하여 에러 차단
       nursingDays: nursing ? nursing.days : {}
     };
   });
@@ -438,7 +452,11 @@ function renderResults(monthValue, results) {
 
   results.forEach((item) => {
     const row = document.createElement("tr");
-    const attendanceSet = new Set(item.attendanceDates || []);
+    
+    // 💡 [핵심 교정]: item.attendanceDates가 null이나 undefined일 경우를 100% 방어하도록 Set 구성 방식 리모델링
+    const validDates = Array.isArray(item.attendanceDates) ? item.attendanceDates : [];
+    const attendanceSet = new Set(validDates);
+    
     const monthEndMedicationCount = getCounselMedicationCount(item.name, getMonthEndDate(monthValue), item.baseMedicationCount);
     const monthEndHealthMinutes = getRequiredHealthMinutes(monthEndMedicationCount);
 
