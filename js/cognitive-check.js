@@ -281,22 +281,19 @@ function renderHeader(monthValue) {
   `;
 }
 
-// 💡 [출력 핏 교정]: 기존에 대시(-) 기호로 뜨던 부분을 다른 화면 메뉴들과 마찬가지로 명확하게 "결석"이라는 단어로 교체했습니다!
 function buildDayCell(isAttendanceDay, cognitiveDay) {
-  if (!isAttendanceDay) {
-    return `<td class="cognitive-day-cell empty-day">결석</td>`;
-  }
+  if (!isAttendanceDay) return `<td class="cognitive-day-cell empty-day">결석</td>`;
   if (cognitiveDay && cognitiveDay.count > 0) {
     const programText = cognitiveDay.programs && cognitiveDay.programs.length > 0 ? cognitiveDay.programs.join("<br>") : `${cognitiveDay.count}회`;
     return `
-      <td class="cognitive-day-cell">
+      <td class="cognitive-day-cell" style="background-color: #ffffff !important;">
         <div class="status-ok">정상</div>
         <div class="small-cell-text">${programText}</div>
       </td>
     `;
   }
   return `
-    <td class="cognitive-day-cell" style="background-color: #fff5f5; border: 1px solid #fda4af !important;">
+    <td class="cognitive-day-cell" style="background-color: #fff5f5 !important; border: 1px solid #fda4af !important;">
       <div class="status-danger">누락</div>
       <div class="small-cell-text">출석</div>
     </td>
@@ -329,7 +326,7 @@ function renderResults(monthValue, results) {
 
     const overallText = missingCount > 0 ? `확인 필요<br>${missingCount}일 누락` : "정상";
     const overallClass = missingCount > 0 ? "status-danger" : "status-ok";
-    const errorCellBg = missingCount > 0 ? 'background-color: #fff5f5;' : '';
+    const errorCellBg = missingCount > 0 ? 'background-color: #fff5f5 !important;' : 'background-color: #ffffff !important;';
 
     row.innerHTML = `
       <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
@@ -356,12 +353,15 @@ function applyCognitiveStyle() {
     .cognitive-table th:nth-child(3), .cognitive-table td:nth-child(3) { min-width: 80px; width: 80px; }
     .cognitive-day-head, .cognitive-day-cell { min-width: 90px; width: 90px; }
     .small-cell-text { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; word-break: keep-all; }
-    .empty-day { color: #999; background-color: #f8fafc; font-weight: 700; }
+    .empty-day { color: #999; background-color: #f8fafc !important; font-weight: 700; }
     .cognitive-day-blue { color: #2563eb !important; }
     .cognitive-day-red { color: #dc2626 !important; }
-    .status-ok { color: #2563eb; font-weight: 800; }
+    .status-ok { color: #1e293b; font-weight: 700; }
     .status-danger { color: #e11d48; font-weight: 800; }
     .cognitive-table th:last-child, .cognitive-table td:last-child { min-width: 120px; width: 120px; white-space: normal; word-break: keep-all; line-height: 1.5; text-align: center; }
+    
+    /* 💡 [얼룩 전면 제거]: 짝수행 강제 푸른 배경 템플릿 CSS 속성을 차단하여 완벽한 백색으로 변환합니다. */
+    .cognitive-table tr:nth-child(even) td { background-color: #ffffff !important; }
   `;
   document.head.appendChild(style);
 }
