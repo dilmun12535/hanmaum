@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbxFfVUr6hOEpYJbPxJxCW_TOMR144lqoz7Gir9kDZMTFOCy-ygrfrQ0YLzPxfx5aEzZbQ/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbwPzdlpnsyEX4nr1nliw_8JQX6J2Fgcv0B6t0dGKxuUtCCVrTjLnnHAreWBErgrUs2a_A/exec";
 
 const attendanceMonthInput = document.getElementById("attendanceMonth");
 const attendanceFileInput = document.getElementById("attendanceFile");
@@ -195,6 +195,46 @@ function findColumn(header, keywords) {
   });
 }
 
+function normalizeTimeText(value) {
+  if (value === undefined || value === null) return "";
+
+  if (value instanceof Date) {
+    const hour = String(value.getHours()).padStart(2, "0");
+    const minute = String(value.getMinutes()).padStart(2, "0");
+    return `${hour}:${minute}`;
+  }
+
+  if (typeof value === "number") {
+    // 엑셀 시간이 0.5처럼 소수로 들어오는 경우 처리
+    if (value > 0 && value < 1) {
+      const totalMinutes = Math.round(value * 24 * 60);
+      const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+      const minute = String(totalMinutes % 60).padStart(2, "0");
+      return `${hour}:${minute}`;
+    }
+  }
+
+  const text = String(value || "").trim();
+  const match = text.match(/(\d{1,2})\s*[:시]\s*(\d{1,2})/);
+  if (!match) return "";
+
+  return `${String(match[1]).padStart(2, "0")}:${String(match[2]).padStart(2, "0")}`;
+}
+
+function extractLeaveTime(serviceTime, provTime) {
+  // 제공시간이 있으면 제공시간을 우선 사용하고, 없으면 서비스시간을 사용합니다.
+  // 예: "09:00 ~ 16:30" → "16:30"
+  const source = String(provTime || serviceTime || "").trim();
+  if (!source) return "";
+
+  const matches = source.match(/\d{1,2}\s*[:시]\s*\d{1,2}/g) || [];
+  if (matches.length >= 2) return normalizeTimeText(matches[matches.length - 1]);
+  if (matches.length === 1) return normalizeTimeText(matches[0]);
+
+  return "";
+}
+
+
 function parseOneAttendanceSheet(sheet, monthValue) {
   const rows = sheetToRowsWithMerges(sheet);
 
@@ -210,11 +250,13 @@ function parseOneAttendanceSheet(sheet, monthValue) {
   const header = rows[headerIndex] || [];
   const dateCol = findColumn(header, ["날짜"]);
   const timeCol = findColumn(header, ["서비스시간"]);
-  const provCol = findColumn(header, ["제공시간"]); // 제공시간 컬럼 매칭 추가
+  const provCol = findColumn(header, ["제공시간"]);
 
   if (dateCol === -1) return null;
 
   const attendanceDates = [];
+  const leaveTimes = {};
+  const attendanceTimeRows = {};
 
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i] || [];
@@ -225,15 +267,22 @@ function parseOneAttendanceSheet(sheet, monthValue) {
 
     const serviceTime = timeCol >= 0 ? String(row[timeCol] || "").trim() : "";
     const provTime = provCol >= 0 ? String(row[provCol] || "").trim() : "";
-    
+
     const normalizedServiceTime = normalizeText(serviceTime);
     const normalizedProvTime = normalizeText(provTime);
 
-    // [개선 핵심]: 서비스시간이나 제공시간에 '일정없음' 또는 '미이용' 텍스트가 들어가 있으면 출석 목록에서 완전히 제외합니다.
     if (!normalizedServiceTime || normalizedServiceTime.includes("일정없음") || normalizedServiceTime.includes("미이용")) continue;
     if (normalizedProvTime.includes("미이용") || normalizedProvTime.includes("일정없음")) continue;
 
+    const leaveTime = extractLeaveTime(serviceTime, provTime);
+
     attendanceDates.push(dateText);
+    if (leaveTime) leaveTimes[dateText] = leaveTime;
+    attendanceTimeRows[dateText] = {
+      serviceTime,
+      providedTime: provTime,
+      leaveTime
+    };
   }
 
   const uniqueDates = Array.from(new Set(attendanceDates)).sort();
@@ -245,7 +294,9 @@ function parseOneAttendanceSheet(sheet, monthValue) {
     startDate,
     month: monthValue,
     dates: uniqueDates,
-    count: uniqueDates.length
+    count: uniqueDates.length,
+    leaveTimes,
+    attendanceTimeRows
   };
 }
 
@@ -298,6 +349,8 @@ async function saveAttendanceMonth(monthValue, items, fileName) {
         serviceStartDate: item.startDate,
         attendanceDates: item.dates,
         attendanceCount: item.count,
+        leaveTimesJson: JSON.stringify(item.leaveTimes || {}),
+        attendanceTimeRows: item.attendanceTimeRows || {},
         fileName
       }))
     })
@@ -335,7 +388,9 @@ async function loadAttendanceMonth(monthValue) {
         startDate: item.serviceStartDate || "",
         month: item.month || monthValue,
         dates: Array.isArray(item.attendanceDates) ? item.attendanceDates : [],
-        count: Number(item.attendanceCount || 0)
+        count: Number(item.attendanceCount || 0),
+        leaveTimes: item.leaveTimes || {},
+        attendanceTimeRows: item.attendanceTimeRows || {}
       }))
       .sort((a, b) => a.name.localeCompare(b.name, "ko"));
   } catch (error) {
@@ -458,7 +513,8 @@ function renderAttendance(items) {
         .map((day) => {
           const attended = dateSet.has(day);
           const colorClass = getDayColorClass(day);
-          return `<td class="attendance-day-cell ${colorClass}">${attended ? "○" : ""}</td>`;
+          const leaveTime = item.leaveTimes ? item.leaveTimes[day] : "";
+          return `<td class="attendance-day-cell ${colorClass}">${attended ? `○${leaveTime ? `<br><span class="leave-time-text">${leaveTime}</span>` : ""}` : ""}</td>`;
         })
         .join("")}
     `;
@@ -546,6 +602,15 @@ function applyAttendanceStyle() {
     .attendance-day-cell {
       color: #1f3c88;
       font-size: 15px;
+      line-height: 1.25;
+    }
+
+    .leave-time-text {
+      display: inline-block;
+      margin-top: 2px;
+      font-size: 10px;
+      color: #64748b;
+      font-weight: 600;
     }
 
     .attendance-day-blue {
