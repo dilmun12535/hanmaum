@@ -292,20 +292,21 @@ function planToFullText(plan) {
   return normalizeText(JSON.stringify(plan.rows || ""));
 }
 
-// 💡 [초정밀 횟수 추출망 탑재]: 중중 대괄호 배열([["중식","석식"]])이나 문자 파열 현상을 완벽 우회하여 단어가 상호 매칭되면 무조건 2회로 확정합니다!
+// 💡 [지표 기준점 개조완료]: 단어 가공 형식을 완전히 파괴하고 계획서 전체에서 개별적으로 글자를 색출하여 2회 대상자를 오차 없이 판정합니다!
 function getMealCountFromPlan(plan) {
   if (!plan) return 1;
   
   const rawRowsText = planToFullText(plan);
   const extraText = normalizeText(`${plan.opinion || ""} ${plan.content || ""} ${plan.mealType || ""}`);
   
-  // 모든 기호와 대괄호를 날려버린 순수 문자열 추출
+  // 특수 기호나 대괄호를 완전히 소멸시킨 완전 순수 문자열 정제
   const cleanFinalText = (rawRowsText + " " + extraText).replace(/[^a-zA-Z0-9가-힣]/g, "");
 
   const hasLunch = cleanFinalText.includes("중식") || cleanFinalText.includes("점심");
   const hasDinner = cleanFinalText.includes("석식") || cleanFinalText.includes("저녁");
-  const hasTwoTimes = cleanFinalText.includes("2회") || cleanFinalText.includes("1일2회");
+  const hasTwoTimes = cleanFinalText.includes("2회") || cleanFinalText.includes("1일2회") || cleanFinalText.includes("이회");
 
+  // 점심과 저녁이 둘 다 들어있거나, 2회 단어가 포착되면 어떤 연동망이든 무조건 2회 확정!
   if ((hasLunch && hasDinner) || hasTwoTimes) {
     return 2;
   }
@@ -588,7 +589,7 @@ checkMealBtn.addEventListener("click", async () => {
 
 clearMealBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
-  mealFileInput.value = "";
+  file = mealFileInput.value = "";
   mealTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>식사 횟수</th><th>음식 준비</th></tr>`;
   mealResultBody.innerHTML = `<tr><td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td></tr>`;
 });
