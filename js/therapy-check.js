@@ -8,29 +8,31 @@ function makePayloadUrl(payload) {
   return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
+// 💡 [영구 조치]: 브라우저 저장 한도를 터트리던 localStorage 구문을 원천 배제하고 실시간 원격 메모리 연동망으로 리모델링했습니다.
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
     carePlanLibraryCache = JSON.parse(text);
-    localStorage.setItem("carePlanLibrary", JSON.stringify(carePlanLibraryCache));
     return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
-    return JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+    return [];
   }
 }
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, { method: "GET", redirect: "follow" });
+    const response = await fetch(
+      makePayloadUrl({ action: "listCounsel" }),
+      { method: "GET", redirect: "follow" }
+    );
     const text = await response.text();
     counselLibraryCache = JSON.parse(text);
-    localStorage.setItem("counselLibrary", JSON.stringify(counselLibraryCache));
     return counselLibraryCache;
   } catch (error) {
     console.error("상담일지 동기화 오류:", error);
-    return JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+    return [];
   }
 }
 
@@ -65,6 +67,12 @@ const therapyResultBody = document.getElementById("therapyResultBody");
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
+}
+
+function safeCompare(a, b) {
+  const nameA = String(a || "").trim();
+  const nameB = String(b || "").trim();
+  return nameA.localeCompare(nameB, "ko");
 }
 
 function excelDateToJSDate(serial) {
@@ -167,7 +175,8 @@ function getWeekKey(dateText) {
 }
 
 function getLatestPlansByRecipient(checkDate) {
-  const library = JSON.parse(localStorage.getItem("carePlanLibrary") || "[]");
+  // 💡 [수정 완료]: 셧다운을 유발하던 로컬스토리지를 배제하고 실시간 캐시 배열 변수에서 직접 필터링을 집행합니다.
+  const library = carePlanLibraryCache || [];
 
   const validPlans = library.filter((plan) => {
     return new Date(plan.writtenDate) <= new Date(checkDate);
@@ -196,7 +205,8 @@ function hasTherapyPlan(plan) {
 }
 
 function getLatestTherapyCounsel(name, targetDate) {
-  const counselLibrary = JSON.parse(localStorage.getItem("counselLibrary") || "[]");
+  // 💡 [수정 완료]: 셧다운을 유발하던 로컬스토리지를 배제하고 실시간 캐시 배열 변수에서 직접 필터링을 집행합니다.
+  const counselLibrary = counselLibraryCache || [];
   const target = new Date(targetDate);
 
   const counsels = counselLibrary
@@ -295,8 +305,7 @@ function sheetToRowsWithMerges(sheet) {
 
     for (let r = merge.s.r; r <= merge.e.r; r++) {
       for (let c = merge.s.c; c <= merge.e.c; c++) {
-        const rowIndex = r - range.s.r;
-        rows[rowIndex][c] = value;
+        rows[r - range.s.r][c] = value;
       }
     }
   });
@@ -395,7 +404,6 @@ function makeResultClass(result) {
   return "";
 }
 
-// [주차별 셀 개조]: 누락/오류 발생 주차 칸 자체에 소프트 레드 배경 스타일을 주입합니다.
 function buildWeekCell(required, weekData) {
   const result = getWeekResult(required, weekData);
   const resultClass = makeResultClass(result);
@@ -488,7 +496,7 @@ function buildResults(monthValue, therapyRows) {
     });
   });
 
-  return results.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  return results.sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function applyTherapyReadableStyle() {
@@ -567,19 +575,18 @@ function renderResults(results) {
     const row = document.createElement("tr");
     const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
     
-    // 💡 [행 전체 연동 조치]: 확인 필요 상태일 때 줄 전체 구성요소에 연한 분홍 배경 스타일 적용
     const errorCellBg = item.overallResult !== "정상" ? "background-color: #fff5f5;" : "";
 
     row.innerHTML = `
-      <td style="font-weight:600; ${errorCellBg}">${item.name}</td>
-      <td style="${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
+      <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name}</td>
+      <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
       <td style="font-size:12px; line-height:1.4; ${errorCellBg}">${item.counselText}</td>
       <td>${buildWeekCell(item.weekRequired.week1, item.weeks.week1)}</td>
       <td>${buildWeekCell(item.weekRequired.week2, item.weeks.week2)}</td>
       <td>${buildWeekCell(item.weekRequired.week3, item.weeks.week3)}</td>
       <td>${buildWeekCell(item.weekRequired.week4, item.weeks.week4)}</td>
       <td>${buildWeekCell(item.weekRequired.week5, item.weeks.week5)}</td>
-      <td class="${overallClass}" style="font-weight:800; vertical-align:middle; ${errorCellBg}">${item.overallResult}</td>
+      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${item.overallResult}</td>
     `;
 
     therapyResultBody.appendChild(row);
@@ -587,7 +594,9 @@ function renderResults(results) {
 }
 
 checkTherapyBtn.addEventListener("click", async () => {
+  alert("구글 시트에서 계획서 및 상담일지 데이터 보관함을 동기화 중입니다...");
   await syncCarePlanLibraryFromGoogleSheet();
+  await syncCounselLibraryFromGoogleSheet(); // 💡 상담일지 실시간 연동라인 배선 완료!
   const checkMonth = checkMonthInput.value;
   const file = therapyFileInput.files[0];
 
