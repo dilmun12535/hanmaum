@@ -611,14 +611,48 @@ function applyTherapyReadableStyle() {
   const style = document.createElement("style");
   style.id = "therapyReadableStyle";
   style.textContent = `
-    .info-table th, .info-table td { vertical-align: top; white-space: normal; border: 1px solid #e2e8f0 !important; padding: 12px 8px; }
+    .therapy-check-table th, .therapy-check-table td,
+    .info-table th, .info-table td {
+      vertical-align: top;
+      white-space: normal;
+      border: 1px solid #e2e8f0 !important;
+      padding: 12px 8px;
+      word-break: keep-all;
+      line-height: 1.45;
+    }
+
+    .therapy-check-table th:nth-child(1), .therapy-check-table td:nth-child(1),
     .info-table th:nth-child(1), .info-table td:nth-child(1) { min-width: 90px; width: 90px; text-align: center; }
-    .info-table th:nth-child(2), .info-table td:nth-child(2) { min-width: 115px; width: 115px; text-align: center; }
-    .info-table th:nth-child(3), .info-table td:nth-child(3) { min-width: 180px; width: 180px; text-align: left; }
-    .info-table th:nth-child(n+4):nth-child(-n+8), .info-table td:nth-child(n+4):nth-child(-n+8) { min-width: 210px; width: 210px; text-align: center; }
-    .info-table th:nth-child(9), .info-table td:nth-child(9) { min-width: 90px; width: 90px; text-align: center; vertical-align: middle; }
+
+    .therapy-check-table th:nth-child(2), .therapy-check-table td:nth-child(2),
+    .info-table th:nth-child(2), .info-table td:nth-child(2) { min-width: 120px; width: 120px; text-align: center; }
+
+    .therapy-check-table th:nth-child(3), .therapy-check-table td:nth-child(3),
+    .info-table th:nth-child(3), .info-table td:nth-child(3) { min-width: 190px; width: 190px; text-align: left; }
+
+    .therapy-check-table th:nth-child(4), .therapy-check-table td:nth-child(4),
+    .info-table th:nth-child(4), .info-table td:nth-child(4) { min-width: 105px; width: 105px; text-align: center; }
+
+    .therapy-check-table th:nth-child(n+5):nth-child(-n+9), .therapy-check-table td:nth-child(n+5):nth-child(-n+9),
+    .info-table th:nth-child(n+5):nth-child(-n+9), .info-table td:nth-child(n+5):nth-child(-n+9) {
+      min-width: 230px;
+      width: 230px;
+      text-align: center;
+    }
+
+    .therapy-check-table th:nth-child(10), .therapy-check-table td:nth-child(10),
+    .info-table th:nth-child(10), .info-table td:nth-child(10) {
+      min-width: 105px;
+      width: 105px;
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .therapy-check-table tr:nth-child(even) td,
     .info-table tr:nth-child(even) td { background-color: #ffffff !important; }
 
+    .therapy-target-ok { color: #2563eb; font-weight: 800; }
+    .therapy-target-no { color: #64748b; font-weight: 700; }
     .status-ok { color: #2563eb; font-weight: 800; }
     .status-absent { color: #64748b; font-weight: 700; }
     .status-danger { color: #e11d48; font-weight: 900; }
@@ -632,7 +666,7 @@ function renderResults(monthValue, results) {
   therapyResultBody.innerHTML = "";
 
   if (!results || results.length === 0) {
-    therapyResultBody.innerHTML = `<tr><td colspan="9">확인할 데이터가 없습니다.</td></tr>`;
+    therapyResultBody.innerHTML = `<tr><td colspan="10">확인할 데이터가 없습니다.</td></tr>`;
     return;
   }
 
@@ -654,6 +688,11 @@ function renderResults(monthValue, results) {
       <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name}</td>
       <td style="text-align:center; ${errorCellBg}">${item.planDate || "-"}</td>
       <td style="font-size:12px; line-height:1.4; ${errorCellBg}">${item.counselText}</td>
+      <td style="text-align:center; vertical-align:middle; ${errorCellBg}">
+        ${Object.values(item.weekRequired || {}).some(Boolean)
+          ? '<span class="therapy-target-ok">대상</span>'
+          : '<span class="therapy-target-no">비대상</span>'}
+      </td>
 
       <td style="${getCellBgColor(item.weekResultsMap.week1)}">${buildWeekCell(item.weekResultsMap.week1, item.weeks.week1, item.weekRequired.week1)}</td>
       <td style="${getCellBgColor(item.weekResultsMap.week2)}">${buildWeekCell(item.weekResultsMap.week2, item.weeks.week2, item.weekRequired.week2)}</td>
@@ -710,5 +749,5 @@ checkTherapyBtn.addEventListener("click", async () => {
 clearTherapyBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
   therapyFileInput.value = "";
-  therapyResultBody.innerHTML = `<tr><td colspan="9">확인 월과 물리치료 기록 파일을 선택해주세요.</td></tr>`;
+  therapyResultBody.innerHTML = `<tr><td colspan="10">확인 월과 물리치료 기록 파일을 선택해주세요.</td></tr>`;
 });
