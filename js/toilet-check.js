@@ -363,10 +363,22 @@ function buildResults(monthValue, toiletRows) {
     nameMap[row.name].days[row.date] = { stoolCount: row.stoolCount, urineCount: row.urineCount, diaperCount: row.diaperCount };
   });
 
-  Object.keys(latestPlans).forEach((name) => {
+  // [수정 핵심]
+  // 기존에는 계획서에 있는 모든 어르신을 화면에 추가해서,
+  // 해당 월 파일에 없는 예전 이용자/퇴소자까지 표시되는 문제가 있었습니다.
+  // 이제는 해당 월 출석부에 있는 어르신만 기준으로 추가합니다.
+  attendanceRows.forEach((attendance) => {
+    const name = String(attendance.name || "").trim();
+    if (!name) return;
+
     if (!nameMap[name]) {
       const plan = latestPlans[name];
-      nameMap[name] = { name, planDate: plan ? plan.writtenDate : "-", counselText: getCounselTextForMonth(name, monthEndDate), days: {} };
+      nameMap[name] = {
+        name,
+        planDate: plan ? plan.writtenDate : "-",
+        counselText: getCounselTextForMonth(name, monthEndDate),
+        days: {}
+      };
     }
   });
 
