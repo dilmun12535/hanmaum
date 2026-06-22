@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFfVUr6hOEpYJbPxJxCW_TOMR144lqoz7Gir9kDZMTFOCy-ygrfrQ0YLzPxfx5aEzZbQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyxbQ7GeDm7pq9SkYDSgGkt7GiKic878En8-niDDFuRg7-lyxo5F3E7LE5qYpqi2_Z14g/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -402,34 +402,60 @@ function buildResults(monthValue, therapyRows) {
   const weekEndDates = getWeekEndDates(monthValue);
   const attendanceRows = getAttendanceMonth(monthValue);
 
-  const results = therapyRows.map((therapy) => {
-    const name = therapy.name;
-    const plan = getLatestPlansByRecipient(name, monthEndDate);
-    const myAttendance = attendanceRows.find((item) => isSameRecipient(item.name, name));
-    const attendDatesSet = new Set(myAttendance ? myAttendance.dates : []);
+  const therapyMap = {};
+  therapyRows.forEach((therapy) => {
+    const cleanName = normalizeText(therapy.name);
+    if (cleanName) therapyMap[cleanName] = therapy;
+  });
 
-    const weeks = therapy.weeks;
+  const defaultWeeks = {
+    week1: { hasRecord: false, recordText: "-" },
+    week2: { hasRecord: false, recordText: "-" },
+    week3: { hasRecord: false, recordText: "-" },
+    week4: { hasRecord: false, recordText: "-" },
+    week5: { hasRecord: false, recordText: "-" },
+    week6: { hasRecord: false, recordText: "-" }
+  };
+
+  // [수정 핵심]
+  // 기존에는 물리치료 파일에 있는 사람만 화면에 표시되어
+  // 출석했지만 물리치료 기록이 누락된 어르신을 잡지 못했습니다.
+  // 이제 해당 월 출석부에 있는 어르신을 기준으로 화면을 만들고,
+  // 물리치료 파일의 기록은 그 출석자에게 매칭해서 검증합니다.
+  const results = attendanceRows.map((attendance) => {
+    const name = attendance.name;
+    const plan = getLatestPlansByRecipient(name, monthEndDate);
+    const attendDatesSet = new Set(Array.isArray(attendance.dates) ? attendance.dates : []);
+
+    const therapy = therapyRows.find((item) => isSameRecipient(item.name, name));
+    const weeks = therapy && therapy.weeks ? therapy.weeks : defaultWeeks;
+
     const weekKeys = ["week1", "week2", "week3", "week4", "week5", "week6"];
-    
     const weekRequired = {};
     const weekResultsMap = {};
 
     weekKeys.forEach((wk) => {
       if (!weekEndDates[wk]) {
+        weekRequired[wk] = false;
         weekResultsMap[wk] = "정상";
         return;
       }
+
       const weekDays = getDaysInWeekRange(monthValue, wk);
       const hasAttend = weekDays.some((d) => attendDatesSet.has(d));
-      
       const req = isTherapyRequiredAtDate(plan, name, weekEndDates[wk]);
+
       weekRequired[wk] = req;
       weekResultsMap[wk] = getWeekResult(req, weeks[wk], hasAttend);
     });
 
-    const weekResultsArray = weekEndDates.week5 ? 
-      [weekResultsMap.week1, weekResultsMap.week2, weekResultsMap.week3, weekResultsMap.week4, weekResultsMap.week5] : 
-      [weekResultsMap.week1, weekResultsMap.week2, weekResultsMap.week3, weekResultsMap.week4];
+    const visibleWeekKeys = weekEndDates.week6
+      ? ["week1", "week2", "week3", "week4", "week5", "week6"]
+      : weekEndDates.week5
+        ? ["week1", "week2", "week3", "week4", "week5"]
+        : ["week1", "week2", "week3", "week4"];
+
+    const weekResultsArray = visibleWeekKeys.map((wk) => weekResultsMap[wk]);
 
     return {
       name,
@@ -520,6 +546,11 @@ checkTherapyBtn.addEventListener("click", async () => {
   await syncCounselLibraryFromGoogleSheet(); 
   await syncAttendanceMonthFromGoogleSheet(checkMonth);
   applyTherapyReadableStyle();
+
+  const attendanceRows = getAttendanceMonth(checkMonth);
+  if (attendanceRows.length === 0) {
+    alert("출석관리 저장 내역이 없습니다. 먼저 출석관리에서 해당 월 출석을 등록해주세요.");
+  }
 
   const reader = new FileReader();
   reader.onload = (event) => {
