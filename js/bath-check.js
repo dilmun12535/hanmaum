@@ -154,6 +154,22 @@ function getLatestPlansByRecipient(checkDate) {
   return latestByName;
 }
 
+function getLatestPlanForRecipientAtDate(name, targetDate) {
+  const targetName = normalizeText(name);
+  const targetDateText = normalizeDateText(targetDate);
+
+  const validPlans = carePlanLibraryCache
+    .filter((plan) => {
+      const planName = normalizeText(plan.recipientName || "");
+      const writtenDate = normalizeDateText(plan.writtenDate);
+      const sameName = planName === targetName || planName.includes(targetName) || targetName.includes(planName);
+      return sameName && writtenDate && writtenDate <= targetDateText;
+    })
+    .sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
+
+  return validPlans[0] || null;
+}
+
 function hasBathPlan(plan) {
   if (!plan || !plan.rows) return false;
   const text = normalizeText(JSON.stringify(plan.rows));
@@ -226,15 +242,66 @@ function isAddCounsel(counsel) {
   return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
 }
 
-function isBathRequiredAtDate(plan, name, targetDate) {
-  let required = hasBathPlan(plan);
-  const counsel = getLatestBathCounsel(name, targetDate);
+function getBathBenefitAtDate(plan, name, targetDate) {
+  const latestPlan = plan || getLatestPlanForRecipientAtDate(name, targetDate);
+  const planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
+  const planRequired = hasBathPlan(latestPlan);
 
-  if (counsel) {
-    if (isRemoveCounsel(counsel)) required = false;
-    if (isAddCounsel(counsel)) required = true;
+  const counsel = getLatestBathCounsel(name, targetDate);
+  const counselDate = counsel ? getCounselDate(counsel) : "";
+
+  // 상담일지가 없으면 계획서 기준
+  if (!counsel) {
+    return {
+      required: planRequired,
+      source: "계획서"
+    };
   }
-  return required;
+
+  // 계획서 작성일이 상담일지 반영일과 같거나 더 최신이면 계획서 기준
+  // 예: 상담일지 2024-04-30 추가 → 계획서 2024-05-30 작성이면 계획서가 최종 기준
+  if (planDate && counselDate && planDate >= counselDate) {
+    return {
+      required: planRequired,
+      source: "계획서"
+    };
+  }
+
+  // 상담일지가 더 최신이면 상담일지 기준
+  if (isRemoveCounsel(counsel)) {
+    return {
+      required: false,
+      source: "상담"
+    };
+  }
+
+  if (isAddCounsel(counsel)) {
+    return {
+      required: true,
+      source: "상담"
+    };
+  }
+
+  // 상담일지가 애매하면 계획서 기준으로 안전 처리
+  return {
+    required: planRequired,
+    source: "계획서"
+  };
+}
+
+function isBathRequiredAtDate(plan, name, targetDate) {
+  return getBathBenefitAtDate(plan, name, targetDate).required;
+}
+
+function buildBenefitSourceHtml(benefit) {
+  const requiredText = benefit && benefit.required ? "있음" : "없음";
+  const sourceText = benefit && benefit.source ? benefit.source : "계획서";
+  const mainColor = benefit && benefit.required ? "#2563eb" : "#64748b";
+
+  return `
+    <div style="font-weight: 800; color: ${mainColor};">${requiredText}</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 3px;">[${sourceText}]</div>
+  `;
 }
 
 function getCounselTextForMonth(name, monthEndDate) {
@@ -447,12 +514,20 @@ function buildResults(monthValue, bathRows) {
       week5: { hasBathRecord: false, isGreyBlock: false, recordText: "-" }
     };
 
+    const weekBenefit = {
+      week1: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week1), name, weekEndDates.week1),
+      week2: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week2), name, weekEndDates.week2),
+      week3: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week3), name, weekEndDates.week3),
+      week4: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week4), name, weekEndDates.week4),
+      week5: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week5), name, weekEndDates.week5)
+    };
+
     const weekRequired = {
-      week1: isBathRequiredAtDate(plan, name, weekEndDates.week1),
-      week2: isBathRequiredAtDate(plan, name, weekEndDates.week2),
-      week3: isBathRequiredAtDate(plan, name, weekEndDates.week3),
-      week4: isBathRequiredAtDate(plan, name, weekEndDates.week4),
-      week5: isBathRequiredAtDate(plan, name, weekEndDates.week5)
+      week1: weekBenefit.week1.required,
+      week2: weekBenefit.week2.required,
+      week3: weekBenefit.week3.required,
+      week4: weekBenefit.week4.required,
+      week5: weekBenefit.week5.required
     };
 
     const weekResults = [
@@ -463,13 +538,16 @@ function buildResults(monthValue, bathRows) {
       getWeekResult(weekRequired.week5, weeks.week5)
     ];
 
-    const anyRequired = Object.values(weekRequired).some(Boolean);
+    const monthPlan = getLatestPlanForRecipientAtDate(name, monthEndDate);
+    const monthBathBenefit = getBathBenefitAtDate(monthPlan, name, monthEndDate);
 
     results.push({
       name,
-      planDate: plan ? plan.writtenDate : "-",
+      planDate: monthPlan ? monthPlan.writtenDate : "-",
       counselText: getCounselTextForMonth(name, monthEndDate),
-      requiredText: anyRequired ? "있음" : "없음",
+      requiredText: monthBathBenefit.required ? "있음" : "없음",
+      bathBenefit: monthBathBenefit,
+      weekBenefit,
       weekRequired,
       weeks,
       overallResult: buildOverallResult(weekResults)
@@ -498,7 +576,7 @@ function renderResults(results) {
       <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.name}</td>
       <td style="vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
       <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0;">${item.counselText || "없음"}</td>
-      <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.requiredText || "없음"}</td>
+      <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${buildBenefitSourceHtml(item.bathBenefit)}</td>
       ${buildWeekTdHtml(item.weekRequired.week1, item.weeks.week1)}
       ${buildWeekTdHtml(item.weekRequired.week2, item.weeks.week2)}
       ${buildWeekTdHtml(item.weekRequired.week3, item.weeks.week3)}
