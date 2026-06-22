@@ -168,6 +168,21 @@ function getLatestPlansByRecipient(checkDate) {
   return latestByName;
 }
 
+function getLatestPlanForRecipientAtDate(name, targetDate) {
+  const targetName = String(name || "").trim();
+  const targetDateText = normalizeDateText(targetDate);
+
+  const validPlans = carePlanLibraryCache
+    .filter((plan) => {
+      const planName = String(plan.recipientName || "").trim();
+      const writtenDate = normalizeDateText(plan.writtenDate);
+      return planName === targetName && writtenDate && writtenDate <= targetDateText;
+    })
+    .sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
+
+  return validPlans[0] || null;
+}
+
 function hasDiaperPlan(plan) {
   if (!plan || !plan.rows) return false;
   const text = normalizeText(JSON.stringify(plan.rows));
@@ -208,14 +223,66 @@ function isAddCounsel(counsel) {
   return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영") || text.includes("기저귀교환도움") || text.includes("기저귀교환");
 }
 
-function isDiaperAllowedAtDate(plan, name, targetDate) {
-  let allowed = hasDiaperPlan(plan);
+function getDiaperBenefitAtDate(plan, name, targetDate) {
+  const latestPlan = plan || getLatestPlanForRecipientAtDate(name, targetDate);
+  const planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
+  const planAllowed = hasDiaperPlan(latestPlan);
+
   const counsel = getLatestDiaperCounsel(name, targetDate);
-  if (counsel) {
-    if (isRemoveCounsel(counsel)) allowed = false;
-    if (isAddCounsel(counsel)) allowed = true;
+  const counselDate = counsel ? getCounselDate(counsel) : "";
+
+  // 상담일지가 없으면 계획서 기준
+  if (!counsel) {
+    return {
+      allowed: planAllowed,
+      source: "계획서"
+    };
   }
-  return allowed;
+
+  // 계획서 작성일이 상담일지 반영일과 같거나 더 최신이면 계획서 기준
+  // 예: 상담일지 2024-04-30 추가 → 계획서 2024-05-30 작성이면 계획서가 최종 기준
+  if (planDate && counselDate && planDate >= counselDate) {
+    return {
+      allowed: planAllowed,
+      source: "계획서"
+    };
+  }
+
+  // 상담일지가 더 최신이면 상담일지 기준
+  if (isRemoveCounsel(counsel)) {
+    return {
+      allowed: false,
+      source: "상담"
+    };
+  }
+
+  if (isAddCounsel(counsel)) {
+    return {
+      allowed: true,
+      source: "상담"
+    };
+  }
+
+  // 상담일지가 애매하면 계획서 기준으로 안전 처리
+  return {
+    allowed: planAllowed,
+    source: "계획서"
+  };
+}
+
+function isDiaperAllowedAtDate(plan, name, targetDate) {
+  return getDiaperBenefitAtDate(plan, name, targetDate).allowed;
+}
+
+function buildBenefitSourceHtml(benefit) {
+  const allowedText = benefit && benefit.allowed ? "있음" : "없음";
+  const sourceText = benefit && benefit.source ? benefit.source : "계획서";
+  const mainColor = benefit && benefit.allowed ? "#2563eb" : "#64748b";
+
+  return `
+    <div style="font-weight: 800; color: ${mainColor};">${allowedText}</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 3px;">[${sourceText}]</div>
+  `;
 }
 
 function getCounselTextForMonth(name, monthEndDate) {
@@ -387,7 +454,15 @@ function buildResults(monthValue, toiletRows) {
     const attendance = attendanceRows.find((a) => a.name === item.name);
     item.attendanceDates = attendance ? attendance.dates : [];
     item.daysDiaperAllowed = {};
-    days.forEach((day) => { item.daysDiaperAllowed[day] = isDiaperAllowedAtDate(plan, item.name, day); });
+    item.daysDiaperBenefit = {};
+    days.forEach((day) => {
+      const dayPlan = getLatestPlanForRecipientAtDate(item.name, day);
+      const benefit = getDiaperBenefitAtDate(dayPlan, item.name, day);
+      item.daysDiaperBenefit[day] = benefit;
+      item.daysDiaperAllowed[day] = benefit.allowed;
+    });
+    const monthPlan = getLatestPlanForRecipientAtDate(item.name, monthEndDate);
+    item.monthDiaperBenefit = getDiaperBenefitAtDate(monthPlan, item.name, monthEndDate);
   });
   return { days, rows: Object.values(nameMap).sort((a, b) => a.name.localeCompare(b.name, "ko")) };
 }
@@ -446,7 +521,7 @@ function renderResults(data) {
       <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.name}</td>
       <td style="vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${item.planDate}</td>
       <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0; font-size: 13px;">${item.counselText}</td>
-      <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${Object.values(item.daysDiaperAllowed).some(Boolean) ? "있음" : "없음"}</td>
+      <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${buildBenefitSourceHtml(item.monthDiaperBenefit)}</td>
       ${days.map((day) => {
         const isAttendanceDay = (item.attendanceDates || []).includes(day);
         return buildDayCell(item.days[day], item.daysDiaperAllowed[day], isAttendanceDay);
