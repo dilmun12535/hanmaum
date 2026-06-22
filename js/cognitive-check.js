@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFfVUr6hOEpYJbPxJxCW_TOMR144lqoz7Gir9kDZMTFOCy-ygrfrQ0YLzPxfx5aEzZbQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyxbQ7GeDm7pq9SkYDSgGkt7GiKic878En8-niDDFuRg7-lyxo5F3E7LE5qYpqi2_Z14g/exec";
 
 let carePlanLibraryCache = [];
 let attendanceLibraryCache = [];
@@ -219,11 +219,19 @@ function parseCognitiveReport(workbook, monthValue) {
 function getAttendanceMonth(monthValue) {
   return attendanceLibraryCache
     .filter((item) => item.month === monthValue)
-    .map((item) => ({
-      name: String(item.name || item.recipientName || "").trim(),
-      grade: item.grade || "",
-      dates: item.dates || item.attendanceDates || []
-    }))
+    .map((item) => {
+      const rawDates = Array.isArray(item.dates)
+        ? item.dates
+        : Array.isArray(item.attendanceDates)
+          ? item.attendanceDates
+          : [];
+
+      return {
+        name: String(item.name || item.recipientName || "").trim(),
+        grade: item.grade || item.longTermCareGrade || item.careGrade || "",
+        dates: rawDates.map((date) => parseDate(date)).filter((date) => date && date.startsWith(monthValue))
+      };
+    })
     .filter((item) => item.name !== "")
     .sort((a, b) => safeCompare(a.name, b.name));
 }
@@ -235,32 +243,32 @@ function isCognitiveTargetGrade(grade) {
 
 function buildResults(monthValue, cognitiveRows) {
   const attendanceRows = getAttendanceMonth(monthValue);
-  const cognitiveMap = {};
-  cognitiveRows.forEach((row) => { cognitiveMap[row.name] = row; });
 
-  if (attendanceRows.length > 0) {
-    return attendanceRows
-      .filter((item) => isCognitiveTargetGrade(item.grade))
-      .map((attendance) => {
-        const cognitive = cognitiveMap[attendance.name];
-        return {
-          name: attendance.name,
-          grade: attendance.grade || (cognitive ? cognitive.grade : "-"),
-          attendanceDates: attendance.dates || [],
-          cognitiveDays: cognitive ? cognitive.days : {}
-        };
-      })
-      .sort((a, b) => safeCompare(a.name, b.name));
+  // [수정 핵심]
+  // 화면 표시 기준을 계획서/누적 데이터가 아닌 "선택한 월의 출석관리 데이터"로 고정합니다.
+  // 그래서 4월을 확인하면 4월 출석부에 있는 5등급/인지지원 어르신만 표시됩니다.
+  const cognitiveMap = {};
+  cognitiveRows.forEach((row) => {
+    const key = normalizeText(row.name);
+    if (!key) return;
+    cognitiveMap[key] = row;
+  });
+
+  if (attendanceRows.length === 0) {
+    return [];
   }
 
-  return cognitiveRows
+  return attendanceRows
     .filter((item) => isCognitiveTargetGrade(item.grade))
-    .map((item) => ({
-      name: item.name,
-      grade: item.grade || "-",
-      attendanceDates: Object.keys(item.days || {}),
-      cognitiveDays: item.days || {}
-    }))
+    .map((attendance) => {
+      const cognitive = cognitiveMap[normalizeText(attendance.name)];
+      return {
+        name: attendance.name,
+        grade: attendance.grade || (cognitive ? cognitive.grade : "-"),
+        attendanceDates: attendance.dates || [],
+        cognitiveDays: cognitive ? cognitive.days : {}
+      };
+    })
     .sort((a, b) => safeCompare(a.name, b.name));
 }
 
@@ -306,7 +314,7 @@ function renderResults(monthValue, results) {
   const days = getDaysInMonth(monthValue);
 
   if (!results || results.length === 0) {
-    cognitiveResultBody.innerHTML = `<tr><td colspan="${4 + days.length}">5등급 또는 인지지원등급 대상자가 없습니다. 출석관리 저장 여부를 확인해주세요.</td></tr>`;
+    cognitiveResultBody.innerHTML = `<tr><td colspan="${4 + days.length}">선택한 월의 출석관리 데이터에 5등급 또는 인지지원등급 대상자가 없습니다. 출석관리 저장 여부를 확인해주세요.</td></tr>`;
     return;
   }
 
