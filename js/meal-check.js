@@ -74,7 +74,9 @@ function isSameRecipient(nameA, nameB) {
   const cleanA = normalizeRecipientName(nameA);
   const cleanB = normalizeRecipientName(nameB);
   if (!cleanA || !cleanB) return false;
-  return cleanA.includes(cleanB) || cleanB.includes(cleanA);
+
+  // 김계순 / 김계순A처럼 비슷한 이름이 서로 섞이지 않도록 완전 일치만 허용합니다.
+  return cleanA === cleanB;
 }
 
 function safeCompare(a, b) {
@@ -444,19 +446,31 @@ function hasFoodPrepPlan(plan) {
   return finalText.includes("음식준비") || finalText.includes("다진식") || finalText.includes("죽식") || finalText.includes("미음");
 }
 
+function getCounselDate(counsel) {
+  return normalizeDateText(
+    counsel.reflection ||
+    counsel.reflectionDate ||
+    counsel.consultDate ||
+    counsel.date ||
+    counsel.counselDate ||
+    counsel.writtenDate ||
+    ""
+  );
+}
+
 function getLatestMealCounsel(name, targetDate) {
   const targetDateText = normalizeDateText(targetDate);
   const counsels = counselLibraryCache.filter((item) => {
     if (!isSameRecipient(item.recipientName || item.name, name)) return false;
-    const refDate = normalizeDateText(item.reflection || item.reflectionDate || item.consultDate || item.date || "");
+    const refDate = getCounselDate(item);
     if (!refDate || refDate > targetDateText) return false;
 
     const category = item.category || "";
     const text = normalizeText(`${item.careContent || ""} ${item.reason || ""} ${item.changeType || ""}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
     return category === "식사" || text.includes("식단") || text.includes("식사") || text.includes("음식준비") || text.includes("다진식") || text.includes("죽식");
   }).sort((a, b) => {
-    const dateA = normalizeDateText(a.reflection || a.reflectionDate || a.consultDate || a.date || "");
-    const dateB = normalizeDateText(b.reflection || b.reflectionDate || b.consultDate || b.date || "");
+    const dateA = getCounselDate(a);
+    const dateB = getCounselDate(b);
     return dateB.localeCompare(dateA);
   });
   return counsels[0] || null;
@@ -481,30 +495,102 @@ function getMealCountFromText(text, fallback) {
   return fallback;
 }
 
-function getMealRuleAtDate(plan, name, targetDate) {
-  let mealCount = getMealCountFromPlan(plan);
-  let specialFood = hasFoodPrepPlan(plan);
-  const counsel = getLatestMealCounsel(name, targetDate);
+function getMealCountFromCounselText(text, fallback) {
+  const clean = normalizeText(text).replace(/[^a-zA-Z0-9가-힣]/g, "");
 
-  if (counsel) {
+  if (
+    clean.includes("2회") ||
+    clean.includes("1일2회") ||
+    clean.includes("점심저녁") ||
+    clean.includes("중식석식") ||
+    clean.includes("석식추가") ||
+    clean.includes("저녁추가")
+  ) {
+    return 2;
+  }
+
+  if (
+    clean.includes("1회") ||
+    clean.includes("1일1회") ||
+    clean.includes("저녁제외") ||
+    clean.includes("석식제외") ||
+    clean.includes("중식만") ||
+    clean.includes("점심만")
+  ) {
+    return 1;
+  }
+
+  return fallback;
+}
+
+function getMealRuleAtDate(plan, name, targetDate) {
+  const planDate = plan ? normalizeDateText(plan.writtenDate) : "";
+  const planMealCount = getMealCountFromPlan(plan);
+  const planSpecialFood = hasFoodPrepPlan(plan);
+
+  const counsel = getLatestMealCounsel(name, targetDate);
+  const counselDate = counsel ? getCounselDate(counsel) : "";
+
+  let mealCount = planMealCount;
+  let specialFood = planSpecialFood;
+  let mealCountSource = "계획서";
+  let specialFoodSource = "계획서";
+
+  // 상담일지가 있고, 상담일지가 계획서보다 최신일 때만 상담일지를 최종 기준으로 반영합니다.
+  // 예: 상담일지 2024-04-30 추가 → 계획서 2024-05-30 작성이면 계획서가 최종 기준입니다.
+  const shouldApplyCounsel = counsel && (!planDate || !counselDate || counselDate > planDate);
+
+  if (shouldApplyCounsel) {
     const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-    if (text.includes("식단") || text.includes("식사") || text.includes("석식") || text.includes("중식")) {
+    const cleanText = text.replace(/[^a-zA-Z0-9가-힣]/g, "");
+
+    if (
+      cleanText.includes("식단") ||
+      cleanText.includes("식사") ||
+      cleanText.includes("석식") ||
+      cleanText.includes("저녁") ||
+      cleanText.includes("중식") ||
+      cleanText.includes("점심")
+    ) {
       if (isRemoveCounsel(counsel)) mealCount = 0;
       else if (isAddCounsel(counsel)) mealCount = Math.max(1, mealCount);
-      mealCount = getMealCountFromText(text, mealCount);
+
+      mealCount = getMealCountFromCounselText(text, mealCount);
+      mealCountSource = "상담";
     }
-    if (text.includes("음식준비") || text.includes("다진식") || text.includes("죽식")) {
+
+    if (
+      cleanText.includes("음식준비") ||
+      cleanText.includes("다진식") ||
+      cleanText.includes("죽식") ||
+      cleanText.includes("미음")
+    ) {
       if (isRemoveCounsel(counsel)) specialFood = false;
       if (isAddCounsel(counsel)) specialFood = true;
+      specialFoodSource = "상담";
     }
   }
-  return { mealCount, specialFood };
+
+  return {
+    mealCount,
+    specialFood,
+    mealCountSource,
+    specialFoodSource
+  };
+}
+
+function buildMealRuleSourceHtml(mainText, sourceText, isActive = true) {
+  const mainColor = isActive ? "#2563eb" : "#64748b";
+  return `
+    <div style="font-weight: 800; color: ${mainColor};">${mainText}</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 3px;">[${sourceText || "계획서"}]</div>
+  `;
 }
 
 function getCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestMealCounsel(name, monthEndDate);
   if (!counsel) return "없음";
-  const refDate = counsel.reflection || counsel.reflectionDate || counsel.consultDate || counsel.date || "-";
+  const refDate = getCounselDate(counsel) || "-";
   return `${String(refDate).substring(0,10)}<br>[${counsel.changeType || "-"}]<br>${counsel.careContent || "-"}`;
 }
 
@@ -683,8 +769,8 @@ function renderResults(monthValue, results) {
       <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
       <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
       <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px; ${errorCellBg}">${item.counselText || "없음"}</td>
-      <td style="text-align:center; font-weight:700; ${errorCellBg}">${monthEndRule.mealCount || 0}회</td>
-      <td style="text-align:center; ${errorCellBg}">${monthEndRule.specialFood ? "기능상태" : "일반식"}</td>
+      <td style="text-align:center; font-weight:700; ${errorCellBg}">${buildMealRuleSourceHtml(`${monthEndRule.mealCount || 0}회`, monthEndRule.mealCountSource, (monthEndRule.mealCount || 0) > 0)}</td>
+      <td style="text-align:center; ${errorCellBg}">${buildMealRuleSourceHtml(monthEndRule.specialFood ? "기능상태" : "일반식", monthEndRule.specialFoodSource, monthEndRule.specialFood)}</td>
       ${dayCells}
       <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${overallText}</td>
     `;
