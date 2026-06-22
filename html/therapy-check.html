@@ -10,14 +10,12 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
   <style>
-    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
     .info-table th, .info-table td {
       border: 1px solid #e2e8f0 !important;
       text-align: center;
       vertical-align: middle;
     }
-    
-    /* 화장실 안내상자 디자인 팩과 완벽하게 일치하도록 전용 클래스를 추가 정의합니다 */
+
     .unified-notice-box {
       background-color: #f8fafc;
       border: 1px solid #e2e8f0;
@@ -27,6 +25,7 @@
       margin-bottom: 25px;
       box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
+
     .unified-notice-title {
       color: #334155;
       font-weight: 700;
@@ -36,6 +35,7 @@
       align-items: center;
       gap: 6px;
     }
+
     .unified-notice-list {
       margin: 0;
       padding-left: 20px;
@@ -43,6 +43,7 @@
       font-size: 13px;
       line-height: 1.6;
     }
+
     .unified-notice-list li {
       margin-bottom: 4px;
     }
@@ -69,7 +70,6 @@
     <aside class="sidebar">
       <div class="menu-title">메뉴</div>
       <nav class="menu-list">
-        <!-- [순서 및 active 완벽 반영]: 전산 마스터 트랙 정렬 구조를 적용하고 현재 메뉴에 active 불빛을 켰습니다 -->
         <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
         <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
         <a href="./attendance.html" class="menu-item">출석관리</a>
@@ -108,9 +108,7 @@
         </div>
 
         <div class="unified-notice-box">
-          <h5 class="unified-notice-title">
-            💡 물리치료 확인 기준 안내
-          </h5>
+          <h5 class="unified-notice-title">💡 물리치료 확인 기준 안내</h5>
           <ul class="unified-notice-list">
             <li><b style="color: #1e293b;">계획서 기준:</b> 계획서에 물리치료(기능회복훈련)가 있는 사람 &rarr; 해당 주차에 물리치료 기록이 있어야 <span style="color: #2563eb; font-weight: 600;">정상</span></li>
             <li><b style="color: #1e293b;">상담일지 기준:</b> 상담일지에서 물리치료 제외가 반영된 사람 &rarr; 반영일 이후에는 물리치료 기록이 없어야 <span style="color: #2563eb; font-weight: 600;">정상</span></li>
@@ -125,6 +123,7 @@
                 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
                 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
                 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">상담일지 반영</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">물리치료 대상</th>
                 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">1주차</th>
                 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">2주차</th>
                 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">3주차</th>
@@ -135,7 +134,7 @@
             </thead>
             <tbody id="therapyResultBody">
               <tr class="empty-row">
-                <td colspan="9" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 물리치료 기록 파일을 선택해주세요.</td>
+                <td colspan="10" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 물리치료 기록 파일을 선택해주세요.</td>
               </tr>
             </tbody>
           </table>
