@@ -1,7 +1,8 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFfVUr6hOEpYJbPxJxCW_TOMR144lqoz7Gir9kDZMTFOCy-ygrfrQ0YLzPxfx5aEzZbQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyxbQ7GeDm7pq9SkYDSgGkt7GiKic878En8-niDDFuRg7-lyxo5F3E7LE5qYpqi2_Z14g/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
+let attendanceLibraryCache = [];
 
 function makePayloadUrl(payload) {
   return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
@@ -24,7 +25,7 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, {
+    const response = await fetch(makePayloadUrl({ action: "listCounsel" }), {
       method: "GET",
       redirect: "follow"
     });
@@ -35,6 +36,28 @@ async function syncCounselLibraryFromGoogleSheet() {
   } catch (error) {
     console.error("상담일지 동기화 오류:", error);
     return counselLibraryCache;
+  }
+}
+
+async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+  try {
+    const response = await fetch(
+      makePayloadUrl({
+        action: "listAttendance",
+        month: monthValue
+      }),
+      {
+        method: "GET",
+        redirect: "follow"
+      }
+    );
+    const text = await response.text();
+    const attendance = JSON.parse(text);
+    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+    return attendanceLibraryCache;
+  } catch (error) {
+    console.error("출석관리 동기화 오류:", error);
+    return attendanceLibraryCache;
   }
 }
 
@@ -67,6 +90,20 @@ function getMonthEndDate(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const lastDay = new Date(year, month, 0).getDate();
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+}
+
+function getAttendanceMonth(monthValue) {
+  return attendanceLibraryCache
+    .filter((item) => item.month === monthValue)
+    .map((item) => ({
+      name: item.recipientName || item.name || "",
+      dates: Array.isArray(item.attendanceDates)
+        ? item.attendanceDates
+        : Array.isArray(item.dates)
+          ? item.dates
+          : []
+    }))
+    .filter((item) => String(item.name || "").trim());
 }
 
 function getWeekEndDates(monthValue) {
@@ -375,13 +412,27 @@ function buildResults(monthValue, bathRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const weekEndDates = getWeekEndDates(monthValue);
   const latestPlans = getLatestPlansByRecipient(monthEndDate);
+  const attendanceRows = getAttendanceMonth(monthValue);
 
   const bathMap = {};
   bathRows.forEach((row) => {
-    bathMap[row.name] = row;
+    const name = String(row.name || "").trim();
+    if (!name) return;
+    bathMap[name] = row;
   });
 
-  const allNames = new Set([...Object.keys(latestPlans), ...Object.keys(bathMap)]);
+  const attendanceNameSet = new Set(
+    attendanceRows
+      .map((row) => String(row.name || "").trim())
+      .filter(Boolean)
+  );
+
+  // [수정 핵심]
+  // 기존에는 계획서 전체 명단(latestPlans)을 기준으로 화면을 만들어서
+  // 해당 월 목욕 파일에 없는 과거 이용자/퇴소자까지 표시되었습니다.
+  // 이제는 해당 월 출석부 명단 + 업로드한 목욕 파일 명단만 기준으로 표시합니다.
+  // 계획서는 급여 여부 판단용으로만 사용합니다.
+  const allNames = new Set([...attendanceNameSet, ...Object.keys(bathMap)]);
   const results = [];
 
   allNames.forEach((name) => {
@@ -472,8 +523,10 @@ checkBathBtn.addEventListener("click", async () => {
     return;
   }
 
+  alert("구글 시트에서 계획서, 상담일지, 출석 데이터를 동기화 중입니다...");
   await syncCarePlanLibraryFromGoogleSheet();
   await syncCounselLibraryFromGoogleSheet();
+  await syncAttendanceMonthFromGoogleSheet(checkMonth);
 
   const reader = new FileReader();
   reader.onload = (event) => {
