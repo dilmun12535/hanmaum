@@ -468,7 +468,7 @@ function makeResultClass(result) {
   return "status-danger";
 }
 
-function buildWeekCell(result, weekData, required) {
+function buildWeekCell(result, weekData) {
   const resultClass = makeResultClass(result);
 
   let recordText = "";
@@ -476,14 +476,9 @@ function buildWeekCell(result, weekData, required) {
     recordText = weekData.recordText.replaceAll(" / ", "<br>").replaceAll("~", " ~ ");
   }
 
-  const targetLabel = required && result !== "결석"
-    ? `<div style="font-size:11px; color:#2563eb; font-weight:700; margin-bottom:3px;">대상</div>`
-    : "";
-
   return `
-    ${targetLabel}
     <div class="${resultClass}">${result}</div>
-    ${recordText ? `<div style="font-size:11px; color:#555; margin-top:4px; white-space:normal; word-break:keep-all; line-height:1.5;">${recordText}</div>` : ""}
+    ${recordText ? `<div style="font-size:10.5px; color:#555; margin-top:4px; white-space:normal; word-break:keep-all; line-height:1.45;">${recordText}</div>` : ""}
   `;
 }
 
@@ -616,34 +611,41 @@ function applyTherapyReadableStyle() {
       vertical-align: top;
       white-space: normal;
       border: 1px solid #e2e8f0 !important;
-      padding: 12px 8px;
+      padding: 10px 6px;
       word-break: keep-all;
-      line-height: 1.45;
+      line-height: 1.42;
+      font-size: 12px;
+    }
+
+    .therapy-check-table th,
+    .info-table th {
+      font-size: 13px;
+      font-weight: 800;
     }
 
     .therapy-check-table th:nth-child(1), .therapy-check-table td:nth-child(1),
-    .info-table th:nth-child(1), .info-table td:nth-child(1) { min-width: 90px; width: 90px; text-align: center; }
+    .info-table th:nth-child(1), .info-table td:nth-child(1) { min-width: 76px; width: 76px; text-align: center; }
 
     .therapy-check-table th:nth-child(2), .therapy-check-table td:nth-child(2),
-    .info-table th:nth-child(2), .info-table td:nth-child(2) { min-width: 120px; width: 120px; text-align: center; }
+    .info-table th:nth-child(2), .info-table td:nth-child(2) { min-width: 98px; width: 98px; text-align: center; }
 
     .therapy-check-table th:nth-child(3), .therapy-check-table td:nth-child(3),
-    .info-table th:nth-child(3), .info-table td:nth-child(3) { min-width: 190px; width: 190px; text-align: left; }
+    .info-table th:nth-child(3), .info-table td:nth-child(3) { min-width: 150px; width: 150px; text-align: left; }
 
     .therapy-check-table th:nth-child(4), .therapy-check-table td:nth-child(4),
-    .info-table th:nth-child(4), .info-table td:nth-child(4) { min-width: 105px; width: 105px; text-align: center; }
+    .info-table th:nth-child(4), .info-table td:nth-child(4) { min-width: 74px; width: 74px; text-align: center; vertical-align: middle; }
 
     .therapy-check-table th:nth-child(n+5):nth-child(-n+9), .therapy-check-table td:nth-child(n+5):nth-child(-n+9),
     .info-table th:nth-child(n+5):nth-child(-n+9), .info-table td:nth-child(n+5):nth-child(-n+9) {
-      min-width: 230px;
-      width: 230px;
+      min-width: 168px;
+      width: 168px;
       text-align: center;
     }
 
     .therapy-check-table th:nth-child(10), .therapy-check-table td:nth-child(10),
     .info-table th:nth-child(10), .info-table td:nth-child(10) {
-      min-width: 105px;
-      width: 105px;
+      min-width: 82px;
+      width: 82px;
       text-align: center;
       vertical-align: middle;
     }
@@ -690,15 +692,15 @@ function renderResults(monthValue, results) {
       <td style="font-size:12px; line-height:1.4; ${errorCellBg}">${item.counselText}</td>
       <td style="text-align:center; vertical-align:middle; ${errorCellBg}">
         ${Object.values(item.weekRequired || {}).some(Boolean)
-          ? '<span class="therapy-target-ok">대상</span>'
-          : '<span class="therapy-target-no">비대상</span>'}
+          ? '<span class="therapy-target-ok">있음</span>'
+          : '<span class="therapy-target-no">없음</span>'}
       </td>
 
-      <td style="${getCellBgColor(item.weekResultsMap.week1)}">${buildWeekCell(item.weekResultsMap.week1, item.weeks.week1, item.weekRequired.week1)}</td>
-      <td style="${getCellBgColor(item.weekResultsMap.week2)}">${buildWeekCell(item.weekResultsMap.week2, item.weeks.week2, item.weekRequired.week2)}</td>
-      <td style="${getCellBgColor(item.weekResultsMap.week3)}">${buildWeekCell(item.weekResultsMap.week3, item.weeks.week3, item.weekRequired.week3)}</td>
-      <td style="${getCellBgColor(item.weekResultsMap.week4)}">${buildWeekCell(item.weekResultsMap.week4, item.weeks.week4, item.weekRequired.week4)}</td>
-      <td style="${getCellBgColor(item.weekResultsMap.week5)}">${buildWeekCell(item.weekResultsMap.week5, item.weeks.week5, item.weekRequired.week5)}</td>
+      <td style="${getCellBgColor(item.weekResultsMap.week1)}">${buildWeekCell(item.weekResultsMap.week1, item.weeks.week1)}</td>
+      <td style="${getCellBgColor(item.weekResultsMap.week2)}">${buildWeekCell(item.weekResultsMap.week2, item.weeks.week2)}</td>
+      <td style="${getCellBgColor(item.weekResultsMap.week3)}">${buildWeekCell(item.weekResultsMap.week3, item.weeks.week3)}</td>
+      <td style="${getCellBgColor(item.weekResultsMap.week4)}">${buildWeekCell(item.weekResultsMap.week4, item.weeks.week4)}</td>
+      <td style="${getCellBgColor(item.weekResultsMap.week5)}">${buildWeekCell(item.weekResultsMap.week5, item.weeks.week5)}</td>
 
       <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${item.overallResult}</td>
     `;
