@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFfVUr6hOEpYJbPxJxCW_TOMR144lqoz7Gir9kDZMTFOCy-ygrfrQ0YLzPxfx5aEzZbQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyxbQ7GeDm7pq9SkYDSgGkt7GiKic878En8-niDDFuRg7-lyxo5F3E7LE5qYpqi2_Z14g/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -22,13 +22,14 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, { method: "GET", redirect: "follow" });
+    const response = await fetch(makePayloadUrl({ action: "listCounsel" }), { method: "GET", redirect: "follow" });
     const text = await response.text();
-    counselLibraryCache = JSON.parse(text);
+    const counsels = JSON.parse(text);
+    counselLibraryCache = Array.isArray(counsels) ? counsels : [];
     return counselLibraryCache;
   } catch (error) {
     console.error("상담일지 동기화 오류:", error);
-    return [];
+    return counselLibraryCache;
   }
 }
 
@@ -59,6 +60,25 @@ function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
 
+function normalizeDateText(value) {
+  if (!value) return "";
+  if (value instanceof Date) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  }
+  if (typeof value === "number") return excelDateToJSDate(value);
+  const text = String(value).trim().replace(/^'/, "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
+  if (text.includes("T")) return text.split("T")[0];
+
+  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+  if (match) {
+    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  }
+  return "";
+}
+
 function normalizeRecipientName(value) {
   return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
 }
@@ -84,17 +104,7 @@ function excelDateToJSDate(serial) {
 }
 
 function parseDate(value) {
-  if (!value) return "";
-  if (value instanceof Date) {
-    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
-  }
-  if (typeof value === "number") return excelDateToJSDate(value);
-
-  const text = String(value);
-  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
-  if (!match) return "";
-
-  return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  return normalizeDateText(value);
 }
 
 function getMonthEndDate(monthValue) {
@@ -188,43 +198,95 @@ function parseMinutes(value) {
 }
 
 function getLatestPlansByRecipient(name, checkDate) {
-  const library = carePlanLibraryCache || [];
+  const checkDateText = normalizeDateText(checkDate);
+  const library = Array.isArray(carePlanLibraryCache) ? carePlanLibraryCache : [];
   const validPlans = library.filter((plan) => {
-    return new Date(plan.writtenDate) <= new Date(checkDate) && isSameRecipient(plan.recipientName, name);
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    return writtenDate && writtenDate <= checkDateText && isSameRecipient(plan.recipientName, name);
   });
-  validPlans.sort((a, b) => new Date(b.writtenDate) - new Date(a.writtenDate));
+  validPlans.sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
   return validPlans[0] || null;
 }
 
+function tryParseJson(value) {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (!text) return value;
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return value;
+  }
+}
+
+function collectPlanObjects(value, result = []) {
+  const parsed = tryParseJson(value);
+
+  if (Array.isArray(parsed)) {
+    parsed.forEach((item) => collectPlanObjects(item, result));
+    return result;
+  }
+
+  if (parsed && typeof parsed === "object") {
+    result.push(parsed);
+    Object.values(parsed).forEach((item) => {
+      if (Array.isArray(item) || (item && typeof item === "object")) {
+        collectPlanObjects(item, result);
+      }
+    });
+  }
+
+  return result;
+}
+
 function getMedicationCountFromPlan(plan) {
-  if (!plan || !plan.rows) return 0;
+  if (!plan) return 0;
+
+  const sourceObjects = [
+    ...collectPlanObjects(plan.rows || []),
+    ...collectPlanObjects(plan.rowsJson || [])
+  ];
+
   let result = 0;
-  (plan.rows || []).forEach((row) => {
+
+  sourceObjects.forEach((row) => {
     const text = normalizeText(JSON.stringify(row));
     if (text.includes("정확한복약도움") || text.includes("복약도움") || text.includes("약복용")) {
-      const countValue = row["횟수"] || row["12"] || row[12];
-      const parsed = Number(String(countValue || "").replace(/[^0-9]/g, ""));
+      const countValue = row["횟수"] || row["회수"] || row["제공횟수"] || row["12"] || row[12] || "";
+      const parsed = Number(String(countValue).replace(/[^0-9]/g, ""));
+
       if (parsed > result) result = parsed;
+
+      if (result === 0) {
+        if (text.includes("3회") || text.includes("아침점심저녁")) result = 3;
+        else if (text.includes("2회") || text.includes("아침저녁") || text.includes("점심저녁")) result = 2;
+        else if (text.includes("1회") || text.includes("아침") || text.includes("점심") || text.includes("저녁")) result = 1;
+      }
     }
   });
+
   return Math.min(result, 3);
 }
 
+function getCounselDate(item) {
+  return normalizeDateText(item.reflectionDate || item.reflection || item.consultDate || item.date || item.counselDate || item.writtenDate || "");
+}
+
 function getCounselMedicationCount(name, targetDate, fallbackCount) {
-  const counselLibrary = counselLibraryCache || [];
-  const target = new Date(targetDate);
+  const counselLibrary = Array.isArray(counselLibraryCache) ? counselLibraryCache : [];
+  const targetDateText = normalizeDateText(targetDate);
 
   const counsels = counselLibrary
     .filter((item) => {
       const sameName = isSameRecipient(item.recipientName || item.name, name);
-      const reflectionDate = new Date(item.reflectionDate);
-      const text = normalizeText(`${item.category} ${item.changeType} ${item.careContent} ${item.reason}`);
-      return sameName && reflectionDate <= target && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
+      const reflectionDate = getCounselDate(item);
+      const text = normalizeText(`${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
+      return sameName && reflectionDate && reflectionDate <= targetDateText && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
     })
-    .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
+    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
   if (counsels.length === 0) return fallbackCount;
-  const text = normalizeText(`${counsels[0].changeType} ${counsels[0].careContent} ${counsels[0].reason}`);
+  const text = normalizeText(`${counsels[0].changeType || ""} ${counsels[0].careContent || ""} ${counsels[0].reason || ""}`);
   if (text.includes("제외") || text.includes("중단") || text.includes("미제공") || text.includes("삭제")) return 0;
   if (text.match(/3\s*회/) || text.includes("아침점심저녁")) return 3;
   if (text.match(/2\s*회/) || text.includes("아침저녁") || text.includes("점심저녁")) return 2;
@@ -233,21 +295,21 @@ function getCounselMedicationCount(name, targetDate, fallbackCount) {
 }
 
 function getMedicationCounselTextForMonth(name, monthEndDate) {
-  const counselLibrary = counselLibraryCache || [];
-  const target = new Date(monthEndDate);
+  const counselLibrary = Array.isArray(counselLibraryCache) ? counselLibraryCache : [];
+  const targetDateText = normalizeDateText(monthEndDate);
 
   const counsels = counselLibrary
     .filter((item) => {
       const sameName = isSameRecipient(item.recipientName || item.name, name);
-      const reflectionDate = new Date(item.reflectionDate);
-      const text = normalizeText(`${item.category} ${item.changeType} ${item.careContent} ${item.reason}`);
-      return sameName && reflectionDate <= target && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
+      const reflectionDate = getCounselDate(item);
+      const text = normalizeText(`${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
+      return sameName && reflectionDate && reflectionDate <= targetDateText && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
     })
-    .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
+    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
   if (counsels.length === 0) return "없음";
   const counsel = counsels[0];
-  return `${counsel.reflectionDate}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
+  return `${getCounselDate(counsel) || "-"}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
 }
 
 function getRequiredHealthMinutes(medicationCount) {
@@ -262,9 +324,14 @@ function getAttendanceMonth(monthValue) {
     .filter((item) => item.month === monthValue)
     .map((item) => ({
       name: String(item.name || item.recipientName || "").trim(),
-      dates: item.dates || item.attendanceDates || []
+      dates: Array.isArray(item.dates)
+        ? item.dates
+        : Array.isArray(item.attendanceDates)
+          ? item.attendanceDates
+          : []
     }))
-    .filter((item) => item.name !== "");
+    .filter((item) => item.name !== "")
+    .sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function readWorkbook(file) {
@@ -390,6 +457,7 @@ function checkVitalDay(nursingDay, requiredHealthMinutes) {
   if (!nursingDay.breath) problems.push("호흡 누락");
   if (nursingDay.healthMinutes !== requiredHealthMinutes) {
     problems.push(`${requiredHealthMinutes}분 필요`);
+    problems.push(`실제 ${nursingDay.healthMinutes || 0}분`);
   }
   return { result: problems.length > 0 ? "오류" : "정상", details: problems };
 }
