@@ -161,6 +161,50 @@ function getWeekEndDates(monthValue) {
   return result;
 }
 
+function getWeekStartDates(monthValue) {
+  const [year, month] = monthValue.split("-").map(Number);
+  const monthStart = new Date(year, month - 1, 1);
+
+  const firstDay = monthStart.getDay();
+  const mondayOffset = (firstDay + 6) % 7;
+
+  const firstMonday = new Date(monthStart);
+  firstMonday.setDate(monthStart.getDate() - mondayOffset);
+
+  const result = {};
+  for (let i = 0; i < 5; i++) {
+    const weekStart = new Date(firstMonday);
+    weekStart.setDate(firstMonday.getDate() + i * 7);
+
+    const targetDate = new Date(Math.max(weekStart.getTime(), monthStart.getTime()));
+    result[`week${i + 1}`] =
+      `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}-${String(targetDate.getDate()).padStart(2, "0")}`;
+  }
+  return result;
+}
+
+function extractFirstDateFromBathWeek(weekData) {
+  if (!weekData || !weekData.recordText) return "";
+  const text = String(weekData.recordText || "");
+
+  const match = text.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+  if (!match) return "";
+
+  return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+}
+
+function getWeekJudgeDate(monthValue, weekKey, weekData, weekStartDates, weekEndDates) {
+  const recordDate = extractFirstDateFromBathWeek(weekData);
+
+  // 실제 목욕 기록이 있는 주차는 기록일 기준으로 계획서/상담일지를 비교합니다.
+  // 예: 2024-01-01 목욕 기록은 2024-01-18 계획서보다 앞이므로 상담일지 기준이 적용되어야 합니다.
+  if (recordDate && recordDate.startsWith(monthValue)) return recordDate;
+
+  // 기록이 없는 경우에는 해당 주차 종료일 기준으로 누락 여부를 판단합니다.
+  // 단, 이 날짜는 월말이 아니라 주차별 날짜라서 새 계획서가 월 전체에 소급 적용되지 않습니다.
+  return weekEndDates[weekKey] || weekStartDates[weekKey] || getMonthEndDate(monthValue);
+}
+
 function getLatestPlansByRecipient(checkDate) {
   const checkDateText = normalizeDateText(checkDate);
   const validPlans = carePlanLibraryCache.filter((plan) => {
@@ -521,6 +565,7 @@ function buildOverallResult(weekResults) {
 function buildResults(monthValue, bathRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const weekEndDates = getWeekEndDates(monthValue);
+  const weekStartDates = getWeekStartDates(monthValue);
   const attendanceRows = getAttendanceMonth(monthValue);
 
   const bathMap = {};
@@ -578,12 +623,20 @@ function buildResults(monthValue, bathRows) {
       week5: { hasBathRecord: false, isGreyBlock: false, recordText: "-" }
     };
 
+    const weekJudgeDates = {
+      week1: getWeekJudgeDate(monthValue, "week1", weeks.week1, weekStartDates, weekEndDates),
+      week2: getWeekJudgeDate(monthValue, "week2", weeks.week2, weekStartDates, weekEndDates),
+      week3: getWeekJudgeDate(monthValue, "week3", weeks.week3, weekStartDates, weekEndDates),
+      week4: getWeekJudgeDate(monthValue, "week4", weeks.week4, weekStartDates, weekEndDates),
+      week5: getWeekJudgeDate(monthValue, "week5", weeks.week5, weekStartDates, weekEndDates)
+    };
+
     const weekBenefit = {
-      week1: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week1, grade), name, weekEndDates.week1, grade),
-      week2: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week2, grade), name, weekEndDates.week2, grade),
-      week3: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week3, grade), name, weekEndDates.week3, grade),
-      week4: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week4, grade), name, weekEndDates.week4, grade),
-      week5: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekEndDates.week5, grade), name, weekEndDates.week5, grade)
+      week1: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week1, grade), name, weekJudgeDates.week1, grade),
+      week2: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week2, grade), name, weekJudgeDates.week2, grade),
+      week3: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week3, grade), name, weekJudgeDates.week3, grade),
+      week4: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week4, grade), name, weekJudgeDates.week4, grade),
+      week5: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week5, grade), name, weekJudgeDates.week5, grade)
     };
 
     const weekRequired = {
@@ -614,6 +667,7 @@ function buildResults(monthValue, bathRows) {
       requiredText: monthBathBenefit.required ? "있음" : "없음",
       bathBenefit: monthBathBenefit,
       weekBenefit,
+      weekJudgeDates,
       weekRequired,
       weeks,
       overallResult: buildOverallResult(weekResults)
