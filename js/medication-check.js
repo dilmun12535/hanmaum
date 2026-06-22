@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbxFfVUr6hOEpYJbPxJxCW_TOMR144lqoz7Gir9kDZMTFOCy-ygrfrQ0YLzPxfx5aEzZbQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyxbQ7GeDm7pq9SkYDSgGkt7GiKic878En8-niDDFuRg7-lyxo5F3E7LE5qYpqi2_Z14g/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -60,6 +60,26 @@ function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
 
+function normalizeDateText(value) {
+  if (!value) return "";
+  if (value instanceof Date) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  }
+  if (typeof value === "number") return excelDateToJSDate(value);
+
+  const text = String(value).trim().replace(/^'/, "").replace(/\s/g, "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
+  if (text.includes("T")) return text.split("T")[0];
+
+  const match = text.match(/(\d{4})[.\-/년]*(\d{1,2})[.\-/월]*(\d{1,2})/);
+  if (match) {
+    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  }
+  return "";
+}
+
 function normalizeRecipientName(value) {
   return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
 }
@@ -86,16 +106,7 @@ function excelDateToJSDate(serial) {
 }
 
 function parseDate(value) {
-  if (!value) return "";
-  if (value instanceof Date) {
-    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
-  }
-  if (typeof value === "number") return excelDateToJSDate(value);
-
-  const text = String(value);
-  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
-  if (!match) return "";
-  return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  return normalizeDateText(value);
 }
 
 function getMonthEndDate(monthValue) {
@@ -189,44 +200,186 @@ function parseMinutes(value) {
 }
 
 function getLatestPlansByRecipient(name, checkDate) {
+  const checkDateText = normalizeDateText(checkDate);
   const library = carePlanLibraryCache || [];
+
   const validPlans = library.filter((plan) => {
-    return new Date(plan.writtenDate) <= new Date(checkDate) && isSameRecipient(plan.recipientName, name);
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    return writtenDate && writtenDate <= checkDateText && isSameRecipient(plan.recipientName, name);
   });
-  validPlans.sort((a, b) => new Date(b.writtenDate) - new Date(a.writtenDate));
+
+  validPlans.sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
   return validPlans[0] || null;
 }
 
-function getMedicationCountFromPlan(plan) {
-  if (!plan || !plan.rows) return 0;
-  let result = 0;
-  (plan.rows || []).forEach((row) => {
-    const text = normalizeText(JSON.stringify(row));
-    if (text.includes("정확한복약도움") || text.includes("복약도움") || text.includes("약복용")) {
-      const countValue = row["횟수"] || row["12"] || row[12];
-      const parsed = Number(String(countValue || "").replace(/[^0-9]/g, ""));
-      if (parsed > result) result = parsed;
+function tryParseJson(value) {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (!text) return value;
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return value;
+  }
+}
+
+function collectPlanObjects(value, result = []) {
+  const parsed = tryParseJson(value);
+
+  if (Array.isArray(parsed)) {
+    parsed.forEach((item) => collectPlanObjects(item, result));
+    return result;
+  }
+
+  if (parsed && typeof parsed === "object") {
+    result.push(parsed);
+    Object.values(parsed).forEach((item) => {
+      if (Array.isArray(item) || (item && typeof item === "object")) {
+        collectPlanObjects(item, result);
+      }
+    });
+  }
+
+  return result;
+}
+
+function objectToCleanText(obj) {
+  return String(JSON.stringify(obj || ""))
+    .replace(/\s/g, "")
+    .replace(/[^a-zA-Z0-9가-힣]/g, "");
+}
+
+function extractMedicationCountFromObject(obj) {
+  if (!obj || typeof obj !== "object") return null;
+
+  for (const [key, value] of Object.entries(obj)) {
+    const keyText = normalizeText(key);
+    const valueText = normalizeText(value);
+
+    if (
+      keyText.includes("횟수") ||
+      keyText.includes("회수") ||
+      keyText.includes("제공횟수") ||
+      keyText.toLowerCase().includes("count")
+    ) {
+      const numberMatch = String(value).match(/[1-3]/);
+      if (numberMatch) return Number(numberMatch[0]);
     }
+
+    const combined = `${keyText}${valueText}`;
+    const combinedMatch = combined.match(/(?:횟수|회수|제공횟수)([1-3])/);
+    if (combinedMatch) return Number(combinedMatch[1]);
+  }
+
+  const rawText = JSON.stringify(obj || "");
+  const cleanText = objectToCleanText(obj);
+
+  if (
+    /1\s*일\s*3\s*회/.test(rawText) ||
+    /3\s*회/.test(rawText) ||
+    cleanText.includes("1일3회") ||
+    cleanText.includes("3회") ||
+    cleanText.includes("아침점심저녁")
+  ) {
+    return 3;
+  }
+
+  if (
+    /1\s*일\s*2\s*회/.test(rawText) ||
+    /2\s*회/.test(rawText) ||
+    cleanText.includes("1일2회") ||
+    cleanText.includes("2회") ||
+    cleanText.includes("아침저녁") ||
+    cleanText.includes("점심저녁")
+  ) {
+    return 2;
+  }
+
+  if (
+    /1\s*일\s*1\s*회/.test(rawText) ||
+    /1\s*회/.test(rawText) ||
+    cleanText.includes("1일1회") ||
+    cleanText.includes("1회") ||
+    cleanText.includes("아침") ||
+    cleanText.includes("점심") ||
+    cleanText.includes("저녁")
+  ) {
+    return 1;
+  }
+
+  return null;
+}
+
+function getMedicationCountFromPlan(plan) {
+  if (!plan) return 0;
+
+  const sourceObjects = [
+    ...collectPlanObjects(plan.rows || []),
+    ...collectPlanObjects(plan.rowsJson || [])
+  ];
+
+  const medicationObjects = sourceObjects.filter((obj) => {
+    const text = objectToCleanText(obj);
+    return (
+      text.includes("정확한복약도움") ||
+      text.includes("복약도움") ||
+      text.includes("약복용") ||
+      text.includes("투약") ||
+      text.includes("복약")
+    );
   });
-  return Math.min(result, 3);
+
+  let result = 0;
+  medicationObjects.forEach((obj) => {
+    const count = extractMedicationCountFromObject(obj);
+    if (count && count > result) result = count;
+  });
+
+  if (result > 0) return Math.min(result, 3);
+
+  const fullText = objectToCleanText({
+    rows: plan.rows || "",
+    rowsJson: plan.rowsJson || "",
+    opinion: plan.opinion || "",
+    content: plan.content || ""
+  });
+
+  if (
+    fullText.includes("정확한복약도움") ||
+    fullText.includes("복약도움") ||
+    fullText.includes("약복용") ||
+    fullText.includes("투약")
+  ) {
+    if (fullText.includes("3회") || fullText.includes("아침점심저녁")) return 3;
+    if (fullText.includes("2회") || fullText.includes("아침저녁") || fullText.includes("점심저녁")) return 2;
+    return 1;
+  }
+
+  return 0;
+}
+
+function getCounselDate(item) {
+  return normalizeDateText(item.reflectionDate || item.reflection || item.consultDate || item.date || item.counselDate || "");
 }
 
 function getCounselMedicationCount(name, targetDate, fallbackCount) {
   const counselLibrary = counselLibraryCache || [];
-  const target = new Date(targetDate);
+  const targetDateText = normalizeDateText(targetDate);
 
   const counsels = counselLibrary
     .filter((item) => {
       const sameName = isSameRecipient(item.recipientName || item.name, name);
-      const reflectionDate = new Date(item.reflectionDate);
-      const text = normalizeText(`${item.category} ${item.changeType} ${item.careContent} ${item.reason}`);
-      return sameName && reflectionDate <= target && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
+      const counselDate = getCounselDate(item);
+      const text = normalizeText(`${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
+      return sameName && counselDate && counselDate <= targetDateText && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
     })
-    .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
+    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
   if (counsels.length === 0) return fallbackCount;
-  const text = normalizeText(`${counsels[0].changeType} ${counsels[0].careContent} ${counsels[0].reason}`);
-  if (text.includes("제외") || text.includes("중단") || text.includes("미제공") || text.includes("삭제")) return 0;
+
+  const text = normalizeText(`${counsels[0].changeType || ""} ${counsels[0].careContent || ""} ${counsels[0].reason || ""}`);
+  if (text.includes("제외") || text.includes("중단") || text.includes("미제공") || text.includes("삭제") || text.includes("하지않")) return 0;
   if (text.match(/3\s*회/) || text.includes("아침점심저녁")) return 3;
   if (text.match(/2\s*회/) || text.includes("아침저녁") || text.includes("점심저녁")) return 2;
   if (text.match(/1\s*회/) || text.includes("아침") || text.includes("점심") || text.includes("저녁")) return 1;
@@ -235,20 +388,20 @@ function getCounselMedicationCount(name, targetDate, fallbackCount) {
 
 function getMedicationCounselTextForMonth(name, monthEndDate) {
   const counselLibrary = counselLibraryCache || [];
-  const target = new Date(monthEndDate);
+  const targetDateText = normalizeDateText(monthEndDate);
 
   const counsels = counselLibrary
     .filter((item) => {
       const sameName = isSameRecipient(item.recipientName || item.name, name);
-      const reflectionDate = new Date(item.reflectionDate);
-      const text = normalizeText(`${item.category} ${item.changeType} ${item.careContent} ${item.reason}`);
-      return sameName && reflectionDate <= target && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
+      const counselDate = getCounselDate(item);
+      const text = normalizeText(`${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
+      return sameName && counselDate && counselDate <= targetDateText && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
     })
-    .sort((a, b) => new Date(b.reflectionDate) - new Date(a.reflectionDate));
+    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
   if (counsels.length === 0) return "없음";
   const counsel = counsels[0];
-  return `${counsel.reflectionDate}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
+  return `${getCounselDate(counsel) || "-"}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
 }
 
 function getAttendanceMonth(monthValue) {
@@ -385,28 +538,40 @@ function buildDayCell(isAttendanceDay, requiredCount, realCount) {
 function buildResults(monthValue, medicationRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const attendanceRows = getAttendanceMonth(monthValue);
+  const days = getDaysInMonth(monthValue);
 
-  // 💡 [치명적 결함 연산선 개조]: 정렬 브레이크와 대조 유실을 해결하기 위해 전산 출석부 수급자 중심 순회 방식으로 전면 리모델링
-  return attendanceRows.map((attendance) => {
-    const name = attendance.name;
-    const plan = getLatestPlansByRecipient(name, monthEndDate);
-    const baseMedicationCount = getMedicationCountFromPlan(plan);
+  // 출석부 기준으로만 대상자를 만들고, 정확한 복약도움 대상자만 표시합니다.
+  // 단, 출석부에 있는 사람이 복약도움 대상자가 아닌데 투약 파일에 기록이 있으면 오류 확인을 위해 표시합니다.
+  return attendanceRows
+    .map((attendance) => {
+      const name = attendance.name;
+      const plan = getLatestPlansByRecipient(name, monthEndDate);
+      const baseMedicationCount = getMedicationCountFromPlan(plan);
 
-    const myMedicationMap = {};
-    medicationRows.forEach((row) => {
-      if (isSameRecipient(row.name, name)) {
-        myMedicationMap[`${name}_${row.date}`] = row.count;
-      }
-    });
+      const myMedicationMap = {};
+      medicationRows.forEach((row) => {
+        if (isSameRecipient(row.name, name)) {
+          myMedicationMap[`${name}_${row.date}`] = row.count;
+        }
+      });
 
-    return {
-      name,
-      planDate: plan ? plan.writtenDate : "-",
-      baseMedicationCount,
-      attendanceDates: attendance.dates || [], // dates 누락 안전장치
-      medicationMap: myMedicationMap
-    };
-  }).sort((a, b) => safeCompare(a.name, b.name));
+      const attendanceSet = new Set(attendance.dates || []);
+      const hasRequiredDay = days.some((day) => {
+        return attendanceSet.has(day) && getCounselMedicationCount(name, day, baseMedicationCount) > 0;
+      });
+      const hasRealMedicationRecord = Object.values(myMedicationMap).some((count) => Number(count) > 0);
+
+      return {
+        name,
+        planDate: plan ? plan.writtenDate : "-",
+        baseMedicationCount,
+        attendanceDates: attendance.dates || [],
+        medicationMap: myMedicationMap,
+        shouldShow: hasRequiredDay || hasRealMedicationRecord
+      };
+    })
+    .filter((item) => item.shouldShow)
+    .sort((a, b) => safeCompare(a.name, b.name));
 }
 
 function renderHeader(monthValue) {
