@@ -87,7 +87,9 @@ function isSameRecipient(nameA, nameB) {
   const cleanA = normalizeRecipientName(nameA);
   const cleanB = normalizeRecipientName(nameB);
   if (!cleanA || !cleanB) return false;
-  return cleanA.includes(cleanB) || cleanB.includes(cleanA);
+
+  // 김계순 / 김계순A처럼 비슷한 이름이 서로 섞이지 않도록 완전 일치만 허용합니다.
+  return cleanA === cleanB;
 }
 
 function safeCompare(a, b) {
@@ -272,43 +274,107 @@ function getCounselDate(item) {
   return normalizeDateText(item.reflectionDate || item.reflection || item.consultDate || item.date || item.counselDate || item.writtenDate || "");
 }
 
-function getCounselMedicationCount(name, targetDate, fallbackCount) {
+function isRemoveCounsel(counsel) {
+  if (!counsel) return false;
+  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+  return text.includes("제외") || text.includes("중단") || text.includes("미제공") || text.includes("삭제") || text.includes("하지않");
+}
+
+function getMedicationCountFromCounselText(text, fallbackCount) {
+  const cleanText = normalizeText(text);
+
+  if (cleanText.includes("제외") || cleanText.includes("중단") || cleanText.includes("미제공") || cleanText.includes("삭제") || cleanText.includes("하지않")) return 0;
+  if (cleanText.match(/3\s*회/) || cleanText.includes("아침점심저녁")) return 3;
+  if (cleanText.match(/2\s*회/) || cleanText.includes("아침저녁") || cleanText.includes("점심저녁")) return 2;
+  if (cleanText.match(/1\s*회/) || cleanText.includes("아침") || cleanText.includes("점심") || cleanText.includes("저녁")) return 1;
+
+  return fallbackCount;
+}
+
+function getLatestMedicationCounsel(name, targetDate) {
   const counselLibrary = Array.isArray(counselLibraryCache) ? counselLibraryCache : [];
   const targetDateText = normalizeDateText(targetDate);
 
   const counsels = counselLibrary
     .filter((item) => {
       const sameName = isSameRecipient(item.recipientName || item.name, name);
-      const reflectionDate = getCounselDate(item);
+      const counselDate = getCounselDate(item);
       const text = normalizeText(`${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
-      return sameName && reflectionDate && reflectionDate <= targetDateText && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
+
+      return sameName && counselDate && counselDate <= targetDateText && (
+        text.includes("복약") ||
+        text.includes("투약") ||
+        text.includes("정확한복약도움") ||
+        text.includes("건강관리")
+      );
     })
     .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
 
-  if (counsels.length === 0) return fallbackCount;
-  const text = normalizeText(`${counsels[0].changeType || ""} ${counsels[0].careContent || ""} ${counsels[0].reason || ""}`);
-  if (text.includes("제외") || text.includes("중단") || text.includes("미제공") || text.includes("삭제")) return 0;
-  if (text.match(/3\s*회/) || text.includes("아침점심저녁")) return 3;
-  if (text.match(/2\s*회/) || text.includes("아침저녁") || text.includes("점심저녁")) return 2;
-  if (text.match(/1\s*회/) || text.includes("아침") || text.includes("점심") || text.includes("저녁")) return 1;
-  return fallbackCount;
+  return counsels[0] || null;
+}
+
+function getMedicationRuleAtDate(plan, name, targetDate) {
+  const planDate = plan ? normalizeDateText(plan.writtenDate) : "";
+  const planCount = getMedicationCountFromPlan(plan);
+
+  const counsel = getLatestMedicationCounsel(name, targetDate);
+  const counselDate = counsel ? getCounselDate(counsel) : "";
+
+  let count = planCount;
+  let source = "계획서";
+
+  // 상담일지가 있고, 상담일지가 해당 날짜 기준 최신 계획서보다 최신일 때만 상담일지를 반영합니다.
+  // 예: 상담일지 2023-12-11 추가 → 계획서 2024-01-18 작성이면
+  // 2024-01-17까지는 상담 기준, 2024-01-18부터는 계획서 기준입니다.
+  const shouldApplyCounsel = counsel && (!planDate || !counselDate || counselDate > planDate);
+
+  if (shouldApplyCounsel) {
+    const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+    count = getMedicationCountFromCounselText(text, count);
+    source = "상담";
+  }
+
+  return {
+    count,
+    source
+  };
+}
+
+function getCounselMedicationCount(name, targetDate, fallbackCount) {
+  const plan = getLatestPlansByRecipient(name, targetDate);
+  const rule = getMedicationRuleAtDate(plan, name, targetDate);
+
+  if (!plan && typeof fallbackCount === "number" && rule.source === "계획서") {
+    return fallbackCount;
+  }
+
+  return rule.count;
+}
+
+function buildMedicationRuleSourceHtml(rule) {
+  const count = rule && typeof rule.count === "number" ? rule.count : 0;
+  const source = rule && rule.source ? rule.source : "계획서";
+  const mainColor = count > 0 ? "#2563eb" : "#64748b";
+
+  return `
+    <div style="font-weight: 800; color: ${mainColor};">${count}회</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 3px;">[${source}]</div>
+  `;
+}
+
+function buildHealthMinutesSourceHtml(minutes, source) {
+  const mainColor = Number(minutes) > 20 ? "#2563eb" : "#64748b";
+
+  return `
+    <div style="font-weight: 800; color: ${mainColor};">${minutes}분</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 3px;">[${source || "계획서"}]</div>
+  `;
 }
 
 function getMedicationCounselTextForMonth(name, monthEndDate) {
-  const counselLibrary = Array.isArray(counselLibraryCache) ? counselLibraryCache : [];
-  const targetDateText = normalizeDateText(monthEndDate);
+  const counsel = getLatestMedicationCounsel(name, monthEndDate);
 
-  const counsels = counselLibrary
-    .filter((item) => {
-      const sameName = isSameRecipient(item.recipientName || item.name, name);
-      const reflectionDate = getCounselDate(item);
-      const text = normalizeText(`${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
-      return sameName && reflectionDate && reflectionDate <= targetDateText && (text.includes("복약") || text.includes("투약") || text.includes("정확한복약도움") || text.includes("건강관리"));
-    })
-    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
-
-  if (counsels.length === 0) return "없음";
-  const counsel = counsels[0];
+  if (!counsel) return "없음";
   return `${getCounselDate(counsel) || "-"}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
 }
 
@@ -525,13 +591,18 @@ function renderResults(monthValue, results) {
     const validDates = Array.isArray(item.attendanceDates) ? item.attendanceDates : [];
     const attendanceSet = new Set(validDates);
     
-    const monthEndMedicationCount = getCounselMedicationCount(item.name, getMonthEndDate(monthValue), item.baseMedicationCount);
+    const monthEndDate = getMonthEndDate(monthValue);
+    const monthEndPlan = getLatestPlansByRecipient(item.name, monthEndDate);
+    const monthEndMedicationRule = getMedicationRuleAtDate(monthEndPlan, item.name, monthEndDate);
+    const monthEndMedicationCount = monthEndMedicationRule.count;
     const monthEndHealthMinutes = getRequiredHealthMinutes(monthEndMedicationCount);
 
     let problemCount = 0;
     const dayCells = days.map((day) => {
       const isAttendanceDay = attendanceSet.has(day);
-      const medicationCount = getCounselMedicationCount(item.name, day, item.baseMedicationCount);
+      const dayPlan = getLatestPlansByRecipient(item.name, day);
+      const medicationRule = getMedicationRuleAtDate(dayPlan, item.name, day);
+      const medicationCount = medicationRule.count;
       const requiredHealthMinutes = getRequiredHealthMinutes(medicationCount);
 
       if (isAttendanceDay) {
@@ -549,8 +620,8 @@ function renderResults(monthValue, results) {
       <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
       <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
       <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px; ${errorCellBg}">${getMedicationCounselTextForMonth(item.name, getMonthEndDate(monthValue))}</td>
-      <td style="text-align:center; ${errorCellBg}">${monthEndMedicationCount}회</td>
-      <td style="text-align:center; ${errorCellBg}">${monthEndHealthMinutes}분</td>
+      <td style="text-align:center; ${errorCellBg}">${buildMedicationRuleSourceHtml(monthEndMedicationRule)}</td>
+      <td style="text-align:center; ${errorCellBg}">${buildHealthMinutesSourceHtml(monthEndHealthMinutes, monthEndMedicationRule.source)}</td>
       ${dayCells}
       <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${overallText}</td>
     `;
