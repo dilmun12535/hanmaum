@@ -198,7 +198,7 @@ function getWeekJudgeDate(monthValue, weekKey, weekData, weekStartDates, weekEnd
 
   // 실제 목욕 기록이 있는 주차는 기록일 기준으로 계획서/상담일지를 비교합니다.
   // 예: 2024-01-01 목욕 기록은 2024-01-18 계획서보다 앞이므로 상담일지 기준이 적용되어야 합니다.
-  if (recordDate && recordDate.startsWith(monthValue)) return recordDate;
+  if (recordDate) return recordDate;
 
   // 기록이 없는 경우에는 해당 주차 종료일 기준으로 누락 여부를 판단합니다.
   // 단, 이 날짜는 월말이 아니라 주차별 날짜라서 새 계획서가 월 전체에 소급 적용되지 않습니다.
@@ -726,13 +726,17 @@ function buildResults(monthValue, bathRows) {
     ];
 
     const monthBathBenefit = getBathBenefitAtDate(monthPlan, name, monthEndDate, grade);
+    const displayCounselDate = Object.values(weekJudgeDates)
+      .filter(Boolean)
+      .sort()
+      .slice(-1)[0] || monthEndDate;
 
     results.push({
       name,
       gender: person.gender || "",
       grade,
       planDate: monthPlan ? monthPlan.writtenDate : "-",
-      counselText: getCounselTextForMonth(name, monthEndDate),
+      counselText: getCounselTextForMonth(name, displayCounselDate),
       requiredText: monthBathBenefit.required ? "있음" : "없음",
       bathBenefit: monthBathBenefit,
       weekBenefit,
