@@ -81,7 +81,7 @@ function isSameRecipient(nameA, nameB) {
   const cleanA = normalizeText(nameA);
   const cleanB = normalizeText(nameB);
   if (!cleanA || !cleanB) return false;
-  return cleanA.includes(cleanB) || cleanB.includes(cleanA);
+  return cleanA === cleanB;
 }
 
 function safeCompare(a, b) {
@@ -321,16 +321,41 @@ function isAddCounsel(counsel) {
   );
 }
 
-function isTherapyRequiredAtDate(plan, name, targetDate) {
-  let required = hasTherapyPlan(plan);
+function getTherapyRuleAtDate(plan, name, targetDate) {
+  const planDate = plan ? normalizeDateText(plan.writtenDate) : "";
   const counsel = getLatestTherapyCounsel(name, targetDate);
+  const counselDate = counsel
+    ? normalizeDateText(counsel.reflectionDate || counsel.reflection || counsel.date)
+    : "";
 
-  if (counsel) {
+  let required = hasTherapyPlan(plan);
+  let source = "계획서";
+
+  const shouldApplyCounsel =
+    counsel && (!planDate || !counselDate || counselDate > planDate);
+
+  if (shouldApplyCounsel) {
     if (isRemoveCounsel(counsel)) required = false;
     else if (isAddCounsel(counsel)) required = true;
+    source = "상담";
   }
 
-  return required;
+  return { required, source };
+}
+
+function isTherapyRequiredAtDate(plan, name, targetDate) {
+  return getTherapyRuleAtDate(plan, name, targetDate).required;
+}
+
+function buildTherapySourceHtml(hasTarget, source) {
+  return `
+    <div style="font-weight:800;color:${hasTarget ? "#2563eb" : "#64748b"};">
+      ${hasTarget ? "있음" : "없음"}
+    </div>
+    <div style="font-size:11px;color:#64748b;margin-top:3px;">
+      [${source || "계획서"}]
+    </div>
+  `;
 }
 
 function getCounselTextForMonth(name, monthEndDate) {
@@ -578,7 +603,8 @@ function buildResults(monthValue, therapyRows) {
 
       const weekDays = getDaysInWeekRange(monthValue, wk);
       const hasAttend = weekDays.some((d) => attendDatesSet.has(d));
-      const req = isTherapyRequiredAtDate(plan, name, weekEndDates[wk]);
+      const weekPlan = getLatestPlansByRecipient(name, weekEndDates[wk]);
+      const req = getTherapyRuleAtDate(weekPlan, name, weekEndDates[wk]).required;
 
       weekRequired[wk] = req;
       weekResultsMap[wk] = getWeekResult(req, weeks[wk], hasAttend);
@@ -593,6 +619,11 @@ function buildResults(monthValue, therapyRows) {
       weekRequired,
       weeks,
       weekResultsMap,
+      therapyRule: getTherapyRuleAtDate(
+        getLatestPlansByRecipient(name, monthEndDate),
+        name,
+        monthEndDate
+      ),
       overallResult: buildOverallResult(weekResultsArray)
     };
   });
@@ -691,9 +722,10 @@ function renderResults(monthValue, results) {
       <td style="text-align:center; ${errorCellBg}">${item.planDate || "-"}</td>
       <td style="font-size:12px; line-height:1.4; ${errorCellBg}">${item.counselText}</td>
       <td style="text-align:center; vertical-align:middle; ${errorCellBg}">
-        ${Object.values(item.weekRequired || {}).some(Boolean)
-          ? '<span class="therapy-target-ok">있음</span>'
-          : '<span class="therapy-target-no">없음</span>'}
+        ${buildTherapySourceHtml(
+          Object.values(item.weekRequired || {}).some(Boolean),
+          item.therapyRule?.source
+        )}
       </td>
 
       <td style="${getCellBgColor(item.weekResultsMap.week1)}">${buildWeekCell(item.weekResultsMap.week1, item.weeks.week1)}</td>
