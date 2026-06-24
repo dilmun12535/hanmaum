@@ -187,7 +187,7 @@ function extractFirstDateFromBathWeek(weekData) {
   if (!weekData || !weekData.recordText) return "";
   const text = String(weekData.recordText || "");
 
-  const match = text.match(/(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})/);
+  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
   if (!match) return "";
 
   return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
@@ -259,8 +259,21 @@ function hasBathPlan(plan) {
 }
 
 function getCounselDate(counsel) {
+  if (!counsel) return "";
+
+  // 상담 작성일이 아니라 실제 반영일을 우선 적용합니다.
   return normalizeDateText(
-    counsel.reflectionDate || counsel.consultDate || counsel.date || counsel.counselDate || counsel.writtenDate || ""
+    counsel.reflectionDate ||
+    counsel.reflection ||
+    counsel.applyDate ||
+    counsel.changeDate ||
+    counsel.effectiveDate ||
+    counsel.startDate ||
+    counsel.consultDate ||
+    counsel.date ||
+    counsel.counselDate ||
+    counsel.writtenDate ||
+    ""
   );
 }
 
@@ -268,15 +281,20 @@ function isPureBathCounsel(item) {
   const categoryText = normalizeText(item.category || "");
   const contentText = normalizeText(item.careContent || "");
   const reasonText = normalizeText(item.reason || "");
-  const totalContent = contentText + reasonText;
+  const changeText = normalizeText(item.changeType || "");
+  const totalContent = categoryText + changeText + contentText + reasonText;
 
-  if (categoryText.includes("목욕")) {
-    if (totalContent.includes("옷") || totalContent.includes("입기") || totalContent.includes("기저귀")) {
-      return false;
-    }
-    return true;
-  }
-  return false;
+  // 옷입기/기저귀 등 다른 급여가 목욕으로 오인되지 않도록 제외
+  if (totalContent.includes("기저귀")) return false;
+  if (totalContent.includes("옷입기") || totalContent.includes("의복")) return false;
+
+  return (
+    totalContent.includes("목욕") ||
+    totalContent.includes("몸씻기") ||
+    totalContent.includes("몸씻기도움") ||
+    totalContent.includes("세신") ||
+    totalContent.includes("샤워")
+  );
 }
 
 function hasBathAction(item) {
@@ -325,46 +343,49 @@ function isAddCounsel(counsel) {
 }
 
 function getBathBenefitAtDate(plan, name, targetDate, grade = "") {
-  const latestPlan = plan || getLatestPlanForRecipientAtDate(name, targetDate, grade);
-  const planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
-  const planRequired = hasBathPlan(latestPlan);
+  const targetDateText = normalizeDateText(targetDate);
 
-  const counsel = getLatestBathCounsel(name, targetDate);
+  let latestPlan = plan || getLatestPlanForRecipientAtDate(name, targetDateText, grade);
+  let planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
+
+  // 방어 로직: 혹시 미래 계획서가 들어오면 해당 날짜 판정에서 제외
+  if (planDate && targetDateText && planDate > targetDateText) {
+    latestPlan = getLatestPlanForRecipientAtDate(name, targetDateText, grade);
+    planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
+  }
+
+  const planRequired = hasBathPlan(latestPlan);
+  const counsel = getLatestBathCounsel(name, targetDateText);
   const counselDate = counsel ? getCounselDate(counsel) : "";
 
-  // 상담일지가 없으면 계획서 기준
-  if (!counsel) {
+  if (!counsel || (counselDate && targetDateText && counselDate > targetDateText)) {
     return {
       required: planRequired,
       source: "계획서"
     };
   }
 
-  // 계획서 작성일이 상담일지 반영일과 같거나 더 최신이면 계획서 기준
-  // 예: 상담일지 2024-04-30 추가 → 계획서 2024-05-30 작성이면 계획서가 최종 기준
-  if (planDate && counselDate && planDate >= counselDate) {
-    return {
-      required: planRequired,
-      source: "계획서"
-    };
+  // 핵심 기준:
+  // 상담일지 반영일이 해당 날짜 기준 최신 계획서보다 같거나 최신이면 상담 기준
+  // 해당 날짜보다 뒤에 작성된 계획서는 과거 주차에 소급 적용하지 않습니다.
+  const counselIsLatest = !planDate || counselDate >= planDate;
+
+  if (counselIsLatest) {
+    if (isRemoveCounsel(counsel)) {
+      return {
+        required: false,
+        source: "상담"
+      };
+    }
+
+    if (isAddCounsel(counsel)) {
+      return {
+        required: true,
+        source: "상담"
+      };
+    }
   }
 
-  // 상담일지가 더 최신이면 상담일지 기준
-  if (isRemoveCounsel(counsel)) {
-    return {
-      required: false,
-      source: "상담"
-    };
-  }
-
-  if (isAddCounsel(counsel)) {
-    return {
-      required: true,
-      source: "상담"
-    };
-  }
-
-  // 상담 내용이 애매하면 계획서 기준으로 안전 처리
   return {
     required: planRequired,
     source: "계획서"
