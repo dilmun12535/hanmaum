@@ -76,6 +76,20 @@ function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
 
+function normalizeRecipientName(value) {
+  return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
+}
+
+function isSameRecipient(nameA, nameB) {
+  const cleanA = normalizeRecipientName(nameA);
+  const cleanB = normalizeRecipientName(nameB);
+  if (!cleanA || !cleanB) return false;
+
+  // 김계순 / 김계순A처럼 비슷한 이름이 서로 섞이지 않도록 완전 일치만 허용합니다.
+  return cleanA === cleanB;
+}
+
+
 function normalizeDateText(value) {
   if (!value) return "";
   const text = String(value).trim().replace(/^'/, "");
@@ -155,26 +169,28 @@ function getLatestPlansByRecipient(checkDate) {
 
   const latestByName = {};
   validPlans.forEach((plan) => {
-    const name = String(plan.recipientName || "").trim();
-    if (!name) return;
-    const current = latestByName[name];
+    const name = String(plan.recipientName || plan.name || "").trim();
+    const key = normalizeRecipientName(name);
+    if (!key) return;
+
+    const current = latestByName[key];
     const writtenDate = normalizeDateText(plan.writtenDate);
     const currentDate = current ? normalizeDateText(current.writtenDate) : "";
 
     if (!current || writtenDate > currentDate) {
-      latestByName[name] = { ...plan, writtenDate };
+      latestByName[key] = { ...plan, writtenDate };
     }
   });
   return latestByName;
 }
 
 function getLatestPlanForRecipientAtDate(name, targetDate) {
-  const targetName = String(name || "").trim();
+  const targetName = normalizeRecipientName(name);
   const targetDateText = normalizeDateText(targetDate);
 
   const validPlans = carePlanLibraryCache
     .filter((plan) => {
-      const planName = String(plan.recipientName || "").trim();
+      const planName = normalizeRecipientName(plan.recipientName || plan.name || "");
       const writtenDate = normalizeDateText(plan.writtenDate);
       return planName === targetName && writtenDate && writtenDate <= targetDateText;
     })
@@ -194,12 +210,12 @@ function getCounselDate(counsel) {
 }
 
 function getLatestDiaperCounsel(name, targetDate) {
-  const targetName = String(name || "").trim();
+  const targetName = normalizeRecipientName(name);
   const targetDateText = normalizeDateText(targetDate);
 
   const counsels = counselLibraryCache
     .filter((item) => {
-      const sameName = String(item.recipientName || "").trim() === targetName;
+      const sameName = normalizeRecipientName(item.recipientName || item.name || "") === targetName;
       const counselDate = getCounselDate(item);
       if (!sameName || !counselDate || counselDate > targetDateText) return false;
 
@@ -424,7 +440,7 @@ function buildResults(monthValue, toiletRows) {
 
   toiletRows.forEach((row) => {
     if (!nameMap[row.name]) {
-      const plan = latestPlans[row.name];
+      const plan = latestPlans[normalizeRecipientName(row.name)];
       nameMap[row.name] = { name: row.name, planDate: plan ? plan.writtenDate : "-", counselText: getCounselTextForMonth(row.name, monthEndDate), days: {} };
     }
     nameMap[row.name].days[row.date] = { stoolCount: row.stoolCount, urineCount: row.urineCount, diaperCount: row.diaperCount };
@@ -439,7 +455,7 @@ function buildResults(monthValue, toiletRows) {
     if (!name) return;
 
     if (!nameMap[name]) {
-      const plan = latestPlans[name];
+      const plan = latestPlans[normalizeRecipientName(name)];
       nameMap[name] = {
         name,
         planDate: plan ? plan.writtenDate : "-",
@@ -450,8 +466,8 @@ function buildResults(monthValue, toiletRows) {
   });
 
   Object.values(nameMap).forEach((item) => {
-    const plan = latestPlans[item.name];
-    const attendance = attendanceRows.find((a) => a.name === item.name);
+    const plan = latestPlans[normalizeRecipientName(item.name)];
+    const attendance = attendanceRows.find((a) => isSameRecipient(a.name, item.name));
     item.attendanceDates = attendance ? attendance.dates : [];
     item.daysDiaperAllowed = {};
     item.daysDiaperBenefit = {};
@@ -462,6 +478,7 @@ function buildResults(monthValue, toiletRows) {
       item.daysDiaperAllowed[day] = benefit.allowed;
     });
     const monthPlan = getLatestPlanForRecipientAtDate(item.name, monthEndDate);
+    item.planDate = monthPlan ? normalizeDateText(monthPlan.writtenDate) : item.planDate;
     item.monthDiaperBenefit = getDiaperBenefitAtDate(monthPlan, item.name, monthEndDate);
   });
   return { days, rows: Object.values(nameMap).sort((a, b) => a.name.localeCompare(b.name, "ko")) };
