@@ -749,12 +749,15 @@ function renderResults(monthValue, results) {
   results.forEach((item) => {
     const row = document.createElement("tr");
     const attendanceSet = new Set(item.attendanceDates || []);
-    const monthEndRule = getMealRuleAtDate(item.plan, item.name, getMonthEndDate(monthValue));
+    const monthEndDate = getMonthEndDate(monthValue);
+    const monthEndPlan = getLatestPlansByRecipient(item.name, monthEndDate);
+    const monthEndRule = getMealRuleAtDate(monthEndPlan, item.name, monthEndDate);
 
     let problemCount = 0;
     const dayCells = days.map((day) => {
       const isAttendanceDay = attendanceSet.has(day);
-      const rule = getMealRuleAtDate(item.plan, item.name, day);
+      const dayPlan = getLatestPlansByRecipient(item.name, day);
+      const rule = getMealRuleAtDate(dayPlan, item.name, day);
       const leaveTime = item.leaveTimes ? item.leaveTimes[day] : "";
       const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule, leaveTime) : "정상";
       if (isAttendanceDay && result !== "정상" && result !== "일찍 하원") problemCount += 1;
