@@ -252,6 +252,30 @@ function getLatestPlanForRecipientAtDate(name, targetDate, grade = "") {
   return exactNamePlans[0] || null;
 }
 
+function getNextPlanAfterDate(name, afterDate, grade = "") {
+  const targetName = normalizeText(name);
+  const targetGrade = normalizeGrade(grade);
+  const afterDateText = normalizeDateText(afterDate);
+
+  const futurePlans = carePlanLibraryCache
+    .filter((plan) => {
+      const planName = normalizeText(plan.recipientName || "");
+      const writtenDate = normalizeDateText(plan.writtenDate);
+      if (!planName || planName !== targetName) return false;
+      if (!writtenDate || !afterDateText || writtenDate <= afterDateText) return false;
+
+      if (targetGrade) {
+        const planGrade = getPlanGrade(plan);
+        if (planGrade && planGrade !== targetGrade) return false;
+      }
+
+      return true;
+    })
+    .sort((a, b) => normalizeDateText(a.writtenDate).localeCompare(normalizeDateText(b.writtenDate)));
+
+  return futurePlans[0] || null;
+}
+
 function hasBathPlan(plan) {
   if (!plan || !plan.rows) return false;
   const text = normalizeText(JSON.stringify(plan.rows));
@@ -348,7 +372,7 @@ function getBathBenefitAtDate(plan, name, targetDate, grade = "") {
   let latestPlan = plan || getLatestPlanForRecipientAtDate(name, targetDateText, grade);
   let planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
 
-  // 방어 로직: 혹시 미래 계획서가 들어오면 해당 날짜 판정에서 제외
+  // 혹시 미래 계획서가 들어오면 해당 날짜 판정에서 제외
   if (planDate && targetDateText && planDate > targetDateText) {
     latestPlan = getLatestPlanForRecipientAtDate(name, targetDateText, grade);
     planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
@@ -365,12 +389,27 @@ function getBathBenefitAtDate(plan, name, targetDate, grade = "") {
     };
   }
 
-  // 핵심 기준:
-  // 상담일지 반영일이 해당 날짜 기준 최신 계획서보다 같거나 최신이면 상담 기준
-  // 해당 날짜보다 뒤에 작성된 계획서는 과거 주차에 소급 적용하지 않습니다.
-  const counselIsLatest = !planDate || counselDate >= planDate;
+  /*
+    적용 기준:
+    상담일지 반영일 이후부터 다음 계획서 작성일 전날까지는 상담일지 기준입니다.
 
-  if (counselIsLatest) {
+    예)
+    2023-12-11 상담일지 [추가]
+    2024-01-18 계획서 작성
+
+    2023-12-11 ~ 2024-01-17 : 상담 기준
+    2024-01-18 이후 : 계획서 기준
+  */
+  const nextPlanAfterCounsel = getNextPlanAfterDate(name, counselDate, grade);
+  const nextPlanDate = nextPlanAfterCounsel ? normalizeDateText(nextPlanAfterCounsel.writtenDate) : "";
+
+  const isBeforeNextPlan =
+    counselDate &&
+    targetDateText &&
+    targetDateText >= counselDate &&
+    (!nextPlanDate || targetDateText < nextPlanDate);
+
+  if (isBeforeNextPlan) {
     if (isRemoveCounsel(counsel)) {
       return {
         required: false,
