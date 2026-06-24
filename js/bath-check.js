@@ -252,30 +252,6 @@ function getLatestPlanForRecipientAtDate(name, targetDate, grade = "") {
   return exactNamePlans[0] || null;
 }
 
-function getNextPlanAfterDate(name, afterDate, grade = "") {
-  const targetName = normalizeText(name);
-  const targetGrade = normalizeGrade(grade);
-  const afterDateText = normalizeDateText(afterDate);
-
-  const futurePlans = carePlanLibraryCache
-    .filter((plan) => {
-      const planName = normalizeText(plan.recipientName || "");
-      const writtenDate = normalizeDateText(plan.writtenDate);
-      if (!planName || planName !== targetName) return false;
-      if (!writtenDate || !afterDateText || writtenDate <= afterDateText) return false;
-
-      if (targetGrade) {
-        const planGrade = getPlanGrade(plan);
-        if (planGrade && planGrade !== targetGrade) return false;
-      }
-
-      return true;
-    })
-    .sort((a, b) => normalizeDateText(a.writtenDate).localeCompare(normalizeDateText(b.writtenDate)));
-
-  return futurePlans[0] || null;
-}
-
 function hasBathPlan(plan) {
   if (!plan || !plan.rows) return false;
   const text = normalizeText(JSON.stringify(plan.rows));
@@ -372,7 +348,7 @@ function getBathBenefitAtDate(plan, name, targetDate, grade = "") {
   let latestPlan = plan || getLatestPlanForRecipientAtDate(name, targetDateText, grade);
   let planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
 
-  // 혹시 미래 계획서가 들어오면 해당 날짜 판정에서 제외
+  // 방어 로직: 혹시 미래 계획서가 들어오면 해당 날짜 판정에서 제외
   if (planDate && targetDateText && planDate > targetDateText) {
     latestPlan = getLatestPlanForRecipientAtDate(name, targetDateText, grade);
     planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
@@ -389,27 +365,12 @@ function getBathBenefitAtDate(plan, name, targetDate, grade = "") {
     };
   }
 
-  /*
-    적용 기준:
-    상담일지 반영일 이후부터 다음 계획서 작성일 전날까지는 상담일지 기준입니다.
+  // 핵심 기준:
+  // 상담일지 반영일이 해당 날짜 기준 최신 계획서보다 같거나 최신이면 상담 기준
+  // 해당 날짜보다 뒤에 작성된 계획서는 과거 주차에 소급 적용하지 않습니다.
+  const counselIsLatest = !planDate || counselDate >= planDate;
 
-    예)
-    2023-12-11 상담일지 [추가]
-    2024-01-18 계획서 작성
-
-    2023-12-11 ~ 2024-01-17 : 상담 기준
-    2024-01-18 이후 : 계획서 기준
-  */
-  const nextPlanAfterCounsel = getNextPlanAfterDate(name, counselDate, grade);
-  const nextPlanDate = nextPlanAfterCounsel ? normalizeDateText(nextPlanAfterCounsel.writtenDate) : "";
-
-  const isBeforeNextPlan =
-    counselDate &&
-    targetDateText &&
-    targetDateText >= counselDate &&
-    (!nextPlanDate || targetDateText < nextPlanDate);
-
-  if (isBeforeNextPlan) {
+  if (counselIsLatest) {
     if (isRemoveCounsel(counsel)) {
       return {
         required: false,
@@ -434,6 +395,53 @@ function getBathBenefitAtDate(plan, name, targetDate, grade = "") {
 function isBathRequiredAtDate(plan, name, targetDate, grade = "") {
   return getBathBenefitAtDate(plan, name, targetDate, grade).required;
 }
+
+function getBathBenefitForWeek(plan, name, targetDate, grade = "", monthPlan = null) {
+  const targetDateText = normalizeDateText(targetDate);
+  const monthPlanDate = monthPlan ? normalizeDateText(monthPlan.writtenDate) : "";
+
+  const counsel = getLatestBathCounsel(name, targetDateText);
+  const counselDate = counsel ? getCounselDate(counsel) : "";
+
+  /*
+    핵심 보정:
+    확인월 최종 계획서가 상담일지보다 나중에 작성된 경우,
+    상담일지 반영일 ~ 그 계획서 작성일 전날까지는 상담일지 기준으로 봅니다.
+
+    예)
+    2023-12-11 상담일지 [추가]
+    2024-01-27 계획서 작성
+
+    2023-12-11 ~ 2024-01-26 : 상담 기준
+    2024-01-27부터 : 계획서 기준
+  */
+  if (
+    counsel &&
+    counselDate &&
+    targetDateText &&
+    targetDateText >= counselDate &&
+    monthPlanDate &&
+    monthPlanDate > counselDate &&
+    targetDateText < monthPlanDate
+  ) {
+    if (isRemoveCounsel(counsel)) {
+      return {
+        required: false,
+        source: "상담"
+      };
+    }
+
+    if (isAddCounsel(counsel)) {
+      return {
+        required: true,
+        source: "상담"
+      };
+    }
+  }
+
+  return getBathBenefitAtDate(plan, name, targetDateText, grade);
+}
+
 
 function buildBenefitSourceHtml(benefit) {
   const requiredText = benefit && benefit.required ? "있음" : "없음";
@@ -691,12 +699,14 @@ function buildResults(monthValue, bathRows) {
       week5: getWeekJudgeDate(monthValue, "week5", weeks.week5, weekStartDates, weekEndDates)
     };
 
+    const monthPlan = getLatestPlanForRecipientAtDate(name, monthEndDate, grade);
+
     const weekBenefit = {
-      week1: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week1, grade), name, weekJudgeDates.week1, grade),
-      week2: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week2, grade), name, weekJudgeDates.week2, grade),
-      week3: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week3, grade), name, weekJudgeDates.week3, grade),
-      week4: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week4, grade), name, weekJudgeDates.week4, grade),
-      week5: getBathBenefitAtDate(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week5, grade), name, weekJudgeDates.week5, grade)
+      week1: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week1, grade), name, weekJudgeDates.week1, grade, monthPlan),
+      week2: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week2, grade), name, weekJudgeDates.week2, grade, monthPlan),
+      week3: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week3, grade), name, weekJudgeDates.week3, grade, monthPlan),
+      week4: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week4, grade), name, weekJudgeDates.week4, grade, monthPlan),
+      week5: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week5, grade), name, weekJudgeDates.week5, grade, monthPlan)
     };
 
     const weekRequired = {
@@ -715,7 +725,6 @@ function buildResults(monthValue, bathRows) {
       getWeekResult(weekRequired.week5, weeks.week5)
     ];
 
-    const monthPlan = getLatestPlanForRecipientAtDate(name, monthEndDate, grade);
     const monthBathBenefit = getBathBenefitAtDate(monthPlan, name, monthEndDate, grade);
 
     results.push({
