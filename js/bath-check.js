@@ -174,6 +174,63 @@ function getAttendanceMonth(monthValue) {
     .filter((item) => String(item.name || "").trim());
 }
 
+function cloneWeeks(weeks) {
+  const source = weeks || {};
+  return {
+    week1: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week1 || {}) },
+    week2: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week2 || {}) },
+    week3: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week3 || {}) },
+    week4: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week4 || {}) },
+    week5: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week5 || {}) }
+  };
+}
+
+function getAttendanceDateList(attendance) {
+  if (!attendance) return [];
+
+  const rawDates = Array.isArray(attendance.dates)
+    ? attendance.dates
+    : Array.isArray(attendance.attendanceDates)
+      ? attendance.attendanceDates
+      : [];
+
+  return rawDates
+    .map((date) => normalizeDateText(date))
+    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date));
+}
+
+function hasAttendanceBetween(attendance, startDate, endDate) {
+  const start = normalizeDateText(startDate);
+  const end = normalizeDateText(endDate);
+  if (!start || !end) return true;
+
+  return getAttendanceDateList(attendance).some((date) => date >= start && date <= end);
+}
+
+function applyAbsenceByAttendance(weeks, attendance, weekStartDates, weekEndDates) {
+  const result = cloneWeeks(weeks);
+
+  // 출석 데이터가 매칭되지 않은 사람은 결석 여부를 확정할 수 없으므로 기존 판정을 유지합니다.
+  if (!attendance) return result;
+
+  ["week1", "week2", "week3", "week4", "week5"].forEach((weekKey) => {
+    const week = result[weekKey];
+    if (!week || week.hasBathRecord || week.isGreyBlock) return;
+
+    const attendedThisWeek = hasAttendanceBetween(attendance, weekStartDates[weekKey], weekEndDates[weekKey]);
+    if (!attendedThisWeek) {
+      result[weekKey] = {
+        ...week,
+        hasBathRecord: false,
+        isGreyBlock: true,
+        recordText: "결석"
+      };
+    }
+  });
+
+  return result;
+}
+
 function getWeekEndDates(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
@@ -219,6 +276,45 @@ function getWeekStartDates(monthValue) {
       `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}-${String(targetDate.getDate()).padStart(2, "0")}`;
   }
   return result;
+}
+
+
+function formatWeekRangeDate(dateText) {
+  const normalized = normalizeDateText(dateText);
+  if (!normalized || normalized.length < 10) return "-";
+  const [, month, day] = normalized.split("-");
+  return `${month}.${day}`;
+}
+
+function buildWeekHeaderHtml(weekNumber, startDate, endDate) {
+  return `
+    <div style="font-weight: 800; color: #0f3a8a;">${weekNumber}주차</div>
+    <div style="font-size: 11px; color: #64748b; font-weight: 600; margin-top: 4px; line-height: 1.2;">
+      ${formatWeekRangeDate(startDate)} ~ ${formatWeekRangeDate(endDate)}
+    </div>
+  `;
+}
+
+function updateWeekHeaders(monthValue) {
+  if (!monthValue || !bathResultBody) return;
+
+  const table = bathResultBody.closest("table");
+  if (!table) return;
+
+  const weekStartDates = getWeekStartDates(monthValue);
+  const weekEndDates = getWeekEndDates(monthValue);
+
+  for (let i = 1; i <= 5; i++) {
+    const weekKey = `week${i}`;
+    const headerCell = Array.from(table.querySelectorAll("thead th, tr th")).find((th) => {
+      const text = normalizeText(th.textContent || "");
+      return text === `${i}주차` || text.includes(`${i}주차`);
+    });
+
+    if (headerCell) {
+      headerCell.innerHTML = buildWeekHeaderHtml(i, weekStartDates[weekKey], weekEndDates[weekKey]);
+    }
+  }
 }
 
 function extractFirstDateFromBathWeek(weekData) {
@@ -525,11 +621,20 @@ function parseBathCell(value) {
 
   const cleanText = normalizeText(text);
 
-  // [개선 핵심]: 일정없음, 급여개시전, 급여개시, 퇴소 텍스트가 확인되면 누락 없이 명확하게 isGreyBlock 처리를 내려줍니다.
-  if (cleanText.includes("일정없음") || cleanText.includes("급여개시전") || cleanText.includes("급여개시") || cleanText.includes("퇴소")) {
+  // 일정없음, 급여개시전, 급여개시, 퇴소, 결석은 누락/오류가 아니라 사유가 있는 주차로 처리합니다.
+  if (
+    cleanText.includes("일정없음") ||
+    cleanText.includes("급여개시전") ||
+    cleanText.includes("급여개시") ||
+    cleanText.includes("퇴소") ||
+    cleanText.includes("결석")
+  ) {
+    const isAbsent = cleanText.includes("결석");
     let formattedLabel = text;
     
-    if (text.includes("급여개시 전") && text.replace("급여개시 전", "").trim().length > 0) {
+    if (isAbsent) {
+      formattedLabel = "결석";
+    } else if (text.includes("급여개시 전") && text.replace("급여개시 전", "").trim().length > 0) {
       formattedLabel = "급여개시 전<br/>" + text.replace("급여개시 전", "").trim();
     } else if (text.includes("급여개시") && !text.includes("전") && text.replace("급여개시", "").trim().length > 0) {
       formattedLabel = "급여개시<br/>" + text.replace("급여개시", "").trim();
@@ -542,6 +647,7 @@ function parseBathCell(value) {
     return {
       hasRecord: false,
       isGreyBlock: true,
+      isAbsent,
       label: formattedLabel
     };
   }
@@ -629,10 +735,12 @@ function parseBathReport(workbook) {
 
       const hasRealBath = records.some(item => item.hasRecord === true);
       const hasGreyBlockTag = records.some(item => item.isGreyBlock === true);
+      const hasAbsentTag = records.some(item => item.isAbsent === true);
 
       weeks[weekKey] = {
         hasBathRecord: hasRealBath,
         isGreyBlock: hasGreyBlockTag,
+        isAbsent: hasAbsentTag,
         recordText: records.length > 0 ? records.map((item) => item.label).join("<br/>") : "-"
       };
     });
@@ -643,6 +751,9 @@ function parseBathReport(workbook) {
 }
 
 function getWeekResult(required, weekData) {
+  // 결석은 누락/오류가 아니라 결석으로 표시하고, 종합 결과에서는 정상 흐름으로 봅니다.
+  if (weekData && weekData.isAbsent) return "결석";
+
   // 회색 블록 처리된 주차(일정없음, 급여개시전 등)는 무조건 '정상'으로 반환해 오류 및 누락에서 제외합니다.
   if (weekData && weekData.isGreyBlock) return "정상";
   
@@ -657,6 +768,15 @@ function buildWeekTdHtml(required, weekData) {
   const result = getWeekResult(required, weekData);
   const recordText = weekData ? weekData.recordText : "-";
   const isGreyBlock = weekData ? weekData.isGreyBlock : false;
+  const isAbsent = weekData ? weekData.isAbsent : false;
+
+  if (isAbsent) {
+    return `
+      <td style="background-color: #f8fafc; color: #f59e0b; font-weight: 800; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 14px; line-height: 1.4; border: 1px solid #e2e8f0;">
+        결석
+      </td>
+    `;
+  }
 
   if (isGreyBlock) {
     return `
@@ -690,11 +810,11 @@ function buildResults(monthValue, bathRows) {
   const attendanceRows = getAttendanceMonth(monthValue);
 
   const emptyWeeks = {
-    week1: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
-    week2: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
-    week3: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
-    week4: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
-    week5: { hasBathRecord: false, isGreyBlock: false, recordText: "-" }
+    week1: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" },
+    week2: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" },
+    week3: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" },
+    week4: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" },
+    week5: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" }
   };
 
   const bathMapByPersonKey = {};
@@ -783,6 +903,7 @@ function buildResults(monthValue, bathRows) {
     const cleanName = normalizeText(name);
 
     let bath = null;
+    const matchedAttendance = grade ? attendanceMapByNameGrade[makeNameGradeKey(name, grade)] || null : null;
 
     // 목욕 리포트에 등급이 있으면 이름+등급으로 매칭합니다.
     if (grade) {
@@ -800,7 +921,13 @@ function buildResults(monthValue, bathRows) {
       bath = bathRows.find((item) => isSameRecipientExact(item.name, name)) || null;
     }
 
-    const weeks = bath ? bath.weeks : emptyWeeks;
+    const rawWeeks = bath ? bath.weeks : emptyWeeks;
+    const attendanceForAbsence = matchedAttendance || attendanceRows.find((item) => {
+      if (!isSameRecipientExact(item.name, name)) return false;
+      const itemGrade = normalizeGrade(item.grade);
+      return !grade || !itemGrade || itemGrade === grade;
+    }) || null;
+    const weeks = applyAbsenceByAttendance(rawWeeks, attendanceForAbsence, weekStartDates, weekEndDates);
 
     const weekJudgeDates = {
       week1: getWeekJudgeDate(monthValue, "week1", weeks.week1, weekStartDates, weekEndDates),
@@ -930,6 +1057,7 @@ checkBathBtn.addEventListener("click", async () => {
 
     const bathRows = parseBathReport(workbook);
     const results = buildResults(checkMonth, bathRows);
+    updateWeekHeaders(checkMonth);
     renderResults(results);
   };
   reader.readAsArrayBuffer(file);
