@@ -138,6 +138,27 @@ function getPlanGrade(plan) {
 
 function normalizeDateText(value) {
   if (!value) return "";
+
+  // 출석 데이터가 {date:"2024-04-01"}, {attendanceDate:"..."} 같은 객체로 오는 경우도 날짜로 변환합니다.
+  if (typeof value === "object") {
+    return normalizeDateText(
+      value.date ||
+      value.attendanceDate ||
+      value.serviceDate ||
+      value.day ||
+      value.value ||
+      value.text ||
+      ""
+    );
+  }
+
+  // 엑셀 날짜 시리얼 숫자 대응
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const converted = new Date(excelEpoch.getTime() + value * 86400000);
+    return `${converted.getUTCFullYear()}-${String(converted.getUTCMonth() + 1).padStart(2, "0")}-${String(converted.getUTCDate()).padStart(2, "0")}`;
+  }
+
   const text = String(value).trim().replace(/^'/, "");
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
@@ -192,7 +213,11 @@ function getAttendanceDateList(attendance) {
     ? attendance.dates
     : Array.isArray(attendance.attendanceDates)
       ? attendance.attendanceDates
-      : [];
+      : typeof attendance.dates === "string"
+        ? attendance.dates.split(/[,.\s]+/).filter(Boolean)
+        : typeof attendance.attendanceDates === "string"
+          ? attendance.attendanceDates.split(/[,.\s]+/).filter(Boolean)
+          : [];
 
   return rawDates
     .map((date) => normalizeDateText(date))
@@ -223,6 +248,7 @@ function applyAbsenceByAttendance(weeks, attendance, weekStartDates, weekEndDate
         ...week,
         hasBathRecord: false,
         isGreyBlock: true,
+        isAbsent: true,
         recordText: "결석"
       };
     }
@@ -304,12 +330,29 @@ function updateWeekHeaders(monthValue) {
   const weekStartDates = getWeekStartDates(monthValue);
   const weekEndDates = getWeekEndDates(monthValue);
 
+  // 1) id가 있는 경우 우선 적용
   for (let i = 1; i <= 5; i++) {
     const weekKey = `week${i}`;
-    const headerCell = Array.from(table.querySelectorAll("thead th, tr th")).find((th) => {
-      const text = normalizeText(th.textContent || "");
-      return text === `${i}주차` || text.includes(`${i}주차`);
-    });
+    const byId = document.getElementById(`week${i}Header`) || document.getElementById(`week${i}Th`);
+    if (byId) {
+      byId.innerHTML = buildWeekHeaderHtml(i, weekStartDates[weekKey], weekEndDates[weekKey]);
+    }
+  }
+
+  // 2) th/td 구분 없이 헤더 행에서 '1주차~5주차' 텍스트를 찾아 적용
+  const headerRows = Array.from(table.querySelectorAll("thead tr, tr"));
+  for (let i = 1; i <= 5; i++) {
+    const weekKey = `week${i}`;
+    let headerCell = null;
+
+    for (const tr of headerRows) {
+      const cells = Array.from(tr.children || []);
+      headerCell = cells.find((cell) => {
+        const text = normalizeText(cell.textContent || "");
+        return text === `${i}주차` || text === `${i}주` || text.includes(`${i}주차`);
+      });
+      if (headerCell) break;
+    }
 
     if (headerCell) {
       headerCell.innerHTML = buildWeekHeaderHtml(i, weekStartDates[weekKey], weekEndDates[weekKey]);
@@ -1057,8 +1100,8 @@ checkBathBtn.addEventListener("click", async () => {
 
     const bathRows = parseBathReport(workbook);
     const results = buildResults(checkMonth, bathRows);
-    updateWeekHeaders(checkMonth);
     renderResults(results);
+    updateWeekHeaders(checkMonth);
   };
   reader.readAsArrayBuffer(file);
 });
