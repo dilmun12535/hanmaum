@@ -87,8 +87,43 @@ function isSameRecipientExact(nameA, nameB) {
   return cleanA === cleanB;
 }
 
+function makeNameGradeKey(name, grade = "") {
+  return `${normalizeText(name)}__${normalizeGrade(grade)}`;
+}
+
 function makePersonKey(name, gender = "", grade = "") {
   return `${normalizeText(name)}__${normalizeText(gender)}__${normalizeGrade(grade)}`;
+}
+
+function makePlanPersonKey(name, longTermNumber = "") {
+  return `${normalizeText(name)}__${normalizeText(longTermNumber)}`;
+}
+
+function getLongTermNumberFromItem(item) {
+  if (!item) return "";
+  return normalizeText(
+    item.longTermNumber ||
+    item.longTermNo ||
+    item.certNumber ||
+    item.recipientNo ||
+    item.recipientNumber ||
+    item.ltcNumber ||
+    item.LNumber ||
+    ""
+  );
+}
+
+function getAttendanceGrade(item) {
+  if (!item) return "";
+  return normalizeGrade(
+    item.grade ||
+    item.level ||
+    item.recipientGrade ||
+    item.longTermGrade ||
+    item.careGrade ||
+    item["등급"] ||
+    ""
+  );
 }
 
 function getPlanGrade(plan) {
@@ -127,6 +162,9 @@ function getAttendanceMonth(monthValue) {
     .filter((item) => item.month === monthValue)
     .map((item) => ({
       name: item.recipientName || item.name || "",
+      gender: item.gender || item.sex || item["성별"] || "",
+      grade: getAttendanceGrade(item),
+      longTermNumber: getLongTermNumberFromItem(item),
       dates: Array.isArray(item.attendanceDates)
         ? item.attendanceDates
         : Array.isArray(item.dates)
@@ -228,28 +266,43 @@ function getLatestPlansByRecipient(checkDate) {
   return latestByName;
 }
 
-function getLatestPlanForRecipientAtDate(name, targetDate, grade = "") {
+function getLatestPlanForRecipientAtDate(name, targetDate, grade = "", longTermNumber = "") {
   const targetDateText = normalizeDateText(targetDate);
   const targetName = normalizeText(name);
   const targetGrade = normalizeGrade(grade);
+  const targetLongTermNumber = normalizeText(longTermNumber);
 
-  const exactNamePlans = carePlanLibraryCache
+  const validPlans = carePlanLibraryCache
     .filter((plan) => {
-      const planName = normalizeText(plan.recipientName || "");
       const writtenDate = normalizeDateText(plan.writtenDate);
-      return planName === targetName && writtenDate && writtenDate <= targetDateText;
+      if (!writtenDate || writtenDate > targetDateText) return false;
+
+      const planName = normalizeText(plan.recipientName || "");
+      const planLongTermNumber = getLongTermNumberFromItem(plan);
+
+      // 출석관리에서 인정번호를 가져올 수 있으면 인정번호로 먼저 정확히 구분합니다.
+      if (targetLongTermNumber && planLongTermNumber) {
+        return planLongTermNumber === targetLongTermNumber;
+      }
+
+      return planName === targetName;
     })
     .sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
 
+  if (targetLongTermNumber) {
+    const numberMatched = validPlans.find((plan) => getLongTermNumberFromItem(plan) === targetLongTermNumber);
+    if (numberMatched) return numberMatched;
+  }
+
   if (targetGrade) {
-    const gradeMatched = exactNamePlans.find((plan) => {
+    const gradeMatched = validPlans.find((plan) => {
       const planGrade = getPlanGrade(plan);
       return !planGrade || planGrade === targetGrade;
     });
     if (gradeMatched) return gradeMatched;
   }
 
-  return exactNamePlans[0] || null;
+  return validPlans[0] || null;
 }
 
 function hasBathPlan(plan) {
@@ -342,15 +395,15 @@ function isAddCounsel(counsel) {
   return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
 }
 
-function getBathBenefitAtDate(plan, name, targetDate, grade = "") {
+function getBathBenefitAtDate(plan, name, targetDate, grade = "", longTermNumber = "") {
   const targetDateText = normalizeDateText(targetDate);
 
-  let latestPlan = plan || getLatestPlanForRecipientAtDate(name, targetDateText, grade);
+  let latestPlan = plan || getLatestPlanForRecipientAtDate(name, targetDateText, grade, longTermNumber);
   let planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
 
   // 방어 로직: 혹시 미래 계획서가 들어오면 해당 날짜 판정에서 제외
   if (planDate && targetDateText && planDate > targetDateText) {
-    latestPlan = getLatestPlanForRecipientAtDate(name, targetDateText, grade);
+    latestPlan = getLatestPlanForRecipientAtDate(name, targetDateText, grade, longTermNumber);
     planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
   }
 
@@ -392,11 +445,11 @@ function getBathBenefitAtDate(plan, name, targetDate, grade = "") {
   };
 }
 
-function isBathRequiredAtDate(plan, name, targetDate, grade = "") {
-  return getBathBenefitAtDate(plan, name, targetDate, grade).required;
+function isBathRequiredAtDate(plan, name, targetDate, grade = "", longTermNumber = "") {
+  return getBathBenefitAtDate(plan, name, targetDate, grade, longTermNumber).required;
 }
 
-function getBathBenefitForWeek(plan, name, targetDate, grade = "", monthPlan = null) {
+function getBathBenefitForWeek(plan, name, targetDate, grade = "", monthPlan = null, longTermNumber = "") {
   const targetDateText = normalizeDateText(targetDate);
   const monthPlanDate = monthPlan ? normalizeDateText(monthPlan.writtenDate) : "";
 
@@ -439,7 +492,7 @@ function getBathBenefitForWeek(plan, name, targetDate, grade = "", monthPlan = n
     }
   }
 
-  return getBathBenefitAtDate(plan, name, targetDateText, grade);
+  return getBathBenefitAtDate(plan, name, targetDateText, grade, longTermNumber);
 }
 
 
@@ -636,42 +689,87 @@ function buildResults(monthValue, bathRows) {
   const weekStartDates = getWeekStartDates(monthValue);
   const attendanceRows = getAttendanceMonth(monthValue);
 
-  const bathMap = {};
+  const emptyWeeks = {
+    week1: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
+    week2: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
+    week3: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
+    week4: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
+    week5: { hasBathRecord: false, isGreyBlock: false, recordText: "-" }
+  };
+
+  const bathMapByPersonKey = {};
+  const bathMapByNameGrade = {};
+  const bathNameCount = {};
+
   bathRows.forEach((row) => {
     const name = String(row.name || "").trim();
     if (!name) return;
-    const key = row.personKey || makePersonKey(row.name, row.gender, row.grade);
-    bathMap[key] = row;
-  });
 
-  const personMap = {};
+    const personKey = row.personKey || makePersonKey(row.name, row.gender, row.grade);
+    const nameGradeKey = makeNameGradeKey(row.name, row.grade);
 
-  // 목욕 파일 명단: 수급자명 + 성별 + 등급을 함께 보관
-  bathRows.forEach((row) => {
-    const key = row.personKey || makePersonKey(row.name, row.gender, row.grade);
-    if (!key.startsWith("__")) {
-      personMap[key] = {
-        key,
-        name: row.name,
-        gender: row.gender || "",
-        grade: row.grade || ""
-      };
+    bathMapByPersonKey[personKey] = row;
+    if (normalizeGrade(row.grade)) {
+      bathMapByNameGrade[nameGradeKey] = row;
     }
+
+    const cleanName = normalizeText(name);
+    bathNameCount[cleanName] = (bathNameCount[cleanName] || 0) + 1;
   });
 
-  // 출석부 명단: 출석부에는 성별/등급이 없을 수 있어 이름만 보관
+  const attendanceMapByNameGrade = {};
+  const attendanceNameCount = {};
+
   attendanceRows.forEach((attendance) => {
     const name = String(attendance.name || "").trim();
     if (!name) return;
 
-    const alreadyExists = Object.values(personMap).some((person) => isSameRecipientExact(person.name, name));
-    if (!alreadyExists) {
-      const key = makePersonKey(name);
+    const grade = normalizeGrade(attendance.grade);
+    const nameGradeKey = makeNameGradeKey(name, grade);
+    attendanceMapByNameGrade[nameGradeKey] = attendance;
+
+    const cleanName = normalizeText(name);
+    attendanceNameCount[cleanName] = (attendanceNameCount[cleanName] || 0) + 1;
+  });
+
+  const personMap = {};
+
+  // 1) 출석관리 명단을 우선 기준으로 사용합니다.
+  // 출석관리에는 등급이 있으므로 동명이인 구분용 기준이 됩니다.
+  attendanceRows.forEach((attendance) => {
+    const name = String(attendance.name || "").trim();
+    if (!name) return;
+
+    const grade = normalizeGrade(attendance.grade);
+    const longTermNumber = getLongTermNumberFromItem(attendance);
+    const key = grade ? makeNameGradeKey(name, grade) : makePlanPersonKey(name, longTermNumber || "attendance");
+
+    personMap[key] = {
+      key,
+      name,
+      gender: attendance.gender || "",
+      grade,
+      longTermNumber
+    };
+  });
+
+  // 2) 목욕 리포트에만 있는 명단도 빠지지 않게 추가합니다.
+  bathRows.forEach((row) => {
+    const name = String(row.name || "").trim();
+    if (!name) return;
+
+    const grade = normalizeGrade(row.grade);
+    const matchedAttendance = grade ? attendanceMapByNameGrade[makeNameGradeKey(name, grade)] : null;
+    const longTermNumber = matchedAttendance ? getLongTermNumberFromItem(matchedAttendance) : "";
+    const key = grade ? makeNameGradeKey(name, grade) : (row.personKey || makePersonKey(row.name, row.gender, row.grade));
+
+    if (!personMap[key]) {
       personMap[key] = {
         key,
         name,
-        gender: "",
-        grade: ""
+        gender: row.gender || "",
+        grade,
+        longTermNumber
       };
     }
   });
@@ -680,16 +778,29 @@ function buildResults(monthValue, bathRows) {
 
   Object.values(personMap).forEach((person) => {
     const name = person.name;
-    const grade = person.grade || "";
-    const bath = bathMap[person.key] || Object.values(bathMap).find((item) => isSameRecipientExact(item.name, name));
+    const grade = normalizeGrade(person.grade);
+    const longTermNumber = normalizeText(person.longTermNumber);
+    const cleanName = normalizeText(name);
 
-    const weeks = bath ? bath.weeks : {
-      week1: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
-      week2: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
-      week3: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
-      week4: { hasBathRecord: false, isGreyBlock: false, recordText: "-" },
-      week5: { hasBathRecord: false, isGreyBlock: false, recordText: "-" }
-    };
+    let bath = null;
+
+    // 목욕 리포트에 등급이 있으면 이름+등급으로 매칭합니다.
+    if (grade) {
+      bath = bathMapByNameGrade[makeNameGradeKey(name, grade)] || null;
+    }
+
+    // 등급이 없는 경우에만 기존 personKey로 찾습니다.
+    if (!bath) {
+      bath = bathMapByPersonKey[person.key] || null;
+    }
+
+    // 동명이인이 아닌 경우에만 이름 단독 매칭을 허용합니다.
+    // 같은 이름이 여러 명이면 이름만으로 목욕 기록을 붙이지 않습니다.
+    if (!bath && (bathNameCount[cleanName] || 0) === 1 && (attendanceNameCount[cleanName] || 0) <= 1) {
+      bath = bathRows.find((item) => isSameRecipientExact(item.name, name)) || null;
+    }
+
+    const weeks = bath ? bath.weeks : emptyWeeks;
 
     const weekJudgeDates = {
       week1: getWeekJudgeDate(monthValue, "week1", weeks.week1, weekStartDates, weekEndDates),
@@ -699,14 +810,14 @@ function buildResults(monthValue, bathRows) {
       week5: getWeekJudgeDate(monthValue, "week5", weeks.week5, weekStartDates, weekEndDates)
     };
 
-    const monthPlan = getLatestPlanForRecipientAtDate(name, monthEndDate, grade);
+    const monthPlan = getLatestPlanForRecipientAtDate(name, monthEndDate, grade, longTermNumber);
 
     const weekBenefit = {
-      week1: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week1, grade), name, weekJudgeDates.week1, grade, monthPlan),
-      week2: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week2, grade), name, weekJudgeDates.week2, grade, monthPlan),
-      week3: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week3, grade), name, weekJudgeDates.week3, grade, monthPlan),
-      week4: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week4, grade), name, weekJudgeDates.week4, grade, monthPlan),
-      week5: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week5, grade), name, weekJudgeDates.week5, grade, monthPlan)
+      week1: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week1, grade, longTermNumber), name, weekJudgeDates.week1, grade, monthPlan, longTermNumber),
+      week2: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week2, grade, longTermNumber), name, weekJudgeDates.week2, grade, monthPlan, longTermNumber),
+      week3: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week3, grade, longTermNumber), name, weekJudgeDates.week3, grade, monthPlan, longTermNumber),
+      week4: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week4, grade, longTermNumber), name, weekJudgeDates.week4, grade, monthPlan, longTermNumber),
+      week5: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week5, grade, longTermNumber), name, weekJudgeDates.week5, grade, monthPlan, longTermNumber)
     };
 
     const weekRequired = {
@@ -725,16 +836,20 @@ function buildResults(monthValue, bathRows) {
       getWeekResult(weekRequired.week5, weeks.week5)
     ];
 
-    const monthBathBenefit = getBathBenefitAtDate(monthPlan, name, monthEndDate, grade);
+    const monthBathBenefit = getBathBenefitAtDate(monthPlan, name, monthEndDate, grade, longTermNumber);
     const displayCounselDate = Object.values(weekJudgeDates)
       .filter(Boolean)
       .sort()
       .slice(-1)[0] || monthEndDate;
 
+    const duplicateNameNeedsCheck = !grade && ((bathNameCount[cleanName] || 0) > 1 || (attendanceNameCount[cleanName] || 0) > 1);
+    const overallResult = duplicateNameNeedsCheck ? "확인 필요" : buildOverallResult(weekResults);
+
     results.push({
       name,
       gender: person.gender || "",
       grade,
+      longTermNumber,
       planDate: monthPlan ? monthPlan.writtenDate : "-",
       counselText: getCounselTextForMonth(name, displayCounselDate),
       requiredText: monthBathBenefit.required ? "있음" : "없음",
@@ -743,11 +858,16 @@ function buildResults(monthValue, bathRows) {
       weekJudgeDates,
       weekRequired,
       weeks,
-      overallResult: buildOverallResult(weekResults)
+      duplicateNameNeedsCheck,
+      overallResult
     });
   });
 
-  return results.sort((a, b) => a.name.localeCompare(b.name, "ko"));
+  return results.sort((a, b) => {
+    const nameCompare = a.name.localeCompare(b.name, "ko");
+    if (nameCompare !== 0) return nameCompare;
+    return normalizeGrade(a.grade).localeCompare(normalizeGrade(b.grade), "ko");
+  });
 }
 
 function renderResults(results) {
@@ -766,7 +886,11 @@ function renderResults(results) {
     }
 
     row.innerHTML = `
-      <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.name}</td>
+      <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">
+        <div>${item.name}</div>
+        ${item.grade ? `<div style="font-size:11px; color:#64748b; margin-top:3px;">${item.grade}</div>` : ""}
+        ${item.duplicateNameNeedsCheck ? `<div style="font-size:11px; color:#e11d48; margin-top:3px;">동명이인 확인</div>` : ""}
+      </td>
       <td style="vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
       <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0;">${item.counselText || "없음"}</td>
       <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${buildBenefitSourceHtml(item.bathBenefit)}</td>
