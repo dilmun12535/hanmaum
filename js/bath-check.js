@@ -794,16 +794,31 @@ function parseBathReport(workbook) {
 }
 
 function getWeekResult(required, weekData) {
-  // 결석은 누락/오류가 아니라 결석으로 표시하고, 종합 결과에서는 정상 흐름으로 봅니다.
+  // 결석은 별도 표시
   if (weekData && weekData.isAbsent) return "결석";
 
-  // 회색 블록 처리된 주차(일정없음, 급여개시전 등)는 무조건 '정상'으로 반환해 오류 및 누락에서 제외합니다.
+  // 일정없음, 급여개시전, 퇴소 등은 정상 처리
   if (weekData && weekData.isGreyBlock) return "정상";
-  
+
+  const recordText = normalizeText(weekData ? weekData.recordText : "");
+
+  // ★ 목욕거부는 목욕기록으로 인정하며 오류가 아니라 정상 처리
+  if (
+    recordText.includes("목욕거부") ||
+    recordText.includes("목욕거절") ||
+    recordText.includes("서비스거부") ||
+    recordText === "거부" ||
+    recordText.includes("거부")
+  ) {
+    return "정상";
+  }
+
   const hasRecord = weekData && weekData.hasBathRecord;
+
   if (required && hasRecord) return "정상";
   if (required && !hasRecord) return "누락";
   if (!required && hasRecord) return "오류";
+
   return "정상";
 }
 
