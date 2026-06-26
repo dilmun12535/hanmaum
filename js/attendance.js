@@ -12,6 +12,30 @@ function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
 
+function isAbsentText(value) {
+  const text = normalizeText(value);
+  return (
+    text.includes("결석") ||
+    text.includes("미이용") ||
+    text.includes("이용없음") ||
+    text.includes("서비스미제공") ||
+    text.includes("미제공")
+  );
+}
+
+function isNoScheduleText(value) {
+  const text = normalizeText(value);
+  return text.includes("일정없음") || text.includes("급여개시전") || text.includes("퇴소");
+}
+
+function hasValidServiceTime(value) {
+  const text = String(value || "").trim();
+  if (!text) return false;
+  if (isAbsentText(text) || isNoScheduleText(text)) return false;
+
+  return /\d{1,2}\s*(?::|시)\s*\d{1,2}\s*(?:분)?\s*[~\-]\s*\d{1,2}\s*(?::|시)\s*\d{1,2}/.test(text);
+}
+
 function excelDateToJSDate(serial) {
   const utcDays = Math.floor(serial - 25569);
   const utcValue = utcDays * 86400;
@@ -306,11 +330,21 @@ function parseOneAttendanceSheet(sheet, monthValue) {
     const serviceTime = timeCol >= 0 ? String(row[timeCol] || "").trim() : "";
     const provTime = provCol >= 0 ? String(row[provCol] || "").trim() : "";
 
-    const normalizedServiceTime = normalizeText(serviceTime);
-    const normalizedProvTime = normalizeText(provTime);
+    const rowText = normalizeText(row.join(" "));
 
-    if (!normalizedServiceTime || normalizedServiceTime.includes("일정없음") || normalizedServiceTime.includes("미이용")) continue;
-    if (normalizedProvTime.includes("미이용") || normalizedProvTime.includes("일정없음")) continue;
+    // 제공시간 또는 행 전체에 결석/미이용/미제공이 있으면 출석일로 저장하지 않습니다.
+    // 기존 문제: "결석"도 값이 있다는 이유로 attendanceDates에 들어가 O로 표시되었습니다.
+    if (isAbsentText(serviceTime) || isAbsentText(provTime) || isAbsentText(rowText)) continue;
+
+    // 일정없음/급여개시전/퇴소 등도 출석일에서 제외합니다.
+    if (isNoScheduleText(serviceTime) || isNoScheduleText(provTime) || isNoScheduleText(rowText)) continue;
+
+    // 실제 서비스 시간이 있는 날만 출석으로 인정합니다.
+    const hasTimeInService = hasValidServiceTime(serviceTime);
+    const hasTimeInProv = hasValidServiceTime(provTime);
+    const hasTimeInRow = hasValidServiceTime(row.join(" "));
+
+    if (!hasTimeInService && !hasTimeInProv && !hasTimeInRow) continue;
 
     let leaveTime = extractLeaveTime(serviceTime, "");
     if (!leaveTime) leaveTime = extractLeaveTime(provTime, "");
