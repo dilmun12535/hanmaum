@@ -2,6 +2,7 @@
 const MONTHLY_FEE_API_URL = "https://script.google.com/macros/s/AKfycbwJhnr6jFypaNIPzsaCUx8zk9Lc0SHN3AYPzhoT0uoMW_eTDPVlnrIzONA1gCD0_A5WDQ/exec";
 
 const $ = (id) => document.getElementById(id);
+
 const state = {
   file: null,
   previewRows: [],
@@ -29,6 +30,7 @@ window.addEventListener("DOMContentLoaded", () => {
 function setTodayText() {
   const el = $("todayText");
   if (!el) return;
+
   const now = new Date();
   el.textContent = now.toLocaleDateString("ko-KR", {
     year: "numeric",
@@ -38,23 +40,30 @@ function setTodayText() {
   });
 }
 
+/* 월 선택창 */
 function setupMonthInput() {
   const input = $("monthInput");
   if (!input) return;
 
   const now = new Date();
   const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
   input.type = "text";
   input.readOnly = true;
   input.value = input.value || currentMonth;
+  input.placeholder = "예: 2026-05";
   input.setAttribute("autocomplete", "off");
+
   state.monthPickerYear = Number(input.value.slice(0, 4)) || now.getFullYear();
 
-  const picker = document.createElement("div");
-  picker.id = "customMonthPicker";
-  picker.className = "custom-month-picker";
-  picker.style.display = "none";
-  document.body.appendChild(picker);
+  let picker = $("customMonthPicker");
+  if (!picker) {
+    picker = document.createElement("div");
+    picker.id = "customMonthPicker";
+    picker.className = "custom-month-picker";
+    picker.style.display = "none";
+    document.body.appendChild(picker);
+  }
 
   input.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -76,6 +85,7 @@ function setupMonthInput() {
 function openMonthPicker() {
   renderMonthPicker();
   positionMonthPicker();
+
   const picker = $("customMonthPicker");
   if (picker) picker.style.display = "block";
 }
@@ -89,6 +99,7 @@ function positionMonthPicker() {
   const input = $("monthInput");
   const picker = $("customMonthPicker");
   if (!input || !picker || picker.style.display === "none") return;
+
   const rect = input.getBoundingClientRect();
   picker.style.left = `${rect.left + window.scrollX}px`;
   picker.style.top = `${rect.bottom + window.scrollY + 6}px`;
@@ -109,6 +120,7 @@ function renderMonthPicker() {
       <div class="custom-month-picker-title">${state.monthPickerYear}</div>
       <button type="button" class="custom-month-picker-nav" id="monthPickerNext">›</button>
     </div>
+
     <div class="custom-month-picker-grid">
       ${Array.from({ length: 12 }, (_, i) => {
         const month = i + 1;
@@ -116,6 +128,7 @@ function renderMonthPicker() {
         return `<button type="button" class="custom-month-picker-month ${isActive ? "active" : ""}" data-month="${month}">${month}월</button>`;
       }).join("")}
     </div>
+
     <div class="custom-month-picker-footer">
       <button type="button" class="custom-month-picker-link" id="monthPickerClear">삭제</button>
       <button type="button" class="custom-month-picker-link" id="monthPickerThisMonth">이번 달</button>
@@ -138,7 +151,7 @@ function renderMonthPicker() {
     e.stopPropagation();
     input.value = "";
     closeMonthPicker();
-    state.displayMode = "saved";
+    clearPreview();
     loadMonthlyFee();
   });
 
@@ -148,25 +161,32 @@ function renderMonthPicker() {
     input.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
     state.monthPickerYear = now.getFullYear();
     closeMonthPicker();
-    state.displayMode = "saved";
+    clearPreview();
     loadMonthlyFee();
   });
 
   picker.querySelectorAll(".custom-month-picker-month").forEach((btn) => {
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
+
       const month = String(btn.dataset.month).padStart(2, "0");
       input.value = `${state.monthPickerYear}-${month}`;
+
       closeMonthPicker();
-      state.displayMode = "saved";
-      state.previewRows = [];
-      state.file = null;
-      $("fileInput").value = "";
-      $("fileName").textContent = "선택된 파일 없음";
-      $("uploadBtn").disabled = true;
+      clearPreview();
       loadMonthlyFee();
     });
   });
+}
+
+function clearPreview() {
+  state.file = null;
+  state.previewRows = [];
+  state.displayMode = "saved";
+
+  if ($("fileInput")) $("fileInput").value = "";
+  if ($("fileName")) $("fileName").textContent = "선택된 파일 없음";
+  if ($("uploadBtn")) $("uploadBtn").disabled = true;
 }
 
 function showNotice(message, type = "info") {
@@ -189,29 +209,66 @@ function hideNoticeLater() {
   setTimeout(() => showNotice(""), 2500);
 }
 
-function apiUrl(payload) {
+function apiGetUrl(payload) {
   return `${MONTHLY_FEE_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
-async function requestApi(payload) {
-  const res = await fetch(apiUrl(payload), { method: "GET" });
-  if (!res.ok) throw new Error("앱스크립트 연결에 실패했습니다.");
-  const data = await res.json();
-  if (data && data.ok === false) throw new Error(data.message || "앱스크립트 처리에 실패했습니다.");
+/*
+  중요 수정:
+  - 목록 조회/삭제처럼 작은 요청은 GET 유지
+  - 업로드처럼 큰 요청은 POST 사용
+  - Content-Type을 일부러 지정하지 않음
+    → application/json 지정 시 Apps Script에서 preflight/CORS가 날 수 있음
+*/
+async function requestApi(payload, options = {}) {
+  const method = options.method || "GET";
+
+  let res;
+  if (method === "POST") {
+    res = await fetch(MONTHLY_FEE_API_URL, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      redirect: "follow"
+    });
+  } else {
+    res = await fetch(apiGetUrl(payload), {
+      method: "GET",
+      redirect: "follow"
+    });
+  }
+
+  if (!res.ok) {
+    throw new Error("앱스크립트 연결에 실패했습니다.");
+  }
+
+  const text = await res.text();
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    throw new Error("앱스크립트 응답을 읽지 못했습니다. 웹앱 배포 상태를 확인해주세요.");
+  }
+
+  if (data && data.ok === false) {
+    throw new Error(data.message || "앱스크립트 처리에 실패했습니다.");
+  }
+
   return data;
 }
 
 function handleFileChange(e) {
   const file = e.target.files && e.target.files[0];
+
   state.file = file || null;
   state.previewRows = [];
+  state.displayMode = "saved";
+
   $("fileName").textContent = file ? file.name : "선택된 파일 없음";
   $("uploadBtn").disabled = !file;
 
   if (file) {
     previewFile(file);
   } else {
-    state.displayMode = "saved";
     renderSummary();
     renderTable();
   }
@@ -220,7 +277,9 @@ function handleFileChange(e) {
 async function previewFile(file) {
   try {
     showNotice("파일을 읽는 중입니다...");
+
     const items = await parseMonthlyFeeFile(file, $("monthInput").value);
+
     state.previewRows = items;
     state.displayMode = "preview";
     $("uploadBtn").disabled = items.length === 0;
@@ -238,6 +297,7 @@ async function previewFile(file) {
     state.previewRows = [];
     state.displayMode = "saved";
     $("uploadBtn").disabled = true;
+
     renderSummary();
     renderTable();
     showNotice(err.message || "파일을 읽지 못했습니다.", "error");
@@ -312,21 +372,26 @@ function normalizeHeader(value) {
 
 function makeHeaderIndex(headers) {
   const idx = {};
+
   headers.forEach((h, i) => {
     const raw = String(h || "").trim();
     const normalized = normalizeHeader(raw);
+
     if (raw && idx[raw] === undefined) idx[raw] = i;
     if (normalized && idx[normalized] === undefined) idx[normalized] = i;
   });
+
   return idx;
 }
 
 function readCell(row, idx, names) {
   for (const name of names) {
     if (idx[name] !== undefined) return String(row[idx[name]] || "").trim();
+
     const normalized = normalizeHeader(name);
     if (idx[normalized] !== undefined) return String(row[idx[normalized]] || "").trim();
   }
+
   return "";
 }
 
@@ -354,9 +419,11 @@ function mergeDailyRows(items) {
     }
 
     const old = map.get(key);
+
     item.serviceDates.forEach((d) => {
       if (d && !old.serviceDates.includes(d)) old.serviceDates.push(d);
     });
+
     old.serviceDays = old.serviceDates.length;
     old.totalAmount += item.totalAmount || item.unitPrice || 0;
     old.rows.push(item.rows);
@@ -370,26 +437,43 @@ function mergeDailyRows(items) {
 
 async function uploadMonthlyFee() {
   try {
-    if (!state.previewRows.length) throw new Error("저장할 자료가 없습니다. 파일을 다시 선택해주세요.");
+    if (!state.previewRows.length) {
+      throw new Error("저장할 자료가 없습니다. 파일을 다시 선택해주세요.");
+    }
 
     $("uploadBtn").disabled = true;
-    showNotice("구글시트에 저장 중입니다...");
 
-    const result = await requestApi({
-      action: "addMonthlyFee",
-      month: $("monthInput").value,
-      replaceMonth: $("replaceMonth").checked,
-      allowDuplicate: true,
-      fileName: state.file ? state.file.name : "",
-      uploadedAt: new Date().toISOString(),
-      uploadedBy: localStorage.getItem("loginUser") || "사회복지사",
-      items: state.previewRows
-    });
+    const month = $("monthInput").value;
+    const total = state.previewRows.length;
+    const chunkSize = 120;
+    let savedCount = 0;
 
-    showNotice(`저장 완료: ${Number(result.count || 0).toLocaleString()}건 저장`, "success");
+    showNotice(`구글시트에 저장 중입니다... 0 / ${total.toLocaleString()}건`);
+
+    for (let start = 0; start < total; start += chunkSize) {
+      const chunk = state.previewRows.slice(start, start + chunkSize);
+      const isFirstChunk = start === 0;
+
+      const result = await requestApi({
+        action: "addMonthlyFee",
+        month,
+        replaceMonth: $("replaceMonth").checked && isFirstChunk,
+        allowDuplicate: true,
+        fileName: state.file ? state.file.name : "",
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: localStorage.getItem("loginUser") || "사회복지사",
+        items: chunk
+      }, { method: "POST" });
+
+      savedCount += Number(result.count || chunk.length || 0);
+      showNotice(`구글시트에 저장 중입니다... ${Math.min(start + chunk.length, total).toLocaleString()} / ${total.toLocaleString()}건`);
+    }
+
+    showNotice(`저장 완료: ${savedCount.toLocaleString()}건 저장`, "success");
 
     state.displayMode = "saved";
     state.previewRows = [];
+
     await loadMonthlyFee();
     hideNoticeLater();
   } catch (err) {
@@ -403,13 +487,16 @@ async function loadMonthlyFee() {
   try {
     const month = $("monthInput").value;
     const rows = await requestApi({ action: "listMonthlyFee", month });
+
     state.savedRows = Array.isArray(rows) ? rows : [];
     if (state.displayMode !== "preview") state.displayMode = "saved";
+
     renderSummary();
     renderTable();
   } catch (err) {
     state.savedRows = [];
     if (state.displayMode !== "preview") state.displayMode = "saved";
+
     renderSummary();
     renderTable();
     showNotice(err.message || "자료를 불러오지 못했습니다.", "error");
@@ -418,15 +505,24 @@ async function loadMonthlyFee() {
 
 async function deleteMonth() {
   const month = $("monthInput").value;
-  if (!month) return showNotice("삭제할 월을 선택해주세요.", "error");
+
+  if (!month) {
+    showNotice("삭제할 월을 선택해주세요.", "error");
+    return;
+  }
+
   if (!confirm(`${month} 수가 자료를 구글시트에서 삭제할까요?`)) return;
 
   try {
-    await requestApi({ action: "deleteMonthlyFee", month });
+    await requestApi({ action: "deleteMonthlyFee", month }, { method: "POST" });
+
     showNotice(`${month} 자료를 삭제했습니다.`, "success");
+
     state.displayMode = "saved";
     state.previewRows = [];
+
     await loadMonthlyFee();
+    hideNoticeLater();
   } catch (err) {
     showNotice(err.message || "삭제하지 못했습니다.", "error");
   }
@@ -445,6 +541,7 @@ function renderSummary() {
   $("summaryRecipients").textContent = `${recipients.size.toLocaleString()}명`;
   $("summaryRows").textContent = `${rows.length.toLocaleString()}건`;
   $("summaryAmount").textContent = `${amount.toLocaleString()}원`;
+
   $("statusText").textContent = state.displayMode === "preview"
     ? `미리보기 ${rows.length.toLocaleString()}건 표시 중`
     : `${rows.length.toLocaleString()}건 표시 중`;
@@ -483,6 +580,7 @@ function renderTable() {
 function normalizeMonth(value) {
   const text = String(value || "").trim().replace(/[./]/g, "-");
   const m = text.match(/(\d{4})-(\d{1,2})/);
+
   return m ? `${m[1]}-${String(m[2]).padStart(2, "0")}` : text;
 }
 
@@ -491,6 +589,7 @@ function normalizeDate(value) {
     const y = value.getFullYear();
     const m = String(value.getMonth() + 1).padStart(2, "0");
     const d = String(value.getDate()).padStart(2, "0");
+
     return `${y}-${m}-${d}`;
   }
 
@@ -502,13 +601,16 @@ function normalizeDate(value) {
   if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
 
   const iso = text.match(/(\d{4})[-./년\s]*(\d{1,2})[-./월\s]*(\d{1,2})/);
-  if (iso) return `${iso[1]}-${String(iso[2]).padStart(2, "0")}-${String(iso[3]).padStart(2, "0")}`;
+  if (iso) {
+    return `${iso[1]}-${String(iso[2]).padStart(2, "0")}-${String(iso[3]).padStart(2, "0")}`;
+  }
 
   return text.split("T")[0];
 }
 
 function toNumber(value) {
   const n = Number(String(value || "0").replace(/[^0-9.-]/g, ""));
+
   return Number.isFinite(n) ? n : 0;
 }
 
