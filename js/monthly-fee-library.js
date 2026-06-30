@@ -2,21 +2,21 @@
 const MONTHLY_FEE_API_URL = "https://script.google.com/macros/s/AKfycbwJhnr6jFypaNIPzsaCUx8zk9Lc0SHN3AYPzhoT0uoMW_eTDPVlnrIzONA1gCD0_A5WDQ/exec";
 
 const $ = (id) => document.getElementById(id);
-const state = { file: null, rows: [], savedRows: [] };
+const state = {
+  file: null,
+  rows: [],
+  savedRows: [],
+  monthPickerYear: new Date().getFullYear()
+};
 
 window.addEventListener("DOMContentLoaded", () => {
   setTodayText();
-
-  const monthInput = $("monthInput");
-  if (monthInput && !monthInput.value) {
-    monthInput.value = new Date().toISOString().slice(0, 7);
-  }
+  setupMonthInput();
 
   $("fileInput").addEventListener("change", handleFileChange);
   $("uploadBtn").addEventListener("click", uploadMonthlyFee);
   $("reloadBtn").addEventListener("click", loadMonthlyFee);
   $("deleteMonthBtn").addEventListener("click", deleteMonth);
-  $("monthInput").addEventListener("change", loadMonthlyFee);
   $("searchInput").addEventListener("input", renderTable);
 
   loadMonthlyFee();
@@ -32,6 +32,257 @@ function setTodayText() {
     month: "long",
     day: "numeric",
     weekday: "short"
+  });
+}
+
+/* ✅ 기존 브라우저 기본 월 선택창을 없애고, 두 번째 사진처럼 12개월 선택창으로 변경 */
+function setupMonthInput() {
+  injectMonthPickerStyle();
+
+  const input = $("monthInput");
+  if (!input) return;
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  input.type = "text";
+  input.readOnly = true;
+  input.placeholder = "예: 2026-05";
+  input.value = input.value || currentMonth;
+  input.setAttribute("autocomplete", "off");
+
+  state.monthPickerYear = Number(input.value.slice(0, 4)) || now.getFullYear();
+
+  const picker = document.createElement("div");
+  picker.id = "customMonthPicker";
+  picker.className = "custom-month-picker";
+  picker.style.display = "none";
+  document.body.appendChild(picker);
+
+  input.addEventListener("click", (e) => {
+    e.stopPropagation();
+    state.monthPickerYear = Number(input.value.slice(0, 4)) || state.monthPickerYear || now.getFullYear();
+    openMonthPicker();
+  });
+
+  document.addEventListener("click", (e) => {
+    const pickerEl = $("customMonthPicker");
+    if (!pickerEl) return;
+    if (e.target === input || pickerEl.contains(e.target)) return;
+    closeMonthPicker();
+  });
+
+  window.addEventListener("resize", positionMonthPicker);
+  window.addEventListener("scroll", positionMonthPicker, true);
+}
+
+function injectMonthPickerStyle() {
+  if (document.getElementById("customMonthPickerStyle")) return;
+
+  const style = document.createElement("style");
+  style.id = "customMonthPickerStyle";
+  style.textContent = `
+    #monthInput {
+      cursor: pointer;
+      background: #fff;
+    }
+
+    .custom-month-picker {
+      position: absolute;
+      z-index: 99999;
+      width: 310px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 12px 30px rgba(15, 23, 42, .14);
+      padding: 12px;
+      box-sizing: border-box;
+      font-family: inherit;
+    }
+
+    .custom-month-picker-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 34px;
+      margin-bottom: 8px;
+    }
+
+    .custom-month-picker-title {
+      font-size: 18px;
+      font-weight: 500;
+      color: #334155;
+      text-align: center;
+      flex: 1;
+    }
+
+    .custom-month-picker-nav {
+      width: 32px;
+      height: 32px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 28px;
+      line-height: 28px;
+      color: #475569;
+      font-weight: 300;
+    }
+
+    .custom-month-picker-nav:hover {
+      background: #f1f5f9;
+    }
+
+    .custom-month-picker-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      padding: 4px 0;
+    }
+
+    .custom-month-picker-month {
+      height: 48px;
+      border: 1px solid transparent;
+      background: #fff;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      color: #334155;
+    }
+
+    .custom-month-picker-month:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+
+    .custom-month-picker-month.active {
+      border-color: #94a3b8;
+      background: #fff;
+      color: #111827;
+      font-weight: 700;
+    }
+
+    .custom-month-picker-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 6px;
+      padding-top: 8px;
+      border-top: 1px solid #f1f5f9;
+    }
+
+    .custom-month-picker-link {
+      border: none;
+      background: transparent;
+      color: #2563eb;
+      cursor: pointer;
+      font-size: 13px;
+      padding: 6px 8px;
+      border-radius: 8px;
+    }
+
+    .custom-month-picker-link:hover {
+      background: #eff6ff;
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+function openMonthPicker() {
+  renderMonthPicker();
+  positionMonthPicker();
+
+  const picker = $("customMonthPicker");
+  if (picker) picker.style.display = "block";
+}
+
+function closeMonthPicker() {
+  const picker = $("customMonthPicker");
+  if (picker) picker.style.display = "none";
+}
+
+function positionMonthPicker() {
+  const input = $("monthInput");
+  const picker = $("customMonthPicker");
+  if (!input || !picker || picker.style.display === "none") return;
+
+  const rect = input.getBoundingClientRect();
+  picker.style.left = `${rect.left + window.scrollX}px`;
+  picker.style.top = `${rect.bottom + window.scrollY + 6}px`;
+}
+
+function renderMonthPicker() {
+  const picker = $("customMonthPicker");
+  const input = $("monthInput");
+  if (!picker || !input) return;
+
+  const selected = normalizeMonth(input.value);
+  const selectedYear = Number(selected.slice(0, 4));
+  const selectedMonth = Number(selected.slice(5, 7));
+
+  picker.innerHTML = `
+    <div class="custom-month-picker-header">
+      <button type="button" class="custom-month-picker-nav" id="monthPickerPrev" aria-label="이전 연도">‹</button>
+      <div class="custom-month-picker-title">${state.monthPickerYear}</div>
+      <button type="button" class="custom-month-picker-nav" id="monthPickerNext" aria-label="다음 연도">›</button>
+    </div>
+
+    <div class="custom-month-picker-grid">
+      ${Array.from({ length: 12 }, (_, i) => {
+        const month = i + 1;
+        const isActive = selectedYear === state.monthPickerYear && selectedMonth === month;
+        return `
+          <button type="button"
+            class="custom-month-picker-month ${isActive ? "active" : ""}"
+            data-month="${month}">
+            ${month}월
+          </button>
+        `;
+      }).join("")}
+    </div>
+
+    <div class="custom-month-picker-footer">
+      <button type="button" class="custom-month-picker-link" id="monthPickerClear">삭제</button>
+      <button type="button" class="custom-month-picker-link" id="monthPickerThisMonth">이번 달</button>
+    </div>
+  `;
+
+  $("monthPickerPrev").addEventListener("click", (e) => {
+    e.stopPropagation();
+    state.monthPickerYear -= 1;
+    renderMonthPicker();
+  });
+
+  $("monthPickerNext").addEventListener("click", (e) => {
+    e.stopPropagation();
+    state.monthPickerYear += 1;
+    renderMonthPicker();
+  });
+
+  $("monthPickerClear").addEventListener("click", (e) => {
+    e.stopPropagation();
+    input.value = "";
+    closeMonthPicker();
+    loadMonthlyFee();
+  });
+
+  $("monthPickerThisMonth").addEventListener("click", (e) => {
+    e.stopPropagation();
+    const now = new Date();
+    input.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    state.monthPickerYear = now.getFullYear();
+    closeMonthPicker();
+    loadMonthlyFee();
+  });
+
+  picker.querySelectorAll(".custom-month-picker-month").forEach((btn) => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const month = String(btn.dataset.month).padStart(2, "0");
+      input.value = `${state.monthPickerYear}-${month}`;
+      closeMonthPicker();
+      loadMonthlyFee();
+    });
   });
 }
 
