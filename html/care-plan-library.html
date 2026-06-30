@@ -1,423 +1,117 @@
-ChatGPT
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-붙여넣은 텍스트 (1)(32).txt
-문서
-이거 있잖아. 물리치료도 급여제공 계획서랑 상담일지에 있는 사람만 할 수 있거든. 근데 물이치료 대상자가 안 떠.
-
-
-붙여넣은 텍스트 (1)(33).txt
-문서
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>물리치료 제공 확인</title>
+  <title>요양급여제공계획서 보관함</title>
 
   <link rel="stylesheet" href="../css/common.css" />
   <link rel="stylesheet" href="../css/dashboard.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
+
   <style>
-    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
-    .info-table th, .info-table td {
-      border: 1px solid #e2e8f0 !important;
-      text-align: center;
-      vertical-align: middle;
+    .content-box {
+      max-width: none;
     }
-    
-    /* 화장실 안내상자 디자인 팩과 완벽하게 일치하도록 전용 클래스를 추가 정의합니다 */
-    .unified-notice-box {
-      background-color: #f8fafc;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 18px 20px;
-      margin-top: 25px;
-      margin-bottom: 25px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+
+    .plan-library-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 24px;
+      align-items: end;
+      margin-top: 20px;
+      margin-bottom: 24px;
     }
-    .unified-notice-title {
-      color: #334155;
-      font-weight: 700;
-      font-size: 15px;
-      margin: 0 0 10px 0;
+
+    .plan-library-actions .form-group {
       display: flex;
-      align-items: center;
-      gap: 6px;
+      flex-direction: column;
+      gap: 8px;
     }
-    .unified-notice-list {
-      margin: 0;
-      padding-left: 20px;
-      color: #475569;
-      font-size: 13px;
-      line-height: 1.6;
+
+    .plan-library-actions label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #111827;
     }
-    .unified-notice-list li {
-      margin-bottom: 4px;
+
+    .plan-library-actions input[type="file"],
+    .plan-library-actions input[type="date"] {
+      height: 42px;
+      padding: 8px 12px;
+      border: 1px solid #d8dfec;
+      border-radius: 10px;
+      background: #fff;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    .plan-library-actions input[type="date"] {
+      width: 180px;
+    }
+
+    .plan-library-guide {
+      margin: 8px 0 24px;
+      padding: 16px 20px;
+      border: 1px solid #dde5f0;
+      border-radius: 10px;
+      background: #f8fbff;
+      color: #1f2a44;
+      line-height: 1.65;
+    }
+
+    .plan-library-guide h3 {
+      margin: 0 0 8px;
+      font-size: 16px;
+      color: #1f2a44;
+    }
+
+    .plan-library-guide p {
+      margin: 4px 0;
+      font-size: 14px;
+    }
+
+    .plan-library-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    .plan-library-table th,
+    .plan-library-table td {
+      border: 1px solid #dde5f0;
+      padding: 14px 12px;
+      text-align: center;
+      font-size: 14px;
+    }
+
+    .plan-library-table th {
+      background: #edf3ff;
+      color: #123f91;
+      font-weight: 700;
+    }
+
+    .plan-library-table .empty-row td {
+      height: 48px;
+      color: #777;
+    }
+
+    @media (max-width: 900px) {
+      .plan-library-actions {
+        grid-template-columns: 1fr;
+      }
+
+      .plan-library-actions input[type="date"] {
+        width: 100%;
+      }
     }
   </style>
+
 </head>
 <body>
   <div class="topbar">
     <div class="logo-area">
       <img src="../images/logo.png" alt="로고" class="logo-img" />
     </div>
-
-    <div class="topbar-right">
-      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
-      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
-
-      <div class="user-area">
-        <div class="user-badge">사회복지사</div>
-        <p class="date-text" id="todayText"></p>
-      </div>
-    </div>
-  </div>
-
-  <div class="main-layout">
-    <aside class="sidebar">
-      <div class="menu-title">메뉴</div>
-      <nav class="menu-list">
-        <!-- [순서 및 active 완벽 반영]: 전산 마스터 트랙 정렬 구조를 적용하고 현재 메뉴에 active 불빛을 켰습니다 -->
-        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
-        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
-        <a href="./attendance.html" class="menu-item">출석관리</a>
-        <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a>
-        <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
-        <a href="./meal-check.html" class="menu-item">식사 제공 확인</a>
-        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
-        <a href="./therapy-check.html" class="menu-item active">물리치료 제공 확인</a>
-        <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a>
-        <a href="./medication-check.html" class="menu-item">투약 확인</a>
-      </nav>
-    </aside>
-
-    <main class="content-area">
-      <div class="content-box">
-        <div class="page-header">
-          <h2>물리치료 제공 확인</h2>
-          <p>계획서와 상담일지 반영 내용을 기준으로 주차별 물리치료 제공 기록을 확인합니다.</p>
-        </div>
-
-        <div class="page-actions">
-          <div class="date-group">
-            <label for="checkMonth">확인 월</label>
-            <input type="text" id="checkMonth" placeholder="예: 2026-05" autocomplete="off" />
-          </div>
-
-          <div class="date-group">
-            <label for="therapyFile">물리치료 기록 파일</label>
-            <input type="file" id="therapyFile" accept=".xlsx,.xls" />
-          </div>
-
-          <div class="action-buttons">
-            <button type="button" class="primary-btn" id="checkTherapyBtn">물리치료 확인</button>
-            <button type="button" class="danger-btn" id="clearTherapyBtn">초기화</button>
-          </div>
-        </div>
-
-        <div class="unified-notice-box">
-          <h5 class="unified-notice-title">
-            💡 물리치료 확인 기준 안내
-          </h5>
-          <ul class="unified-notice-list">
-            <li><b style="color: #1e293b;">계획서 기준:</b> 계획서에 물리치료(기능회복훈련)가 있는 사람 &rarr; 해당 주차에 물리치료 기록이 있어야 <span style="color: #2563eb; font-weight: 600;">정상</span></li>
-            <li><b style="color: #1e293b;">상담일지 기준:</b> 상담일지에서 물리치료 제외가 반영된 사람 &rarr; 반영일 이후에는 물리치료 기록이 없어야 <span style="color: #2563eb; font-weight: 600;">정상</span></li>
-            <li>계획서에 물리치료가 없거나 상담일지로 제외된 사람에게 기록이 있으면 <span style="color: #e11d48; font-weight: 600;">오류</span>로 표시됩니다.</li>
-          </ul>
-        </div>
-
-        <div class="table-wrap">
-          <table class="info-table" style="border-collapse: collapse; width: 100%;">
-            <thead>
-              <tr>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">상담일지 반영</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">1주차</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">2주차</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">3주차</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">4주차</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">5주차</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">종합 결과</th>
-              </tr>
-            </thead>
-            <tbody id="therapyResultBody">
-              <tr class="empty-row">
-                <td colspan="9" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 물리치료 기록 파일을 선택해주세요.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <script src="../js/main.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
-  <script>
-    document.addEventListener("DOMContentLoaded", function () {
-      if (document.getElementById("checkMonth") && typeof flatpickr !== "undefined") {
-        flatpickr("#checkMonth", {
-          locale: "ko",
-          plugins: [
-            new monthSelectPlugin({
-              shorthand: false,
-              dateFormat: "Y-m",
-              altFormat: "Y년 m월",
-              theme: "light"
-            })
-          ],
-          dateFormat: "Y-m",
-          altInput: true,
-          allowInput: true,
-          onReady: function(selectedDates, dateStr, instance) {
-            const updateMonths = function() {
-              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
-              months.forEach(function(month, index) {
-                month.textContent = (index + 1) + "월";
-              });
-            };
-            updateMonths();
-            instance.calendarContainer.addEventListener("click", function() {
-              setTimeout(updateMonths, 0);
-            });
-          },
-          onYearChange: function(selectedDates, dateStr, instance) {
-            setTimeout(function() {
-              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
-              months.forEach(function(month, index) {
-                month.textContent = (index + 1) + "월";
-              });
-            }, 0);
-          }
-        });
-      }
-    });
-  </script>
-  <script src="../js/therapy-check.js"></script>
-</body>
-</html>
-
-여기 대상 있음 없음이 없는걸? 이건 html로 만져야 하잖아
-
-이상하게 깨지네
-
-정상 위에 대상은 필요 없을 것 같고 다른 체크들은 대상 비대상이 아니라 있음 없음으로 하고 있거든 통일하면 좋겠어 그리고 1~5주차 종합결과까지 한 눈에 보면 더 좋겠네 폭을 좀 좁혀서
-
-??? 오른쪽 빈공간 뭐야
-
-
-붙여넣은 텍스트 (1)(34).txt
-문서
-이거 말이야. 박경자 보면 계획서 작성일이 상담일지 반영일보다 뒤잖아? 그럼 상담일지 말고 계획서가 기준이 되어야 하거든. 뭘 반영한건지 있음 없음 밑에 [계획서], [상담] 이렇게 적어주면 좋겠는데 가능할까? 
-
-
-붙여넣은 텍스트 (1)(35).txt
-문서
-우선 이것도 화장실체크처럼 계획서/상담 수정 해줄래?
-
-image(215).png
-image(216).png
-image(217).png
-동명이인이라 그런가봐 이거 어떻게 하면 좋을까? 내가 올리는 엑셀 파일은  이거거든
-
-
-붙여넣은 텍스트 (1)(36).txt
-문서
-우선 이것도 화장실체크처럼 계획서/상담 수정 해줄래?
-
-
-붙여넣은 텍스트 (1)(37).txt
-문서
-이거도 수정해줘
-
-이거 18일이긴 한데 12월 11일에 계획서가 추가됐다는건 12월 11일~24년 1월 18일까지 목욕을 한다는 거잖아?
-
-
-붙여넣은 텍스트 (1)(38).txt
-문서
-이거도 목욕처럼 고쳐야 하나?
-
-
-붙여넣은 텍스트 (1)(39).txt
-문서
-이거도 고쳐야 할까?
-
-
-붙여넣은 텍스트 (1)(40).txt
-문서
-고쳐주라
-
-
-붙여넣은 텍스트 (1)(41).txt
-문서
-이거도 바꿔줄래?
-
-
-붙여넣은 텍스트 (1)(42).txt
-문서
-이거도 수정해줄래?
-
-
-붙여넣은 텍스트 (1)(43).txt
-문서
-이거도 고쳐주라
-
-얘는 계획서에 있는데 왜 오류일까?
-
-
-붙여넣은 텍스트 (1)(44).txt
-문서
-이코드인데 수정해줘볼래?
-
-갑자기 계획서가 이상하게 걸리네
-
-
-붙여넣은 텍스트 (1)(45).txt
-문서
-근데 여전히 1,2주차가 오류로 뜨네 지금 어떤 기준으로 오류 정상 표시하는지 정리해줄래?
-
-근데 이건 왜 오류야?
-
-image(233).png
-여전히 안 되는데 상담일지 작성일~계획서 작성일까지도 반영되어야 한다니까?
-
-image(234).png
-image(235).png
-상담일지가 왜 안 끌어와졌지? 보니까 5주차는 3월도 포함이던데
-
-최근 관련 파일 10개를 찾았어.
-
-
-care-plan-library-fixed-shape.html.txt
-문서
-
-care-plan-library.js
-JavaScript
-
-care-plan-library.js
-JavaScript
-
-care-plan-library (3).js
-JavaScript
-
-care-plan-library.html
-파일
-
-care-plan-library.html
-파일
-
-care-plan-library.js
-JavaScript
-
-care-plan-library.js
-JavaScript
-
-care-plan-library.js
-JavaScript
-
-care-plan-library.html
-파일
-
-가장 최근꺼 5개만 줘
-
-가장 최근 수정된 5개만 정리하면 다음과 같아.
-
-
-care-plan-library-fixed-shape.html.txt
-문서
-
-care-plan-library (3).js
-JavaScript
-
-care-plan-library.js
-JavaScript
-
-care-plan-library.js
-JavaScript
-
-care-plan-library.html
-파일
-수정일 기준으로 보면 대략 다음 순서야.
-
-2026-06-30 — care-plan-library-fixed-shape.html.txt
-
-2026-06-10 — care-plan-library (3).js
-
-2026-06-09 — care-plan-library.js
-
-2026-06-09 — care-plan-library.js (다른 백업본)
-
-2026-06-05 — care-plan-library.html
-
-지금 프로젝트에서 이어서 작업할 거라면 1번 HTML + 2번 JS 조합이 가장 최신 버전이야.
-
-
-html만
-
-HTML만 최근 순으로 정리하면 이렇게야.
-
-
-care-plan-library-fixed-shape.html.txt
-문서
-
-care-plan-library.html
-파일
-
-care-plan-library.html
-파일
-
-care-plan-library.html
-파일
-
-내가 너한테 준거 말고 너가 나한테 준거
-
-아, 그 의미였구나. 내가 만들어서 전달했던 HTML 파일만 말하는 거라면 현재 File Library에서 확인되는 건 하나야.
-
-
-care-plan-library-fixed-shape.html.txt
-문서
-현재 확인되는 생성본은 care-plan-library-fixed-shape.html.txt 하나뿐이야. 
-
-
-예전에 내가 ZIP이나 TXT로 만들어 줬지만 저장하지 않았거나, 파일 라이브러리에 남지 않은 것들은 지금은 검색되지 않아.
-
-
-<!DOCTYPE html>
-
-<html lang="ko"> <head> <meta charset="UTF-8" /> <meta name="viewport" content="width=device-width, initial-scale=1.0" /> <title>요양급여제공계획서 보관함</title>
-
-<link rel="stylesheet" href="../css/common.css" /> <link rel="stylesheet" href="../css/dashboard.css" />
-
-<style> .content-box { max-width: none; } .plan-library-actions { display: grid; grid-template-columns: 1fr 1fr auto; gap: 24px; align-items: end; margin-top: 20px; margin-bottom: 24px; } .plan-library-actions .form-group { display: flex; flex-direction: column; gap: 8px; } .plan-library-actions label { font-size: 14px; font-weight: 700; color: #111827; } .plan-library-actions input[type="file"], .plan-library-actions input[type="date"] { height: 42px; padding: 8px 12px; border: 1px solid #d8dfec; border-radius: 10px; background: #fff; font-size: 14px; box-sizing: border-box; } .plan-library-actions input[type="date"] { width: 180px; } .plan-library-guide { margin: 8px 0 24px; padding: 16px 20px; border: 1px solid #dde5f0; border-radius: 10px; background: #f8fbff; color: #1f2a44; line-height: 1.65; } .plan-library-guide h3 { margin: 0 0 8px; font-size: 16px; color: #1f2a44; } .plan-library-guide p { margin: 4px 0; font-size: 14px; } .plan-library-table { width: 100%; border-collapse: collapse; } .plan-library-table th, .plan-library-table td { border: 1px solid #dde5f0; padding: 14px 12px; text-align: center; font-size: 14px; } .plan-library-table th { background: #edf3ff; color: #123f91; font-weight: 700; } .plan-library-table .empty-row td { height: 48px; color: #777; } @media (max-width: 900px) { .plan-library-actions { grid-template-columns: 1fr; } .plan-library-actions input[type="date"] { width: 100%; } } </style>
-
-</head> <body> <div class="topbar"> <div class="logo-area"> <img src="../images/logo.png" alt="로고" class="logo-img" /> </div>
 
 <div class="topbar-right">
   <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
@@ -428,9 +122,26 @@ care-plan-library-fixed-shape.html.txt
     <p class="date-text" id="todayText"></p>
   </div>
 </div>
-</div>
 
-<div class="main-layout"> <aside class="sidebar"> <div class="menu-title">메뉴</div> <nav class="menu-list"> <a href="./care-plan-library.html" class="menu-item active">요양급여제공계획서 보관함</a> <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a> <a href="./attendance.html" class="menu-item">출석관리</a> <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a> <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a> <a href="./meal-check.html" class="menu-item">식사 제공 확인</a> <a href="./meal-bath-check.html" class="menu-item">식사·목욕 기록지 확인</a> <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a> <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a> <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a> <a href="./medication-check.html" class="menu-item">투약 확인</a> </nav> </aside>
+  </div>
+
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="menu-title">메뉴</div>
+      <nav class="menu-list">
+        <a href="./care-plan-library.html" class="menu-item active">요양급여제공계획서 보관함</a>
+        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
+        <a href="./attendance.html" class="menu-item">출석관리</a>
+        <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a>
+        <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
+        <a href="./meal-check.html" class="menu-item">식사 제공 확인</a>
+        <a href="./meal-bath-check.html" class="menu-item">식사·목욕 기록지 확인</a>
+        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
+        <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a>
+        <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a>
+        <a href="./medication-check.html" class="menu-item">투약 확인</a>
+      </nav>
+    </aside>
 
 <main class="content-area">
   <div class="content-box">
@@ -486,12 +197,14 @@ care-plan-library-fixed-shape.html.txt
     </div>
   </div>
 </main>
-</div>
 
-<script src="../js/main.js"></script>
+  </div>
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="../js/main.js"></script>
 
-<script src="../js/care-plan-library.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
-</body> </html>
+  <script src="../js/care-plan-library.js"></script>
+
+</body>
+</html>
