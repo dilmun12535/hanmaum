@@ -1,5 +1,5 @@
 /* 월별 어르신 수가 보관함 */
-const MONTHLY_FEE_API_URL = "여기에_앱스크립트_웹앱_URL을_넣으세요";
+const MONTHLY_FEE_API_URL = "https://script.google.com/macros/s/AKfycbwJhnr6jFypaNIPzsaCUx8zk9Lc0SHN3AYPzhoT0uoMW_eTDPVlnrIzONA1gCD0_A5WDQ/exec";
 
 const $ = (id) => document.getElementById(id);
 const state = { file: null, rows: [], savedRows: [] };
