@@ -1,275 +1,96 @@
-/* 월별 어르신 수가 보관함 */
-const MONTHLY_FEE_API_URL = "여기에_앱스크립트_웹앱_URL을_넣으세요";
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>월별 어르신 수가 보관함</title>
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="../css/dashboard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="../js/monthly-fee-library.js"></script>
+  <style>
+    .fee-wrap{padding:24px;max-width:1440px;margin:0 auto}.page-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:18px}.page-title h1{margin:0 0 6px;font-size:26px}.page-title p{margin:0;color:#667085}.upload-card,.summary-card,.table-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}.control-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.month-input{height:42px;border:1px solid #d0d5dd;border-radius:10px;padding:0 12px}.file-label{display:inline-flex;align-items:center;gap:8px;height:42px;border:1px dashed #98a2b3;border-radius:10px;padding:0 14px;cursor:pointer;background:#f9fafb;max-width:360px}.file-label input{display:none}.file-name{font-size:13px;color:#475467;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btn{height:42px;border:0;border-radius:10px;padding:0 15px;font-weight:700;cursor:pointer}.btn-primary{background:#2563eb;color:#fff}.btn-soft{background:#eef4ff;color:#1d4ed8}.btn-danger{background:#fee2e2;color:#b91c1c}.btn:disabled{opacity:.45;cursor:not-allowed}.check{display:flex;align-items:center;gap:6px;color:#475467;font-size:14px}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px}.summary-box{border-radius:14px;background:#f8fafc;padding:14px}.summary-box b{display:block;font-size:22px;margin-top:4px}.summary-box span{font-size:13px;color:#667085}.notice{padding:12px 14px;border-radius:12px;background:#fffbeb;color:#92400e;margin-top:12px;font-size:14px;display:none}.table-tools{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}.search-input{height:38px;border:1px solid #d0d5dd;border-radius:9px;padding:0 12px;min-width:240px}.table-scroll{overflow:auto;max-height:620px;border:1px solid #eef2f7;border-radius:12px}.fee-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;white-space:nowrap}.fee-table th{position:sticky;top:0;background:#f8fafc;z-index:1;color:#344054}.fee-table th,.fee-table td{border-bottom:1px solid #eef2f7;padding:10px 9px;text-align:left}.fee-table tr:hover td{background:#f9fafb}.empty{padding:40px;text-align:center;color:#98a2b3}.status{font-size:14px;color:#475467}.pill{display:inline-flex;border-radius:999px;background:#eef4ff;color:#1d4ed8;padding:4px 9px;font-weight:700;font-size:12px}@media(max-width:900px){.summary-grid{grid-template-columns:repeat(2,1fr)}.page-head{align-items:flex-start;flex-direction:column}}
+      #noticeBox{display:none!important;}
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo-area"><img src="../images/logo.png" alt="로고" class="logo-img" /></div>
+    <div class="topbar-right">
+      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
+      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
+      <div class="user-area"><div class="user-badge">사회복지사</div><p class="date-text" id="todayText"></p></div>
+    </div>
+  </div>
 
-const $ = (id) => document.getElementById(id);
-const state = { file: null, rows: [], savedRows: [] };
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="menu-title">메뉴</div>
+      <nav class="menu-list">
+        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
+        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
+        <a href="./monthly-fee-library.html" class="menu-item active">월별 어르신 수가 보관함</a>
+        <a href="./attendance.html" class="menu-item">출석관리</a>
+        <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a>
+        <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
+        <a href="./meal-check.html" class="menu-item">식사 제공 확인</a>
+        <a href="./meal-bath-check.html" class="menu-item">식사·목욕 검증</a>
+        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
+        <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a>
+        <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a>
+        <a href="./medication-check.html" class="menu-item">투약 확인</a>
+      </nav>
+    </aside>
 
-window.addEventListener("DOMContentLoaded", () => {
-  setTodayText();
-  $("monthInput").value = new Date().toISOString().slice(0, 7);
-  $("fileInput").addEventListener("change", handleFileChange);
-  $("uploadBtn").addEventListener("click", uploadMonthlyFee);
-  $("reloadBtn").addEventListener("click", loadMonthlyFee);
-  $("deleteMonthBtn").addEventListener("click", deleteMonth);
-  $("monthInput").addEventListener("change", loadMonthlyFee);
-  $("searchInput").addEventListener("input", renderTable);
-  loadMonthlyFee();
-});
+    <main class="content fee-wrap">
+      <div class="page-head">
+        <div class="page-title">
+          <h1>월별 어르신 수가 보관함</h1>
+          <p>월별 수가 파일을 업로드하면 구글시트 <b>월별어르신수가</b>에 저장되고 다른 확인 페이지에서 불러올 수 있습니다.</p>
+        </div>
+        <button class="btn btn-soft" id="reloadBtn">새로고침</button>
+      </div>
 
-function setTodayText() {
-  const el = $("todayText");
-  if (!el) return;
-  const now = new Date();
-  el.textContent = now.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
-}
+      <section class="upload-card">
+        <div class="control-row">
+          <input type="month" id="monthInput" class="month-input" />
+          <label class="file-label">
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+            <span>파일 선택</span><span class="file-name" id="fileName">선택된 파일 없음</span>
+          </label>
+          <label class="check"><input type="checkbox" id="replaceMonth" checked /> 같은 월 기존 자료 삭제 후 저장</label>
+          <button class="btn btn-primary" id="uploadBtn" disabled>업로드 저장</button>
+          <button class="btn btn-danger" id="deleteMonthBtn">선택 월 삭제</button>
+        </div>
+        <div class="notice" id="noticeBox"></div>
+      </section>
 
-function showNotice(message, type = "info") {
-  const box = $("noticeBox");
-  box.style.display = "block";
-  box.textContent = message;
-  box.style.background = type === "error" ? "#fef2f2" : type === "success" ? "#ecfdf3" : "#fffbeb";
-  box.style.color = type === "error" ? "#b42318" : type === "success" ? "#027a48" : "#92400e";
-}
+      <section class="summary-card">
+        <div class="summary-grid">
+          <div class="summary-box"><span>조회 월</span><b id="summaryMonth">-</b></div>
+          <div class="summary-box"><span>어르신 수</span><b id="summaryRecipients">0명</b></div>
+          <div class="summary-box"><span>수가 행 수</span><b id="summaryRows">0건</b></div>
+          <div class="summary-box"><span>총 금액</span><b id="summaryAmount">0원</b></div>
+        </div>
+      </section>
 
-function hasValidApiUrl() {
-  return MONTHLY_FEE_API_URL && !MONTHLY_FEE_API_URL.includes("여기에_");
-}
-
-function apiUrl(payload) {
-  return `${MONTHLY_FEE_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
-}
-
-async function requestApi(payload) {
-  if (!hasValidApiUrl()) {
-    return payload.action === "listMonthlyFee" ? [] : { ok: false, count: 0, skippedCount: 0 };
-  }
-
-  const res = await fetch(apiUrl(payload), { method: "GET" });
-  if (!res.ok) throw new Error("앱스크립트 연결에 실패했습니다.");
-  return await res.json();
-}
-
-function handleFileChange(e) {
-  const file = e.target.files && e.target.files[0];
-  state.file = file || null;
-  $("fileName").textContent = file ? file.name : "선택된 파일 없음";
-  $("uploadBtn").disabled = !file;
-  if (file) previewFile(file);
-}
-
-async function previewFile(file) {
-  try {
-    showNotice("파일을 읽는 중입니다...");
-    const items = await parseMonthlyFeeFile(file, $("monthInput").value);
-    state.rows = items;
-    showNotice(`미리보기 완료: ${items.length.toLocaleString()}건을 찾았습니다. 저장하려면 업로드 저장을 누르세요.`, "success");
-  } catch (err) {
-    state.rows = [];
-    showNotice(err.message || "파일을 읽지 못했습니다.", "error");
-  }
-}
-
-async function parseMonthlyFeeFile(file, selectedMonth) {
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
-  const headerRowIndex = rows.findIndex((r) => r.some((c) => String(c).trim() === "일자") && r.some((c) => String(c).trim() === "수급자명"));
-  if (headerRowIndex < 0) throw new Error("헤더 행을 찾지 못했습니다. '일자', '수급자명', '수가코드', '수가명'이 있는 파일인지 확인해주세요.");
-
-  const headers = rows[headerRowIndex].map((v) => String(v).trim());
-  const idx = makeHeaderIndex(headers);
-  const items = [];
-
-  rows.slice(headerRowIndex + 1).forEach((row) => {
-    const dateText = normalizeDate(readCell(row, idx, ["일자"]));
-    const month = normalizeMonth(selectedMonth || dateText);
-    const recipientName = readCell(row, idx, ["수급자명"]);
-    const longTermNumber = readCell(row, idx, ["수급자인정번호", "인정번호"]);
-    const serviceCode = readCell(row, idx, ["수가코드"]);
-    const serviceName = readCell(row, idx, ["수가명"]);
-
-    if (!recipientName || !dateText) return;
-
-    items.push({
-      id: `${month}_${recipientName}_${longTermNumber}_${serviceCode}_${dateText}_${Math.random().toString(36).slice(2, 7)}`,
-      month,
-      recipientName,
-      longTermNumber,
-      certNumber: longTermNumber,
-      birthDate: normalizeDate(readCell(row, idx, ["생년월일"])),
-      careManagerName: readCell(row, idx, ["요양보호사명"]),
-      careManagerBirthDate: "",
-      careManagerCareNumber: readCell(row, idx, ["요양보호사번호"]),
-      workerType: readCell(row, idx, ["종사자구분"]),
-      familyCareYn: readCell(row, idx, ["가족여부"]),
-      familyRelation: readCell(row, idx, ["가족관계"]),
-      serviceType: readCell(row, idx, ["서비스구분"]),
-      serviceCode,
-      serviceName,
-      unitPrice: toNumber(readCell(row, idx, ["수가", "단가"])),
-      serviceDates: [dateText],
-      serviceDays: 1,
-      totalAmount: toNumber(readCell(row, idx, ["수가", "금액", "총액"])),
-      fileName: file.name,
-      uploadedAt: new Date().toISOString(),
-      rows: Object.fromEntries(headers.map((h, i) => [h || `col${i + 1}`, row[i] || ""]))
-    });
-  });
-
-  return mergeDailyRows(items);
-}
-
-function makeHeaderIndex(headers) {
-  const idx = {};
-  headers.forEach((h, i) => { if (h && idx[h] === undefined) idx[h] = i; });
-  return idx;
-}
-
-function readCell(row, idx, names) {
-  for (const name of names) {
-    if (idx[name] !== undefined) return String(row[idx[name]] || "").trim();
-  }
-  return "";
-}
-
-function mergeDailyRows(items) {
-  const map = new Map();
-  items.forEach((item) => {
-    const key = [item.month, item.recipientName.replace(/\s/g, ""), item.longTermNumber.replace(/\s/g, ""), item.serviceCode.replace(/\s/g, "")].join("|");
-    if (!map.has(key)) {
-      map.set(key, { ...item, serviceDates: [...item.serviceDates], serviceDays: 1, totalAmount: item.totalAmount || item.unitPrice || 0, rows: [item.rows] });
-      return;
-    }
-    const old = map.get(key);
-    item.serviceDates.forEach((d) => { if (d && !old.serviceDates.includes(d)) old.serviceDates.push(d); });
-    old.serviceDays = old.serviceDates.length;
-    old.totalAmount += item.totalAmount || item.unitPrice || 0;
-    old.rows.push(item.rows);
-  });
-  return Array.from(map.values()).map((item) => ({ ...item, serviceDates: item.serviceDates.sort() }));
-}
-
-async function uploadMonthlyFee() {
-  try {
-    if (!state.rows.length) throw new Error("저장할 자료가 없습니다. 파일을 다시 선택해주세요.");
-    if (!hasValidApiUrl()) {
-      const box = $("noticeBox");
-      if (box) box.style.display = "none";
-      return;
-    }
-    $("uploadBtn").disabled = true;
-    showNotice("구글시트에 저장 중입니다...");
-    const result = await requestApi({
-      action: "addMonthlyFee",
-      month: $("monthInput").value,
-      replaceMonth: $("replaceMonth").checked,
-      fileName: state.file ? state.file.name : "",
-      uploadedAt: new Date().toISOString(),
-      uploadedBy: localStorage.getItem("loginUser") || "사회복지사",
-      items: state.rows
-    });
-    showNotice(`저장 완료: ${Number(result.count || 0).toLocaleString()}건 저장, ${Number(result.skippedCount || 0).toLocaleString()}건 제외`, "success");
-    await loadMonthlyFee();
-  } catch (err) {
-    showNotice(err.message || "저장 중 오류가 발생했습니다.", "error");
-  } finally {
-    $("uploadBtn").disabled = !state.file;
-  }
-}
-
-async function loadMonthlyFee() {
-  try {
-    if (!hasValidApiUrl()) {
-      state.savedRows = [];
-      renderSummary();
-      renderTable();
-      const box = $("noticeBox");
-      if (box) box.style.display = "none";
-      return;
-    }
-
-    showNotice("저장된 자료를 불러오는 중입니다...");
-    const month = $("monthInput").value;
-    const rows = await requestApi({ action: "listMonthlyFee", month });
-    state.savedRows = Array.isArray(rows) ? rows : [];
-    renderSummary();
-    renderTable();
-    showNotice("자료를 불러왔습니다.", "success");
-  } catch (err) {
-    state.savedRows = [];
-    renderSummary();
-    renderTable();
-    showNotice(err.message || "자료를 불러오지 못했습니다.", "error");
-  }
-}
-
-async function deleteMonth() {
-  const month = $("monthInput").value;
-  if (!month) return showNotice("삭제할 월을 선택해주세요.", "error");
-  if (!confirm(`${month} 수가 자료를 구글시트에서 삭제할까요?`)) return;
-  try {
-    await requestApi({ action: "deleteMonthlyFee", month });
-    showNotice(`${month} 자료를 삭제했습니다.`, "success");
-    await loadMonthlyFee();
-  } catch (err) {
-    showNotice(err.message || "삭제하지 못했습니다.", "error");
-  }
-}
-
-function renderSummary() {
-  const rows = state.savedRows;
-  const recipients = new Set(rows.map((r) => `${r.recipientName}|${r.longTermNumber || r.certNumber}`));
-  const amount = rows.reduce((sum, r) => sum + toNumber(r.totalAmount), 0);
-  $("summaryMonth").textContent = $("monthInput").value || "전체";
-  $("summaryRecipients").textContent = `${recipients.size.toLocaleString()}명`;
-  $("summaryRows").textContent = `${rows.length.toLocaleString()}건`;
-  $("summaryAmount").textContent = `${amount.toLocaleString()}원`;
-  $("statusText").textContent = `${rows.length.toLocaleString()}건 표시 중`;
-}
-
-function renderTable() {
-  const q = ($("searchInput").value || "").replace(/\s/g, "").toLowerCase();
-  const body = $("tableBody");
-  const rows = state.savedRows.filter((r) => !q || JSON.stringify(r).replace(/\s/g, "").toLowerCase().includes(q));
-  if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="10" class="empty">저장된 자료가 없습니다.</td></tr>';
-    return;
-  }
-  body.innerHTML = rows.map((r) => `
-    <tr>
-      <td><span class="pill">${escapeHtml(r.month)}</span></td>
-      <td>${escapeHtml(r.recipientName)}</td>
-      <td>${escapeHtml(r.longTermNumber || r.certNumber)}</td>
-      <td>${escapeHtml(r.birthDate)}</td>
-      <td>${escapeHtml(r.serviceType)}</td>
-      <td>${escapeHtml(r.serviceCode)}</td>
-      <td>${escapeHtml(r.serviceName)}</td>
-      <td>${toNumber(r.unitPrice).toLocaleString()}</td>
-      <td>${toNumber(r.serviceDays).toLocaleString()}</td>
-      <td>${toNumber(r.totalAmount).toLocaleString()}</td>
-    </tr>`).join("");
-}
-
-function normalizeMonth(value) {
-  const text = String(value || "").trim().replace(/[./]/g, "-");
-  const m = text.match(/(\d{4})-(\d{1,2})/);
-  return m ? `${m[1]}-${String(m[2]).padStart(2, "0")}` : text;
-}
-
-function normalizeDate(value) {
-  const text = String(value || "").trim().replace(/^'/, "");
-  if (!text) return "";
-  const iso = text.match(/(\d{4})[-./년\s]*(\d{1,2})[-./월\s]*(\d{1,2})/);
-  if (iso) return `${iso[1]}-${String(iso[2]).padStart(2, "0")}-${String(iso[3]).padStart(2, "0")}`;
-  return text.split("T")[0];
-}
-
-function toNumber(value) {
-  const n = Number(String(value || "0").replace(/[^0-9.-]/g, ""));
-  return Number.isFinite(n) ? n : 0;
-}
-
-function escapeHtml(value) {
-  return String(value || "").replace(/[&<>'"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[ch]));
-}
+      <section class="table-card">
+        <div class="table-tools">
+          <div class="status" id="statusText">자료를 불러오세요.</div>
+          <input type="search" id="searchInput" class="search-input" placeholder="이름, 인정번호, 수가명 검색" />
+        </div>
+        <div class="table-scroll">
+          <table class="fee-table">
+            <thead>
+              <tr>
+                <th>월</th><th>수급자명</th><th>인정번호</th><th>생년월일</th><th>서비스구분</th><th>수가코드</th><th>수가명</th><th>수가</th><th>일수</th><th>금액</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody"><tr><td colspan="10" class="empty">저장된 자료가 없습니다.</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
