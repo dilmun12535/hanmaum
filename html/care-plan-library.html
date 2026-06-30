@@ -29,17 +29,11 @@
     <aside class="sidebar">
       <div class="menu-title">메뉴</div>
       <nav class="menu-list">
+        <a href="./index.html" class="menu-item">송영관리</a>
+        <a href="./vehicle.html" class="menu-item">차량배정</a>
+        <a href="./vehicle-history.html" class="menu-item">차량 배정 일자별 내역</a>
         <a href="./care-plan-library.html" class="menu-item active">요양급여제공계획서 보관함</a>
-        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
-        <a href="./attendance.html" class="menu-item">출석관리</a>
-        <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a>
-        <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
-        <a href="./meal-check.html" class="menu-item">식사 제공 확인</a>
-        <a href="./meal-bath-check.html" class="menu-item">식사·목욕 기록지 확인</a>
-        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
-        <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a>
-        <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a>
-        <a href="./medication-check.html" class="menu-item">투약 확인</a>
+        <a href="./care-plan-check.html" class="menu-item">요양급여제공계획서 확인</a>
       </nav>
     </aside>
 
@@ -51,46 +45,45 @@
         </div>
 
         <div class="page-actions">
-          <div class="file-group">
-            <label for="planFileInput">계획서 파일</label>
-            <input type="file" id="planFileInput" accept=".xlsx,.xls" />
+          <div class="date-group">
+            <label for="planFile">계획서 파일</label>
+            <input type="file" id="planFile" accept=".xlsx,.xls" />
           </div>
 
           <div class="date-group">
-            <label for="writtenDate">급여제공계획서 작성일자</label>
-            <input type="date" id="writtenDate" />
+            <label for="planWrittenDate">급여제공계획서 작성일자</label>
+            <input type="date" id="planWrittenDate" />
           </div>
 
           <div class="action-buttons">
             <button type="button" class="primary-btn" id="uploadPlanBtn">계획서 등록</button>
+            <button type="button" class="danger-btn" id="deleteSelectedPlanBtn">선택 삭제</button>
           </div>
         </div>
 
-        <div class="rule-box">
-          <h3>💡 계획서 파일 등록 기준 안내</h3>
-          <p>• <strong>파일명 규격 예시:</strong> L2405183960 강소돌 수급자 급여제공계획.xlsx</p>
-          <p>• <strong>데이터 자동 파싱:</strong> 시스템이 파일명에서 장기요양번호(인정번호)와 수급자명을 자동으로 판독하여 분리 저장합니다.</p>
-          <p>• <strong>마스터 매칭 데이터:</strong> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</p>
+        <div class="notice-box">
+          <p>파일명 예시: <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong></p>
+          <p>파일명에서 장기요양번호와 수급자명을 자동으로 읽어옵니다.</p>
         </div>
 
         <div class="table-wrap">
           <table class="info-table">
             <thead>
               <tr>
-                <th style="width:40px;"><input type="checkbox" id="selectAllPlans" /></th>
+                <th class="checkbox-col">
+                  <input type="checkbox" id="selectAllPlanCheckbox" />
+                </th>
                 <th>장기요양번호</th>
                 <th>수급자명</th>
                 <th>작성일자</th>
                 <th>파일명</th>
                 <th>급여 항목 수</th>
                 <th>업로드일시</th>
-                <th>업로드자</th>
-                <th>관리</th>
               </tr>
             </thead>
-            <tbody id="planTableBody">
+            <tbody id="planLibraryTableBody">
               <tr class="empty-row">
-                <td colspan="9">등록된 급여제공계획서가 없습니다.</td>
+                <td colspan="7">등록된 급여제공계획서가 없습니다.</td>
               </tr>
             </tbody>
           </table>
