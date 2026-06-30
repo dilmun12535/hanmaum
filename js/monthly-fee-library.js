@@ -31,13 +31,6 @@ function showNotice(message, type = "info") {
   box.style.color = type === "error" ? "#b42318" : type === "success" ? "#027a48" : "#92400e";
 }
 
-function apiUrl(payload) {
-  if (!MONTHLY_FEE_API_URL || MONTHLY_FEE_API_URL.includes("여기에_")) {
-    throw new Error("monthly-fee-library.js 상단의 MONTHLY_FEE_API_URL에 앱스크립트 웹앱 URL을 넣어주세요.");
-  }
-  return `${MONTHLY_FEE_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
-}
-
 async function requestApi(payload) {
   const res = await fetch(apiUrl(payload), { method: "GET" });
   if (!res.ok) throw new Error("앱스크립트 연결에 실패했습니다.");
