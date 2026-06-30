@@ -262,6 +262,47 @@
     };
   }
 
+
+  function mergeVisualRowsByRecipient(rows) {
+    const recipientMap = new Map();
+
+    rows.forEach((row) => {
+      const key = row.recipientName || "이름 없음";
+
+      if (!recipientMap.has(key)) {
+        recipientMap.set(key, {
+          recipientName: key,
+          daysMap: new Map(),
+        });
+      }
+
+      const merged = recipientMap.get(key);
+
+      row.days.forEach((day) => {
+        if (!merged.daysMap.has(day.date)) {
+          merged.daysMap.set(day.date, {
+            date: day.date,
+            meal: 0,
+            bath: 0,
+            details: [],
+          });
+        }
+
+        const targetDay = merged.daysMap.get(day.date);
+        targetDay.meal += day.meal || 0;
+        targetDay.bath += day.bath || 0;
+        targetDay.details.push(...(day.details || []));
+      });
+    });
+
+    return Array.from(recipientMap.values())
+      .map((item) => ({
+        recipientName: item.recipientName,
+        days: Array.from(item.daysMap.values()).sort((a, b) => a.date.localeCompare(b.date)),
+      }))
+      .sort((a, b) => a.recipientName.localeCompare(b.recipientName, "ko"));
+  }
+
   async function runCheck() {
     resetResult();
 
@@ -301,7 +342,7 @@
       }
 
       allErrors = errors;
-      visualRows = rowsForVisual;
+      visualRows = mergeVisualRowsByRecipient(rowsForVisual);
 
       const mealCount = errors.filter((e) => e.typeKey === "meal").length;
       const bathCount = errors.filter((e) => e.typeKey === "bath").length;
@@ -334,7 +375,6 @@
     allErrors.forEach((item) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${escapeHtml(item.sheetName)}</td>
         <td>${escapeHtml(item.recipientName)}</td>
         <td>${escapeHtml(item.date)}</td>
         <td><span class="badge ${item.typeKey}">${escapeHtml(item.type)}</span></td>
@@ -359,7 +399,6 @@
     const headTr = document.createElement("tr");
     headTr.innerHTML = `
       <th class="name-col">수급자명</th>
-      <th class="sheet-col">시트명</th>
       ${dates.map((date) => `<th>${escapeHtml(date)}</th>`).join("")}
     `;
     matrixHead.appendChild(headTr);
@@ -405,7 +444,6 @@
 
       tr.innerHTML = `
         <td class="name-col">${escapeHtml(row.recipientName)}</td>
-        <td class="sheet-col">${escapeHtml(row.sheetName)}</td>
         ${cells}
       `;
       matrixBody.appendChild(tr);
@@ -415,11 +453,10 @@
   function downloadCsv() {
     if (!allErrors.length) return;
 
-    const headers = ["시트명", "수급자명", "날짜", "항목", "현재값", "정상값", "오류 내용"];
+    const headers = ["수급자명", "날짜", "항목", "현재값", "정상값", "오류 내용"];
     const lines = [
       headers.join(","),
       ...allErrors.map((e) => [
-        e.sheetName,
         e.recipientName,
         e.date,
         e.type,
