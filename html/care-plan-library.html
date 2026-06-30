@@ -1,5 +1,4 @@
 <!DOCTYPE html>
-
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
@@ -8,104 +7,6 @@
 
   <link rel="stylesheet" href="../css/common.css" />
   <link rel="stylesheet" href="../css/dashboard.css" />
-
-  <style>
-    .content-box {
-      max-width: none;
-    }
-
-    .plan-library-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr auto;
-      gap: 24px;
-      align-items: end;
-      margin-top: 20px;
-      margin-bottom: 24px;
-    }
-
-    .plan-library-actions .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-
-    .plan-library-actions label {
-      font-size: 14px;
-      font-weight: 700;
-      color: #111827;
-    }
-
-    .plan-library-actions input[type="file"],
-    .plan-library-actions input[type="date"] {
-      height: 42px;
-      padding: 8px 12px;
-      border: 1px solid #d8dfec;
-      border-radius: 10px;
-      background: #fff;
-      font-size: 14px;
-      box-sizing: border-box;
-    }
-
-    .plan-library-actions input[type="date"] {
-      width: 180px;
-    }
-
-    .plan-library-guide {
-      margin: 8px 0 24px;
-      padding: 16px 20px;
-      border: 1px solid #dde5f0;
-      border-radius: 10px;
-      background: #f8fbff;
-      color: #1f2a44;
-      line-height: 1.65;
-    }
-
-    .plan-library-guide h3 {
-      margin: 0 0 8px;
-      font-size: 16px;
-      color: #1f2a44;
-    }
-
-    .plan-library-guide p {
-      margin: 4px 0;
-      font-size: 14px;
-    }
-
-    .plan-library-table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-
-    .plan-library-table th,
-    .plan-library-table td {
-      border: 1px solid #dde5f0;
-      padding: 14px 12px;
-      text-align: center;
-      font-size: 14px;
-    }
-
-    .plan-library-table th {
-      background: #edf3ff;
-      color: #123f91;
-      font-weight: 700;
-    }
-
-    .plan-library-table .empty-row td {
-      height: 48px;
-      color: #777;
-    }
-
-    @media (max-width: 900px) {
-      .plan-library-actions {
-        grid-template-columns: 1fr;
-      }
-
-      .plan-library-actions input[type="date"] {
-        width: 100%;
-      }
-    }
-  </style>
-
 </head>
 <body>
   <div class="topbar">
@@ -113,16 +14,15 @@
       <img src="../images/logo.png" alt="로고" class="logo-img" />
     </div>
 
-<div class="topbar-right">
-  <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
-  <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
+    <div class="topbar-right">
+      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
+      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
 
-  <div class="user-area">
-    <div class="user-badge">사회복지사</div>
-    <p class="date-text" id="todayText"></p>
-  </div>
-</div>
-
+      <div class="user-area">
+        <div class="user-badge">사회복지사</div>
+        <p class="date-text" id="todayText"></p>
+      </div>
+    </div>
   </div>
 
   <div class="main-layout">
@@ -143,68 +43,64 @@
       </nav>
     </aside>
 
-<main class="content-area">
-  <div class="content-box">
-    <div class="page-header">
-      <h2>요양급여제공계획서 보관함</h2>
-      <p>수급자별 급여제공계획서를 작성일자 기준으로 보관합니다.</p>
-    </div>
+    <main class="content-area">
+      <div class="content-box">
+        <div class="page-header">
+          <h2>요양급여제공계획서 보관함</h2>
+          <p>수급자별 급여제공계획서를 작성일자 기준으로 보관합니다.</p>
+        </div>
 
-    <div class="plan-library-actions">
-      <div class="form-group">
-        <label for="planFileInput">계획서 파일</label>
-        <input type="file" id="planFileInput" accept=".xlsx,.xls" />
+        <div class="page-actions">
+          <div class="file-group">
+            <label for="planFileInput">계획서 파일</label>
+            <input type="file" id="planFileInput" accept=".xlsx,.xls" />
+          </div>
+
+          <div class="date-group">
+            <label for="writtenDate">급여제공계획서 작성일자</label>
+            <input type="date" id="writtenDate" />
+          </div>
+
+          <div class="action-buttons">
+            <button type="button" class="primary-btn" id="uploadPlanBtn">계획서 등록</button>
+          </div>
+        </div>
+
+        <div class="rule-box">
+          <h3>💡 계획서 파일 등록 기준 안내</h3>
+          <p>• <strong>파일명 규격 예시:</strong> L2405183960 강소돌 수급자 급여제공계획.xlsx</p>
+          <p>• <strong>데이터 자동 파싱:</strong> 시스템이 파일명에서 장기요양번호(인정번호)와 수급자명을 자동으로 판독하여 분리 저장합니다.</p>
+          <p>• <strong>마스터 매칭 데이터:</strong> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</p>
+        </div>
+
+        <div class="table-wrap">
+          <table class="info-table">
+            <thead>
+              <tr>
+                <th style="width: 40px;"><input type="checkbox" id="selectAllPlans" /></th>
+                <th>장기요양번호</th>
+                <th>수급자명</th>
+                <th>작성일자</th>
+                <th>파일명</th>
+                <th>급여 항목 수</th>
+                <th>업로드일시</th>
+                <th>업로드자</th>
+                <th>관리</th>
+              </tr>
+            </thead>
+            <tbody id="planTableBody">
+              <tr class="empty-row">
+                <td colspan="9">등록된 급여제공계획서가 없습니다.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-
-      <div class="form-group">
-        <label for="writtenDate">급여제공계획서 작성일자</label>
-        <input type="date" id="writtenDate" />
-      </div>
-
-      <div class="action-buttons">
-        <button type="button" class="primary-btn" id="uploadPlanBtn">계획서 등록</button>
-      </div>
-    </div>
-
-    <div class="plan-library-guide">
-      <h3>💡 계획서 파일 등록 기준 안내</h3>
-      <p>• <strong>파일명 규격 예시:</strong> L2405183960 강소돌 수급자 급여제공계획.xlsx</p>
-      <p>• <strong>데이터 자동 파싱:</strong> 시스템이 파일명에서 장기요양번호(인정번호)와 수급자명을 자동으로 판독하여 분리 저장합니다.</p>
-      <p>• <strong>마스터 매칭 데이터:</strong> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</p>
-    </div>
-
-    <div class="table-wrap">
-      <table class="info-table plan-library-table">
-        <thead>
-          <tr>
-            <th style="width:40px;"><input type="checkbox" id="selectAllPlans" /></th>
-            <th>장기요양번호</th>
-            <th>수급자명</th>
-            <th>작성일자</th>
-            <th>파일명</th>
-            <th>급여 항목 수</th>
-            <th>업로드일시</th>
-            <th>업로드자</th>
-            <th>관리</th>
-          </tr>
-        </thead>
-        <tbody id="planTableBody">
-          <tr class="empty-row">
-            <td colspan="9">등록된 급여제공계획서가 없습니다.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</main>
-
+    </main>
   </div>
 
   <script src="../js/main.js"></script>
-
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-
   <script src="../js/care-plan-library.js"></script>
-
 </body>
 </html>
