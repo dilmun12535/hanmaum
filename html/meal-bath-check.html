@@ -16,11 +16,11 @@
     .page-subtitle { color:#64748b; font-size:14px; line-height:1.7; margin-top:6px; }
 
     .check-action-row {
-      display:grid;
-      grid-template-columns: 1fr auto auto;
-      gap:12px;
+      display:flex;
       align-items:end;
+      gap:12px;
       margin-top:22px;
+      flex-wrap:wrap;
     }
     .check-field label {
       display:block;
@@ -29,8 +29,13 @@
       margin-bottom:8px;
       color:#0f172a;
     }
+    .check-field {
+      width:420px;
+      flex:none;
+    }
+
     .check-field input[type="file"] {
-      width:100%;
+      width:420px;
       height:42px;
       padding:7px 10px;
       border:1px solid #d8dfec;
