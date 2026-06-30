@@ -6,29 +6,54 @@ const state = { file: null, rows: [], savedRows: [] };
 
 window.addEventListener("DOMContentLoaded", () => {
   setTodayText();
-  $("monthInput").value = new Date().toISOString().slice(0, 7);
+
+  const monthInput = $("monthInput");
+  if (monthInput && !monthInput.value) {
+    monthInput.value = new Date().toISOString().slice(0, 7);
+  }
+
   $("fileInput").addEventListener("change", handleFileChange);
   $("uploadBtn").addEventListener("click", uploadMonthlyFee);
   $("reloadBtn").addEventListener("click", loadMonthlyFee);
   $("deleteMonthBtn").addEventListener("click", deleteMonth);
   $("monthInput").addEventListener("change", loadMonthlyFee);
   $("searchInput").addEventListener("input", renderTable);
+
   loadMonthlyFee();
 });
 
 function setTodayText() {
   const el = $("todayText");
   if (!el) return;
+
   const now = new Date();
-  el.textContent = now.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric", weekday: "short" });
+  el.textContent = now.toLocaleDateString("ko-KR", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short"
+  });
 }
 
 function showNotice(message, type = "info") {
   const box = $("noticeBox");
+  if (!box) return;
+
+  if (!message) {
+    box.style.display = "none";
+    box.textContent = "";
+    return;
+  }
+
+  box.classList.remove("api-warning");
   box.style.display = "block";
   box.textContent = message;
   box.style.background = type === "error" ? "#fef2f2" : type === "success" ? "#ecfdf3" : "#fffbeb";
   box.style.color = type === "error" ? "#b42318" : type === "success" ? "#027a48" : "#92400e";
+}
+
+function apiUrl(payload) {
+  return `${MONTHLY_FEE_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
 async function requestApi(payload) {
@@ -42,7 +67,10 @@ function handleFileChange(e) {
   state.file = file || null;
   $("fileName").textContent = file ? file.name : "선택된 파일 없음";
   $("uploadBtn").disabled = !file;
-  if (file) previewFile(file);
+
+  if (file) {
+    previewFile(file);
+  }
 }
 
 async function previewFile(file) {
@@ -62,8 +90,15 @@ async function parseMonthlyFeeFile(file, selectedMonth) {
   const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
-  const headerRowIndex = rows.findIndex((r) => r.some((c) => String(c).trim() === "일자") && r.some((c) => String(c).trim() === "수급자명"));
-  if (headerRowIndex < 0) throw new Error("헤더 행을 찾지 못했습니다. '일자', '수급자명', '수가코드', '수가명'이 있는 파일인지 확인해주세요.");
+
+  const headerRowIndex = rows.findIndex((r) => {
+    const text = r.map((c) => String(c).trim()).join("|");
+    return text.includes("일자") && text.includes("수급자명");
+  });
+
+  if (headerRowIndex < 0) {
+    throw new Error("헤더 행을 찾지 못했습니다. '일자', '수급자명', '수가코드', '수가명'이 있는 파일인지 확인해주세요.");
+  }
 
   const headers = rows[headerRowIndex].map((v) => String(v).trim());
   const idx = makeHeaderIndex(headers);
@@ -78,6 +113,8 @@ async function parseMonthlyFeeFile(file, selectedMonth) {
     const serviceName = readCell(row, idx, ["수가명"]);
 
     if (!recipientName || !dateText) return;
+
+    const unitPrice = toNumber(readCell(row, idx, ["수가", "단가"]));
 
     items.push({
       id: `${month}_${recipientName}_${longTermNumber}_${serviceCode}_${dateText}_${Math.random().toString(36).slice(2, 7)}`,
@@ -95,10 +132,10 @@ async function parseMonthlyFeeFile(file, selectedMonth) {
       serviceType: readCell(row, idx, ["서비스구분"]),
       serviceCode,
       serviceName,
-      unitPrice: toNumber(readCell(row, idx, ["수가", "단가"])),
+      unitPrice,
       serviceDates: [dateText],
       serviceDays: 1,
-      totalAmount: toNumber(readCell(row, idx, ["수가", "금액", "총액"])),
+      totalAmount: unitPrice,
       fileName: file.name,
       uploadedAt: new Date().toISOString(),
       rows: Object.fromEntries(headers.map((h, i) => [h || `col${i + 1}`, row[i] || ""]))
@@ -110,7 +147,9 @@ async function parseMonthlyFeeFile(file, selectedMonth) {
 
 function makeHeaderIndex(headers) {
   const idx = {};
-  headers.forEach((h, i) => { if (h && idx[h] === undefined) idx[h] = i; });
+  headers.forEach((h, i) => {
+    if (h && idx[h] === undefined) idx[h] = i;
+  });
   return idx;
 }
 
@@ -123,26 +162,48 @@ function readCell(row, idx, names) {
 
 function mergeDailyRows(items) {
   const map = new Map();
+
   items.forEach((item) => {
-    const key = [item.month, item.recipientName.replace(/\s/g, ""), item.longTermNumber.replace(/\s/g, ""), item.serviceCode.replace(/\s/g, "")].join("|");
+    const key = [
+      item.month,
+      item.recipientName.replace(/\s/g, ""),
+      item.longTermNumber.replace(/\s/g, ""),
+      item.serviceCode.replace(/\s/g, "")
+    ].join("|");
+
     if (!map.has(key)) {
-      map.set(key, { ...item, serviceDates: [...item.serviceDates], serviceDays: 1, totalAmount: item.totalAmount || item.unitPrice || 0, rows: [item.rows] });
+      map.set(key, {
+        ...item,
+        serviceDates: [...item.serviceDates],
+        serviceDays: 1,
+        totalAmount: item.totalAmount || item.unitPrice || 0,
+        rows: [item.rows]
+      });
       return;
     }
+
     const old = map.get(key);
-    item.serviceDates.forEach((d) => { if (d && !old.serviceDates.includes(d)) old.serviceDates.push(d); });
+    item.serviceDates.forEach((d) => {
+      if (d && !old.serviceDates.includes(d)) old.serviceDates.push(d);
+    });
     old.serviceDays = old.serviceDates.length;
     old.totalAmount += item.totalAmount || item.unitPrice || 0;
     old.rows.push(item.rows);
   });
-  return Array.from(map.values()).map((item) => ({ ...item, serviceDates: item.serviceDates.sort() }));
+
+  return Array.from(map.values()).map((item) => ({
+    ...item,
+    serviceDates: item.serviceDates.sort()
+  }));
 }
 
 async function uploadMonthlyFee() {
   try {
     if (!state.rows.length) throw new Error("저장할 자료가 없습니다. 파일을 다시 선택해주세요.");
+
     $("uploadBtn").disabled = true;
     showNotice("구글시트에 저장 중입니다...");
+
     const result = await requestApi({
       action: "addMonthlyFee",
       month: $("monthInput").value,
@@ -152,6 +213,7 @@ async function uploadMonthlyFee() {
       uploadedBy: localStorage.getItem("loginUser") || "사회복지사",
       items: state.rows
     });
+
     showNotice(`저장 완료: ${Number(result.count || 0).toLocaleString()}건 저장, ${Number(result.skippedCount || 0).toLocaleString()}건 제외`, "success");
     await loadMonthlyFee();
   } catch (err) {
@@ -163,13 +225,11 @@ async function uploadMonthlyFee() {
 
 async function loadMonthlyFee() {
   try {
-    showNotice("저장된 자료를 불러오는 중입니다...");
     const month = $("monthInput").value;
     const rows = await requestApi({ action: "listMonthlyFee", month });
     state.savedRows = Array.isArray(rows) ? rows : [];
     renderSummary();
     renderTable();
-    showNotice("자료를 불러왔습니다.", "success");
   } catch (err) {
     state.savedRows = [];
     renderSummary();
@@ -182,6 +242,7 @@ async function deleteMonth() {
   const month = $("monthInput").value;
   if (!month) return showNotice("삭제할 월을 선택해주세요.", "error");
   if (!confirm(`${month} 수가 자료를 구글시트에서 삭제할까요?`)) return;
+
   try {
     await requestApi({ action: "deleteMonthlyFee", month });
     showNotice(`${month} 자료를 삭제했습니다.`, "success");
@@ -195,6 +256,7 @@ function renderSummary() {
   const rows = state.savedRows;
   const recipients = new Set(rows.map((r) => `${r.recipientName}|${r.longTermNumber || r.certNumber}`));
   const amount = rows.reduce((sum, r) => sum + toNumber(r.totalAmount), 0);
+
   $("summaryMonth").textContent = $("monthInput").value || "전체";
   $("summaryRecipients").textContent = `${recipients.size.toLocaleString()}명`;
   $("summaryRows").textContent = `${rows.length.toLocaleString()}건`;
@@ -205,11 +267,17 @@ function renderSummary() {
 function renderTable() {
   const q = ($("searchInput").value || "").replace(/\s/g, "").toLowerCase();
   const body = $("tableBody");
-  const rows = state.savedRows.filter((r) => !q || JSON.stringify(r).replace(/\s/g, "").toLowerCase().includes(q));
+
+  const rows = state.savedRows.filter((r) => {
+    if (!q) return true;
+    return JSON.stringify(r).replace(/\s/g, "").toLowerCase().includes(q);
+  });
+
   if (!rows.length) {
     body.innerHTML = '<tr><td colspan="10" class="empty">저장된 자료가 없습니다.</td></tr>';
     return;
   }
+
   body.innerHTML = rows.map((r) => `
     <tr>
       <td><span class="pill">${escapeHtml(r.month)}</span></td>
@@ -222,7 +290,8 @@ function renderTable() {
       <td>${toNumber(r.unitPrice).toLocaleString()}</td>
       <td>${toNumber(r.serviceDays).toLocaleString()}</td>
       <td>${toNumber(r.totalAmount).toLocaleString()}</td>
-    </tr>`).join("");
+    </tr>
+  `).join("");
 }
 
 function normalizeMonth(value) {
@@ -232,10 +301,19 @@ function normalizeMonth(value) {
 }
 
 function normalizeDate(value) {
+  if (Object.prototype.toString.call(value) === "[object Date]" && !isNaN(value)) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, "0");
+    const d = String(value.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+
   const text = String(value || "").trim().replace(/^'/, "");
   if (!text) return "";
+
   const iso = text.match(/(\d{4})[-./년\s]*(\d{1,2})[-./월\s]*(\d{1,2})/);
   if (iso) return `${iso[1]}-${String(iso[2]).padStart(2, "0")}-${String(iso[3]).padStart(2, "0")}`;
+
   return text.split("T")[0];
 }
 
@@ -245,5 +323,11 @@ function toNumber(value) {
 }
 
 function escapeHtml(value) {
-  return String(value || "").replace(/[&<>'"]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[ch]));
+  return String(value || "").replace(/[&<>'"]/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "'": "&#39;",
+    '"': "&quot;"
+  }[ch]));
 }
