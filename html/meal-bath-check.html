@@ -12,58 +12,279 @@
   <script defer src="../js/meal-bath-check.js"></script>
 
   <style>
-    .page-wrap { padding: 24px; }
-    .page-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
-    .page-desc { color: #666; margin-bottom: 20px; line-height: 1.6; }
-    .upload-box {
-      background: #fff;
-      border: 1px solid #ddd;
-      border-radius: 14px;
-      padding: 20px;
-      margin-bottom: 18px;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    .check-layout { display:flex; flex-direction:column; gap:22px; }
+    .page-subtitle { color:#64748b; font-size:14px; line-height:1.7; margin-top:6px; }
+
+    .check-action-row {
+      display:grid;
+      grid-template-columns: 1fr auto auto;
+      gap:12px;
+      align-items:end;
+      margin-top:22px;
     }
-    .rule-box {
-      background: #f8fafc;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 14px 16px;
-      margin-top: 14px;
-      line-height: 1.7;
-      font-size: 14px;
+    .check-field label {
+      display:block;
+      font-size:14px;
+      font-weight:700;
+      margin-bottom:8px;
+      color:#0f172a;
     }
-    .file-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-    .file-row input[type="file"] { padding: 9px; border: 1px solid #ccc; border-radius: 8px; background: #fff; }
-    .btn {
-      border: none;
-      border-radius: 8px;
-      padding: 10px 15px;
-      cursor: pointer;
-      background: #2563eb;
-      color: #fff;
-      font-weight: 700;
+    .check-field input[type="file"] {
+      width:100%;
+      height:42px;
+      padding:7px 10px;
+      border:1px solid #d8dfec;
+      border-radius:10px;
+      background:#fff;
+      box-sizing:border-box;
     }
-    .btn.secondary { background: #374151; }
-    .btn:disabled { background: #aaa; cursor: not-allowed; }
-    .progress-area { display: none; margin-top: 16px; }
-    .progress-text { margin-bottom: 8px; font-size: 14px; color: #444; }
-    .progress-bar { width: 100%; height: 16px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
-    .progress-fill { width: 0%; height: 100%; background: #2563eb; transition: width 0.15s; }
-    .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 12px; margin: 18px 0; }
-    .summary-card { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
-    .summary-card .label { color: #666; font-size: 13px; margin-bottom: 7px; }
-    .summary-card .value { font-size: 24px; font-weight: 800; }
-    .result-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 12px 0; }
-    .result-table-wrap { overflow: auto; background: #fff; border: 1px solid #ddd; border-radius: 12px; }
-    table { width: 100%; border-collapse: collapse; min-width: 900px; }
-    th, td { border-bottom: 1px solid #eee; padding: 10px; text-align: left; vertical-align: top; font-size: 14px; }
-    th { background: #f3f4f6; position: sticky; top: 0; z-index: 1; }
-    tr:hover td { background: #f9fafb; }
-    .badge { display: inline-block; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 700; }
-    .badge.meal { background: #fef3c7; color: #92400e; }
-    .badge.bath { background: #dbeafe; color: #1e40af; }
-    .empty-box { background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 12px; padding: 18px; color: #166534; font-weight: 700; display: none; }
-    .error-text { color: #dc2626; font-weight: 700; margin-top: 10px; display: none; }
+
+    .check-btn {
+      height:42px;
+      border:0;
+      border-radius:10px;
+      padding:0 18px;
+      font-weight:800;
+      cursor:pointer;
+      color:#fff;
+      background:#1f4394;
+      white-space:nowrap;
+    }
+    .check-btn.secondary { background:#334155; }
+    .check-btn.danger { background:#fee2e2; color:#dc2626; }
+    .check-btn:disabled { opacity:.5; cursor:not-allowed; }
+
+    .guide-box {
+      background:#f8fbff;
+      border:1px solid #dde5f0;
+      border-radius:10px;
+      padding:16px 20px;
+      color:#1f2a44;
+      line-height:1.7;
+    }
+    .guide-box h3 {
+      margin:0 0 8px;
+      font-size:16px;
+      color:#1f2a44;
+    }
+    .guide-box ul { margin:0; padding-left:20px; }
+    .guide-box li { margin:4px 0; font-size:14px; }
+
+    .progress-area { display:none; }
+    .progress-text {
+      margin-bottom:8px;
+      color:#334155;
+      font-size:14px;
+      font-weight:700;
+    }
+    .progress-bar {
+      width:100%;
+      height:16px;
+      background:#e5e7eb;
+      border-radius:999px;
+      overflow:hidden;
+    }
+    .progress-fill {
+      width:0%;
+      height:100%;
+      background:#2563eb;
+      transition:width .15s;
+    }
+
+    .summary-grid {
+      display:grid;
+      grid-template-columns:repeat(4, minmax(140px, 1fr));
+      gap:12px;
+    }
+    .summary-card {
+      border:1px solid #dde5f0;
+      border-radius:12px;
+      background:#fff;
+      padding:16px;
+      min-height:74px;
+    }
+    .summary-card .label {
+      color:#64748b;
+      font-size:13px;
+      margin-bottom:8px;
+    }
+    .summary-card .value {
+      color:#0f172a;
+      font-size:26px;
+      font-weight:900;
+      line-height:1;
+    }
+    .summary-card.meal .value { color:#b45309; }
+    .summary-card.bath .value { color:#1d4ed8; }
+    .summary-card.total .value { color:#dc2626; }
+
+    .visual-panel {
+      border:1px solid #dde5f0;
+      border-radius:12px;
+      background:#fff;
+      overflow:hidden;
+    }
+    .visual-head {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      padding:14px 16px;
+      border-bottom:1px solid #dde5f0;
+      background:#f8fafc;
+    }
+    .visual-title {
+      font-weight:900;
+      color:#0f172a;
+    }
+    .filter-row {
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .filter-btn {
+      border:1px solid #cbd5e1;
+      background:#fff;
+      color:#334155;
+      border-radius:999px;
+      padding:7px 12px;
+      font-size:13px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .filter-btn.active {
+      background:#1f4394;
+      border-color:#1f4394;
+      color:#fff;
+    }
+
+    .matrix-wrap { overflow:auto; max-height:520px; }
+    .matrix-table {
+      width:100%;
+      min-width:1050px;
+      border-collapse:collapse;
+      table-layout:fixed;
+    }
+    .matrix-table th,
+    .matrix-table td {
+      border:1px solid #e2e8f0;
+      padding:10px 8px;
+      text-align:center;
+      vertical-align:middle;
+      font-size:13px;
+    }
+    .matrix-table th {
+      position:sticky;
+      top:0;
+      z-index:2;
+      background:#edf3ff;
+      color:#123f91;
+      font-weight:900;
+    }
+    .matrix-table th.name-col,
+    .matrix-table td.name-col {
+      position:sticky;
+      left:0;
+      z-index:3;
+      background:#fff;
+      font-weight:900;
+      color:#0f172a;
+      width:110px;
+    }
+    .matrix-table th.name-col { background:#edf3ff; z-index:4; }
+    .matrix-table th.sheet-col,
+    .matrix-table td.sheet-col {
+      width:120px;
+      color:#64748b;
+    }
+    .matrix-table td.ok {
+      background:#f8fafc;
+      color:#94a3b8;
+    }
+    .matrix-table td.error-meal {
+      background:#fff7ed;
+      color:#b45309;
+      font-weight:800;
+    }
+    .matrix-table td.error-bath {
+      background:#eff6ff;
+      color:#1d4ed8;
+      font-weight:800;
+    }
+    .matrix-table td.error-both {
+      background:#fee2e2;
+      color:#dc2626;
+      font-weight:900;
+    }
+    .cell-main { display:block; font-size:13px; }
+    .cell-sub { display:block; margin-top:3px; font-size:11px; color:inherit; opacity:.8; }
+
+    .result-actions {
+      display:flex;
+      justify-content:space-between;
+      align-items:center;
+      gap:12px;
+      margin-top:2px;
+    }
+    .result-table-wrap {
+      overflow:auto;
+      border:1px solid #dde5f0;
+      border-radius:12px;
+      background:#fff;
+      max-height:560px;
+    }
+    .result-table {
+      width:100%;
+      min-width:980px;
+      border-collapse:collapse;
+    }
+    .result-table th,
+    .result-table td {
+      border:1px solid #e2e8f0;
+      padding:10px;
+      text-align:center;
+      vertical-align:middle;
+      font-size:13px;
+    }
+    .result-table th {
+      position:sticky;
+      top:0;
+      background:#edf3ff;
+      color:#123f91;
+      font-weight:900;
+      z-index:1;
+    }
+    .badge {
+      display:inline-block;
+      border-radius:999px;
+      padding:4px 9px;
+      font-size:12px;
+      font-weight:900;
+    }
+    .badge.meal { background:#fef3c7; color:#92400e; }
+    .badge.bath { background:#dbeafe; color:#1e40af; }
+
+    .empty-box {
+      display:none;
+      border:1px solid #bbf7d0;
+      background:#ecfdf5;
+      color:#166534;
+      border-radius:12px;
+      padding:18px;
+      font-weight:900;
+      text-align:center;
+    }
+    .error-text {
+      display:none;
+      color:#dc2626;
+      font-weight:900;
+      margin-top:12px;
+    }
+
+    @media (max-width:900px) {
+      .check-action-row { grid-template-columns:1fr; }
+      .summary-grid { grid-template-columns:repeat(2, minmax(120px,1fr)); }
+    }
   </style>
 </head>
 <body>
@@ -100,67 +321,106 @@
     </aside>
 
     <main class="content-area">
-      <div class="content-box page-wrap">
-        <div class="page-title">제공기록지 식사·목욕 검증</div>
-        <div class="page-desc">
-          장기요양급여 제공기록지 엑셀 파일을 업로드하면 모든 시트를 검사하여<br />
-          식사량이 정량이 아닌 건과 목욕 방법이 목욕의자(샤워식)이 아닌 건만 찾아냅니다.
+      <div class="content-box">
+        <div class="page-header">
+          <h2>제공기록지 식사·목욕 검증</h2>
+          <p class="page-subtitle">
+            장기요양급여 제공기록지 엑셀 파일을 업로드하면 모든 시트를 검사하여 식사량과 목욕 방법 오류를 시각화합니다.
+          </p>
         </div>
 
-        <section class="upload-box">
-          <div class="file-row">
-            <input type="file" id="excelFile" accept=".xlsx,.xls" />
-            <button class="btn" id="checkBtn">검사 시작</button>
-            <button class="btn secondary" id="resetBtn" type="button">초기화</button>
+        <section class="check-layout">
+          <div class="check-action-row">
+            <div class="check-field">
+              <label for="excelFile">장기요양급여 제공기록지 파일</label>
+              <input type="file" id="excelFile" accept=".xlsx,.xls" />
+            </div>
+            <button class="check-btn" id="checkBtn" type="button">검사 시작</button>
+            <button class="check-btn danger" id="resetBtn" type="button">초기화</button>
           </div>
 
-          <div class="rule-box">
-            <strong>검사 기준</strong><br />
-            식사: 점심/저녁 기록에 식사 내용이 있으면 반드시 <strong>정량</strong>이 포함되어야 합니다.<br />
-            목욕: 목욕 시간이 있거나 목욕 방법이 적혀 있으면 방법은 반드시 <strong>목욕의자(샤워식)</strong>이어야 합니다.<br />
-            오류가 없는 시트는 결과에 표시하지 않습니다.
+          <div class="guide-box">
+            <h3>💡 식사·목욕 검증 기준 안내</h3>
+            <ul>
+              <li><strong>식사:</strong> 점심/저녁 기록에 식사 내용이 있으면 반드시 <strong>정량</strong>이 포함되어야 정상입니다.</li>
+              <li><strong>목욕:</strong> 목욕 시간이 있거나 목욕 방법이 적혀 있으면 반드시 <strong>목욕의자(샤워식)</strong>이어야 정상입니다.</li>
+              <li><strong>표시 방식:</strong> 오류가 있는 날짜만 색상으로 표시하며, 오류가 없는 시트는 오류 목록에 표시하지 않습니다.</li>
+            </ul>
           </div>
 
           <div class="progress-area" id="progressArea">
             <div class="progress-text" id="progressText">검사 준비 중...</div>
             <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
           </div>
+
           <div class="error-text" id="errorText"></div>
-        </section>
 
-        <section class="summary-grid">
-          <div class="summary-card"><div class="label">검사 시트</div><div class="value" id="sheetCount">0</div></div>
-          <div class="summary-card"><div class="label">식사 오류</div><div class="value" id="mealErrorCount">0</div></div>
-          <div class="summary-card"><div class="label">목욕 오류</div><div class="value" id="bathErrorCount">0</div></div>
-          <div class="summary-card"><div class="label">총 오류</div><div class="value" id="totalErrorCount">0</div></div>
-        </section>
+          <section class="summary-grid">
+            <div class="summary-card">
+              <div class="label">검사 시트</div>
+              <div class="value" id="sheetCount">0</div>
+            </div>
+            <div class="summary-card meal">
+              <div class="label">식사 오류</div>
+              <div class="value" id="mealErrorCount">0</div>
+            </div>
+            <div class="summary-card bath">
+              <div class="label">목욕 오류</div>
+              <div class="value" id="bathErrorCount">0</div>
+            </div>
+            <div class="summary-card total">
+              <div class="label">총 오류</div>
+              <div class="value" id="totalErrorCount">0</div>
+            </div>
+          </section>
 
-        <div class="empty-box" id="emptyBox">오류가 없습니다. 식사와 목욕 기록이 기준에 맞게 작성되어 있습니다.</div>
+          <div class="empty-box" id="emptyBox">오류가 없습니다. 식사와 목욕 기록이 기준에 맞게 작성되어 있습니다.</div>
 
-        <section id="resultSection" style="display:none;">
-          <div class="result-actions">
-            <strong>오류 목록</strong>
-            <button class="btn secondary" id="downloadBtn" type="button">오류 목록 CSV 다운로드</button>
-          </div>
-          <div class="result-table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>시트명</th>
-                  <th>수급자명</th>
-                  <th>날짜</th>
-                  <th>항목</th>
-                  <th>현재값</th>
-                  <th>정상값</th>
-                  <th>오류 내용</th>
-                </tr>
-              </thead>
-              <tbody id="resultBody"></tbody>
-            </table>
-          </div>
+          <section class="visual-panel" id="visualSection" style="display:none;">
+            <div class="visual-head">
+              <div class="visual-title">수급자별 오류 시각화</div>
+              <div class="filter-row">
+                <button type="button" class="filter-btn active" data-filter="all">전체</button>
+                <button type="button" class="filter-btn" data-filter="meal">식사 오류</button>
+                <button type="button" class="filter-btn" data-filter="bath">목욕 오류</button>
+                <button type="button" class="filter-btn" data-filter="both">중복 오류</button>
+              </div>
+            </div>
+            <div class="matrix-wrap">
+              <table class="matrix-table">
+                <thead id="matrixHead"></thead>
+                <tbody id="matrixBody"></tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="resultSection" style="display:none;">
+            <div class="result-actions">
+              <strong>오류 목록</strong>
+              <button class="check-btn secondary" id="downloadBtn" type="button">오류 목록 CSV 다운로드</button>
+            </div>
+            <div class="result-table-wrap">
+              <table class="result-table">
+                <thead>
+                  <tr>
+                    <th>시트명</th>
+                    <th>수급자명</th>
+                    <th>날짜</th>
+                    <th>항목</th>
+                    <th>현재값</th>
+                    <th>정상값</th>
+                    <th>오류 내용</th>
+                  </tr>
+                </thead>
+                <tbody id="resultBody"></tbody>
+              </table>
+            </div>
+          </section>
         </section>
       </div>
     </main>
   </div>
+
+  <script src="../js/main.js"></script>
 </body>
 </html>
