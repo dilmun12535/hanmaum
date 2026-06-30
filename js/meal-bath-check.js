@@ -183,7 +183,54 @@
   }
 
   function isBathMethodNormal(value) {
-    return compact(value) === "목욕의자(샤워식)";
+    const text = compact(value);
+    return text === "목욕의자(샤워식)";
+  }
+
+
+  function findBathTimeRow(rows) {
+    // 1순위: 같은 행에 목욕 + 소요시간이 모두 있는 경우
+    let row = findLabelRow(rows, ["목욕", "소요시간"]);
+    if (row >= 0) return row;
+
+    // 2순위: 소요시간만 있는 경우
+    row = findLabelRow(rows, ["소요시간"]);
+    if (row >= 0) return row;
+
+    // 3순위: 시간만 있는 경우
+    row = findLabelRow(rows, ["시간"]);
+    if (row >= 0) return row;
+
+    return -1;
+  }
+
+  function findBathMethodRow(rows, bathTimeRow) {
+    // 보통 목욕 방법은 소요시간 바로 아래 행입니다.
+    if (bathTimeRow >= 0) {
+      for (let r = bathTimeRow; r <= Math.min(rows.length - 1, bathTimeRow + 3); r++) {
+        const rowText = compact((rows[r] || []).join(" "));
+        if (rowText.includes("방법")) return r;
+      }
+
+      if (bathTimeRow + 1 < rows.length) return bathTimeRow + 1;
+    }
+
+    // fallback: 전체에서 '방법' 행 검색
+    return findExactLabelRow(rows, "방법");
+  }
+
+  function getBathCellValue(rows, row, col) {
+    if (row < 0) return "";
+
+    const candidates = [
+      getCell(rows, row, col),
+      getCell(rows, row, col + 1),
+      getCell(rows, row, col + 2),
+      getCell(rows, row, col - 1),
+      getCell(rows, row, col - 2),
+    ];
+
+    return candidates.find((value) => normalize(value)) || "";
   }
 
   function analyzeSheet(workbook, sheetName) {
@@ -194,8 +241,11 @@
 
     const lunchRow = findExactLabelRow(rows, "점심");
     const dinnerRow = findExactLabelRow(rows, "저녁");
-    const bathTimeRow = findLabelRow(rows, ["목욕", "소요시간"]);
-    const bathMethodRow = findExactLabelRow(rows, "방법");
+
+    // 목욕 행은 엑셀 파일마다 '목욕'과 '소요시간'이 같은 행에 있거나,
+    // 병합셀 때문에 '소요시간'만 잡히는 경우가 있어 여러 방식으로 찾습니다.
+    const bathTimeRow = findBathTimeRow(rows);
+    const bathMethodRow = findBathMethodRow(rows, bathTimeRow);
 
     const errors = [];
     const dayMap = {};
@@ -228,8 +278,8 @@
         }
       });
 
-      const bathTime = bathTimeRow >= 0 ? getMergedLikeValue(rows, bathTimeRow, col) : "";
-      const bathMethod = bathMethodRow >= 0 ? getMergedLikeValue(rows, bathMethodRow, col) : "";
+      const bathTime = bathTimeRow >= 0 ? getBathCellValue(rows, bathTimeRow, col) : "";
+      const bathMethod = bathMethodRow >= 0 ? getBathCellValue(rows, bathMethodRow, col) : "";
 
       if (hasBathTime(bathTime) || hasBathMethod(bathMethod)) {
         if (!bathMethod || !isBathMethodNormal(bathMethod)) {
