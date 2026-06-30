@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>제공기록지 식사·목욕 검증</title>
+
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="../css/dashboard.css" />
+
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="../js/meal-bath-check.js"></script>
+
+  <style>
+    .page-wrap { padding: 24px; }
+    .page-title { font-size: 24px; font-weight: 700; margin-bottom: 8px; }
+    .page-desc { color: #666; margin-bottom: 20px; line-height: 1.6; }
+    .upload-box {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 18px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+    }
+    .rule-box {
+      background: #f8fafc;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-top: 14px;
+      line-height: 1.7;
+      font-size: 14px;
+    }
+    .file-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .file-row input[type="file"] { padding: 9px; border: 1px solid #ccc; border-radius: 8px; background: #fff; }
+    .btn {
+      border: none;
+      border-radius: 8px;
+      padding: 10px 15px;
+      cursor: pointer;
+      background: #2563eb;
+      color: #fff;
+      font-weight: 700;
+    }
+    .btn.secondary { background: #374151; }
+    .btn:disabled { background: #aaa; cursor: not-allowed; }
+    .progress-area { display: none; margin-top: 16px; }
+    .progress-text { margin-bottom: 8px; font-size: 14px; color: #444; }
+    .progress-bar { width: 100%; height: 16px; background: #e5e7eb; border-radius: 999px; overflow: hidden; }
+    .progress-fill { width: 0%; height: 100%; background: #2563eb; transition: width 0.15s; }
+    .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 12px; margin: 18px 0; }
+    .summary-card { background: #fff; border: 1px solid #ddd; border-radius: 12px; padding: 16px; }
+    .summary-card .label { color: #666; font-size: 13px; margin-bottom: 7px; }
+    .summary-card .value { font-size: 24px; font-weight: 800; }
+    .result-actions { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 12px 0; }
+    .result-table-wrap { overflow: auto; background: #fff; border: 1px solid #ddd; border-radius: 12px; }
+    table { width: 100%; border-collapse: collapse; min-width: 900px; }
+    th, td { border-bottom: 1px solid #eee; padding: 10px; text-align: left; vertical-align: top; font-size: 14px; }
+    th { background: #f3f4f6; position: sticky; top: 0; z-index: 1; }
+    tr:hover td { background: #f9fafb; }
+    .badge { display: inline-block; border-radius: 999px; padding: 4px 8px; font-size: 12px; font-weight: 700; }
+    .badge.meal { background: #fef3c7; color: #92400e; }
+    .badge.bath { background: #dbeafe; color: #1e40af; }
+    .empty-box { background: #ecfdf5; border: 1px solid #bbf7d0; border-radius: 12px; padding: 18px; color: #166534; font-weight: 700; display: none; }
+    .error-text { color: #dc2626; font-weight: 700; margin-top: 10px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo-area">
+      <img src="../images/logo.png" alt="로고" class="logo-img" />
+    </div>
+    <div class="topbar-right">
+      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
+      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
+      <div class="user-area">
+        <div class="user-badge">사회복지사</div>
+        <p class="date-text" id="todayText"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <aside class="sidebar">
+      <a href="attendance.html" class="menu-item">출석관리</a>
+      <a href="bath-check.html" class="menu-item">목욕 확인</a>
+      <a href="physical-check.html" class="menu-item">물리치료 확인</a>
+      <a href="toilet-check.html" class="menu-item">화장실 확인</a>
+      <a href="cognitive-check.html" class="menu-item">인지활동 확인</a>
+      <a href="meal-check.html" class="menu-item">식사 확인</a>
+      <a href="nursing-check.html" class="menu-item">간호기록 확인</a>
+      <a href="medication-check.html" class="menu-item">투약 확인</a>
+      <a href="meal-bath-check.html" class="menu-item active">식사·목욕 검증</a>
+    </aside>
+
+    <main class="content page-wrap">
+      <div class="page-title">제공기록지 식사·목욕 검증</div>
+      <div class="page-desc">
+        장기요양급여 제공기록지 엑셀 파일을 업로드하면 모든 시트를 검사하여<br />
+        식사량이 정량이 아닌 건과 목욕 방법이 목욕의자(샤워식)이 아닌 건만 찾아냅니다.
+      </div>
+
+      <section class="upload-box">
+        <div class="file-row">
+          <input type="file" id="excelFile" accept=".xlsx,.xls" />
+          <button class="btn" id="checkBtn">검사 시작</button>
+          <button class="btn secondary" id="resetBtn" type="button">초기화</button>
+        </div>
+
+        <div class="rule-box">
+          <strong>검사 기준</strong><br />
+          식사: 점심/저녁 기록에 식사 내용이 있으면 반드시 <strong>정량</strong>이 포함되어야 합니다.<br />
+          목욕: 목욕 시간이 있거나 목욕 방법이 적혀 있으면 방법은 반드시 <strong>목욕의자(샤워식)</strong>이어야 합니다.<br />
+          오류가 없는 시트는 결과에 표시하지 않습니다.
+        </div>
+
+        <div class="progress-area" id="progressArea">
+          <div class="progress-text" id="progressText">검사 준비 중...</div>
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+        <div class="error-text" id="errorText"></div>
+      </section>
+
+      <section class="summary-grid">
+        <div class="summary-card"><div class="label">검사 시트</div><div class="value" id="sheetCount">0</div></div>
+        <div class="summary-card"><div class="label">식사 오류</div><div class="value" id="mealErrorCount">0</div></div>
+        <div class="summary-card"><div class="label">목욕 오류</div><div class="value" id="bathErrorCount">0</div></div>
+        <div class="summary-card"><div class="label">총 오류</div><div class="value" id="totalErrorCount">0</div></div>
+      </section>
+
+      <div class="empty-box" id="emptyBox">오류가 없습니다. 식사와 목욕 기록이 기준에 맞게 작성되어 있습니다.</div>
+
+      <section id="resultSection" style="display:none;">
+        <div class="result-actions">
+          <strong>오류 목록</strong>
+          <button class="btn secondary" id="downloadBtn" type="button">오류 목록 CSV 다운로드</button>
+        </div>
+        <div class="result-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>시트명</th>
+                <th>수급자명</th>
+                <th>날짜</th>
+                <th>항목</th>
+                <th>현재값</th>
+                <th>정상값</th>
+                <th>오류 내용</th>
+              </tr>
+            </thead>
+            <tbody id="resultBody"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
