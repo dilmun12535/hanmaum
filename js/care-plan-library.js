@@ -1,331 +1,173 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_AkgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>요양급여제공계획서 보관함</title>
 
-// HTML 내부 변수와 부딪히지 않도록 스크립트 전용 고유 이름으로 안전하게 요소를 매칭합니다.
-const elPlanFileSelector = document.getElementById("planFile");
-const elPlanDateSelector = document.getElementById("planWrittenDate");
-const elPlanUploadTrigger = document.getElementById("uploadPlanBtn");
-const elPlanDeleteTrigger = document.getElementById("deleteSelectedPlanBtn");
-const elPlanSelectAllTrigger = document.getElementById("selectAllPlanCheckbox");
-const elPlanTableBodyContainer = document.getElementById("planLibraryTableBody");
-
-// 브라우저 하드 대신 메모리에만 안전하게 들고 있도록 전역 변수로 관리합니다.
-let carePlanLibrary = [];
-
-if (elPlanDateSelector) {
-  elPlanDateSelector.setAttribute("max", "9999-12-31");
-
-  elPlanDateSelector.addEventListener("input", () => {
-    const value = elPlanDateSelector.value;
-    if (value && value.length > 10) {
-      elPlanDateSelector.value = value.slice(0, 10);
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="../css/dashboard.css" />
+  <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
     }
-  });
-}
 
-function normalizeText(value) {
-  return String(value || "").replace(/\s/g, "").trim();
-}
-
-function extractInfoFromFileName(fileName) {
-  const nameOnly = fileName.replace(/\.(xlsx|xls)$/i, "").trim();
-  const match = nameOnly.match(/^(L\d+)\s+(.+?)\s+수급자\s+급여제공계획/i);
-
-  if (match) {
-    return {
-      longTermNumber: match[1],
-      recipientName: match[2].trim()
-    };
-  }
-
-  const parts = nameOnly.split(/\s+/);
-  return {
-    longTermNumber: parts[0] || "",
-    recipientName: parts[1] || ""
-  };
-}
-
-function getCareItemCount(rows) {
-  return rows.filter((row) => {
-    const text = normalizeText(JSON.stringify(row));
-    return text.length > 0;
-  }).length;
-}
-
-function normalizeDateString(value) {
-  if (!value) return "";
-  const text = String(value).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  if (text.includes("T")) return text.split("T")[0];
-  return text;
-}
-
-function formatDateValue(value) {
-  const dateText = normalizeDateString(value);
-  return dateText || "-";
-}
-
-async function loadLibrary() {
-  try {
-    const response = await fetch(API_URL, {
-      method: "GET",
-      redirect: "follow"
-    });
-
-    const text = await response.text();
-    carePlanLibrary = JSON.parse(text);
-
-    carePlanLibrary = carePlanLibrary.map((plan) => ({
-      ...plan,
-      writtenDate: normalizeDateString(plan.writtenDate),
-      checked: false
-    }));
-
-    // [핵심 해결 포인트]: QuotaExceededError를 유발하던 localStorage.setItem("carePlanLibrary", ...) 코드를 완벽히 삭제했습니다!
-    // 이제 용량 한계에 제한을 받지 않고 무제한으로 어르신 데이터를 불러올 수 있습니다.
-
-    if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
-    renderLibrary();
-  } catch (error) {
-    console.error("구글시트 불러오기 오류:", error);
-    alert("구글시트 데이터를 불러오지 못했습니다.");
-  }
-}
-
-async function addPlanToSheet(plan) {
-  const loginUser = sessionStorage.getItem("loginUser") || localStorage.getItem("loginUser") || "알 수 없음";
-
-  await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      action: "add",
-      id: String(plan.id),
-      longTermNumber: plan.longTermNumber,
-      recipientName: plan.recipientName,
-      writtenDate: plan.writtenDate,
-      fileName: plan.fileName,
-      itemCount: plan.itemCount,
-      uploadedAt: plan.uploadedAt,
-      uploadedBy: loginUser,
-      loginUser: loginUser,
-      rows: plan.rows || []
-    })
-  });
-}
-
-async function deletePlansFromSheet(ids) {
-  await fetch(API_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      action: "delete",
-      ids: ids.map(String)
-    })
-  });
-}
-
-function renderLibrary() {
-  if (!elPlanTableBodyContainer) return;
-  elPlanTableBodyContainer.innerHTML = "";
-
-  if (carePlanLibrary.length === 0) {
-    elPlanTableBodyContainer.innerHTML = `
-      <tr class="empty-row">
-        <td></td>
-        <td colspan="7" style="text-align:center; padding: 25px 0;">
-          등록된 급여제공계획서가 없습니다.
-        </td>
-      </tr>
-    `;
-    if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
-    return;
-  }
-
-  const sortedList = [...carePlanLibrary].sort((a, b) => {
-    const nameA = String(a.recipientName || "");
-    const nameB = String(b.recipientName || "");
-
-    if (nameA === nameB) {
-      const dateA = normalizeDateString(a.writtenDate);
-      const dateB = normalizeDateString(b.writtenDate);
-      return dateB.localeCompare(dateA);
+    /* 한마음 전산 전체 메뉴와 100% 일치하도록 일체형 안내상자 클래스를 정의합니다 */
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
-    return nameA.localeCompare(nameB, "ko");
-  });
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="logo-area">
+      <img src="../images/logo.png" alt="로고" class="logo-img" />
+    </div>
 
-  sortedList.forEach((plan) => {
-    const row = document.createElement("tr");
+    <div class="topbar-right">
+      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
+      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
 
-    row.innerHTML = `
-      <td class="checkbox-col" style="text-align:center;">
-        <input
-          type="checkbox"
-          class="plan-checkbox"
-          data-id="${plan.id}"
-          ${plan.checked ? "checked" : ""}
-        />
-      </td>
-      <td>${plan.longTermNumber || "-"}</td>
-      <td>${plan.recipientName || "-"}</td>
-      <td>${formatDateValue(plan.writtenDate)}</td>
-      <td style="text-align:left;">${plan.fileName || "-"}</td>
-      <td>${plan.itemCount || 0}개</td>
-      <td>${plan.uploadedAt || "-"}</td>
-      <td>${plan.uploadedBy || "알 수 없음"}</td>
-    `;
+      <div class="user-area">
+        <div class="user-badge">사회복지사</div>
+        <p class="date-text" id="todayText"></p>
+      </div>
+    </div>
+  </div>
 
-    elPlanTableBodyContainer.appendChild(row);
-  });
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="menu-title">메뉴</div>
+      <nav class="menu-list">
+        <a href="./care-plan-library.html" class="menu-item active">요양급여제공계획서 보관함</a>
+        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
+        <a href="./attendance.html" class="menu-item">출석관리</a>
+        <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a>
+        <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
+        <a href="./meal-check.html" class="menu-item">식사 제공 확인</a>
+        <a href="./meal-bath-check.html" class="menu-item">식사·목욕 검증</a>
+        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
+        <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a>
+        <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a>
+        <a href="./medication-check.html" class="menu-item">투약 확인</a>
+      </nav>
+    </aside>
 
-  bindCheckboxEvents();
-}
+    <main class="content-area">
+      <div class="content-box">
+        <div class="page-header">
+          <h2>요양급여제공계획서 보관함</h2>
+          <p>수급자별 급여제공계획서를 작성일자 기준으로 보관합니다.</p>
+        </div>
 
-function bindCheckboxEvents() {
-  const checkboxes = document.querySelectorAll(".plan-checkbox");
+        <div class="page-actions">
+          <div class="date-group">
+            <label for="planFile">계획서 파일</label>
+            <input type="file" id="planFile" accept=".xlsx,.xls" />
+          </div>
 
-  checkboxes.forEach((checkbox) => {
-    checkbox.addEventListener("change", (event) => {
-      const id = String(event.target.dataset.id);
+          <div class="date-group">
+            <label for="planWrittenDate">급여제공계획서 작성일자</label>
+            <input
+              type="date"
+              id="planWrittenDate"
+              max="9999-12-31"
+            />
+          </div>
 
-      carePlanLibrary = carePlanLibrary.map((plan) => {
-        if (String(plan.id) === id) {
-          return {
-            ...plan,
-            checked: event.target.checked
-          };
-        }
-        return plan;
-      });
+          <div class="action-buttons">
+            <button type="button" class="primary-btn" id="uploadPlanBtn">
+              계획서 등록
+            </button>
+            <button type="button" class="danger-btn" id="deleteSelectedPlanBtn">
+              선택 삭제
+            </button>
+          </div>
+        </div>
 
-      if (elPlanSelectAllTrigger && !event.target.checked) {
-        elPlanSelectAllTrigger.checked = false;
+        <div class="unified-notice-box">
+          <h5 class="unified-notice-title">
+            💡 계획서 파일 등록 기준 안내
+          </h5>
+          <ul class="unified-notice-list">
+            <li><b style="color: #1e293b;">파일명 규격 예시:</b> <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong></li>
+            <li><b style="color: #1e293b;">데이터 자동 파싱:</b> 시스템이 파일명에서 장기요양번호(인정번호)와 수급자명을 자동으로 판독하여 분리 저장합니다.</li>
+            <li><b style="color: #1e293b;">마스터 매칭 데이터:</b> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</li>
+          </ul>
+        </div>
+
+        <div class="table-wrap">
+          <table class="info-table" style="border-collapse: collapse; width: 100%;">
+            <thead>
+              <tr>
+                <th class="checkbox-col" style="border: 1px solid #e2e8f0; width: 40px;">
+                  <input type="checkbox" id="selectAllPlanCheckbox" />
+                </th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">장기요양번호</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">작성일자</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">파일명</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">급여 항목 수</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드일시</th>
+                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드자</th>
+              </tr>
+            </thead>
+
+            <tbody id="planLibraryTableBody">
+              <tr class="empty-row">
+                <td colspan="8" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">
+                  등록된 급여제공계획서가 없습니다.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../js/main.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="../js/care-plan-library.js"></script>
+
+  <script>
+    const planWrittenDateInput = document.getElementById("planWrittenDate");
+
+    planWrittenDateInput.addEventListener("input", () => {
+      const value = planWrittenDateInput.value;
+
+      if (value.length > 10) {
+        planWrittenDateInput.value = value.slice(0, 10);
       }
     });
-  });
-}
-
-if (elPlanUploadTrigger) {
-  elPlanUploadTrigger.addEventListener("click", () => {
-    if (!elPlanFileSelector || !elPlanDateSelector) return;
-    const file = elPlanFileSelector.files[0];
-    const writtenDate = normalizeDateString(elPlanDateSelector.value);
-
-    if (!file) {
-      alert("급여제공계획서 파일을 선택해주세요.");
-      return;
-    }
-
-    if (!writtenDate) {
-      alert("급여제공계획서 작성일자를 선택해주세요.");
-      return;
-    }
-
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(writtenDate)) {
-      alert("작성일자는 YYYY-MM-DD 형식으로 입력해주세요.");
-      return;
-    }
-
-    const year = Number(writtenDate.slice(0, 4));
-    if (year < 1000 || year > 9999) {
-      alert("작성일자의 연도는 4자리로 입력해주세요.");
-      return;
-    }
-
-    const fileInfo = extractInfoFromFileName(file.name);
-    if (!fileInfo.longTermNumber || !fileInfo.recipientName) {
-      alert("파일명에서 장기요양번호와 수급자명을 확인하지 못했습니다. 파일명을 확인해주세요.");
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = async (event) => {
-      try {
-        const data = new Uint8Array(event.target.result);
-        const workbook = XLSX.read(data, { type: "array" });
-        const firstSheetName = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheetName];
-
-        const rows = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
-        const loginUser = sessionStorage.getItem("loginUser") || localStorage.getItem("loginUser") || "알 수 없음";
-
-        const newPlan = {
-          id: Date.now(),
-          longTermNumber: fileInfo.longTermNumber,
-          recipientName: fileInfo.recipientName,
-          writtenDate: writtenDate,
-          fileName: file.name,
-          uploadedAt: new Date().toLocaleString("ko-KR"),
-          uploadedBy: loginUser,
-          itemCount: getCareItemCount(rows),
-          rows,
-          checked: false
-        };
-
-        alert("구글 시트에 데이터를 등록하는 중입니다. 잠시만 대기해 주세요...");
-        await addPlanToSheet(newPlan);
-
-        elPlanFileSelector.value = "";
-        elPlanDateSelector.value = "";
-
-        alert("급여제공계획서가 구글시트에 등록되었습니다.");
-
-        setTimeout(() => {
-          loadLibrary();
-        }, 1000);
-      } catch (error) {
-        console.error("등록 오류:", error);
-        alert("등록 중 오류가 발생했습니다.");
-      }
-    };
-
-    reader.readAsArrayBuffer(file);
-  });
-}
-
-if (elPlanSelectAllTrigger) {
-  elPlanSelectAllTrigger.addEventListener("change", (event) => {
-    carePlanLibrary = carePlanLibrary.map((plan) => ({
-      ...plan,
-      checked: event.target.checked
-    }));
-
-    renderLibrary();
-  });
-}
-
-if (elPlanDeleteTrigger) {
-  elPlanDeleteTrigger.addEventListener("click", async () => {
-    const selectedPlans = carePlanLibrary.filter((plan) => plan.checked);
-
-    if (selectedPlans.length === 0) {
-      alert("삭제할 계획서를 선택해주세요.");
-      return;
-    }
-
-    const ok = confirm(`선택한 ${selectedPlans.length}개의 계획서를 삭제하시겠습니까?`);
-    if (!ok) return;
-
-    try {
-      const ids = selectedPlans.map((plan) => plan.id);
-      alert("구글 시트에서 데이터를 삭제 중입니다...");
-
-      await deletePlansFromSheet(ids);
-      alert("삭제되었습니다.");
-
-      setTimeout(() => {
-        loadLibrary();
-      }, 1000);
-    } catch (error) {
-      console.error("삭제 오류:", error);
-      alert("삭제 중 오류가 발생했습니다.");
-    }
-  });
-}
-
-// 라이브러리 목록 최초 실행
-loadLibrary();
+  </script>
+</body>
+</html>
