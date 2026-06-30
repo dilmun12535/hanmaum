@@ -4,15 +4,67 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>월별 어르신 수가 보관함</title>
+
   <link rel="stylesheet" href="../css/common.css" />
   <link rel="stylesheet" href="../css/dashboard.css" />
+
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script defer src="../js/monthly-fee-library.js"></script>
+
   <style>
-    .fee-wrap{padding:24px;max-width:1440px;margin:0 auto}.page-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:18px}.page-title h1{margin:0 0 6px;font-size:26px}.page-title p{margin:0;color:#667085}.upload-card,.summary-card,.table-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}.control-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.month-input{height:42px;border:1px solid #d0d5dd;border-radius:10px;padding:0 12px}.file-label{display:inline-flex;align-items:center;gap:8px;height:42px;border:1px dashed #98a2b3;border-radius:10px;padding:0 14px;cursor:pointer;background:#f9fafb;max-width:360px}.file-label input{display:none}.file-name{font-size:13px;color:#475467;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btn{height:42px;border:0;border-radius:10px;padding:0 15px;font-weight:700;cursor:pointer}.btn-primary{background:#2563eb;color:#fff}.btn-soft{background:#eef4ff;color:#1d4ed8}.btn-danger{background:#fee2e2;color:#b91c1c}.btn:disabled{opacity:.45;cursor:not-allowed}.check{display:flex;align-items:center;gap:6px;color:#475467;font-size:14px}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px}.summary-box{border-radius:14px;background:#f8fafc;padding:14px}.summary-box b{display:block;font-size:22px;margin-top:4px}.summary-box span{font-size:13px;color:#667085}.notice{padding:12px 14px;border-radius:12px;background:#fffbeb;color:#92400e;margin-top:12px;font-size:14px;display:none}.table-tools{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}.search-input{height:38px;border:1px solid #d0d5dd;border-radius:9px;padding:0 12px;min-width:240px}.table-scroll{overflow:auto;max-height:620px;border:1px solid #eef2f7;border-radius:12px}.fee-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;white-space:nowrap}.fee-table th{position:sticky;top:0;background:#f8fafc;z-index:1;color:#344054}.fee-table th,.fee-table td{border-bottom:1px solid #eef2f7;padding:10px 9px;text-align:left}.fee-table tr:hover td{background:#f9fafb}.empty{padding:40px;text-align:center;color:#98a2b3}.status{font-size:14px;color:#475467}.pill{display:inline-flex;border-radius:999px;background:#eef4ff;color:#1d4ed8;padding:4px 9px;font-weight:700;font-size:12px}@media(max-width:900px){.summary-grid{grid-template-columns:repeat(2,1fr)}.page-head{align-items:flex-start;flex-direction:column}}
-      #noticeBox{display:none!important;}
+    .fee-wrap{padding:24px;max-width:1440px;margin:0 auto}
+    .page-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:18px}
+    .page-title h1{margin:0 0 6px;font-size:26px}
+    .page-title p{margin:0;color:#667085}
+    .upload-card,.summary-card,.table-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}
+    .control-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    .month-input{height:42px;border:1px solid #d0d5dd;border-radius:10px;padding:0 12px;width:175px;box-sizing:border-box;background:#fff;cursor:pointer}
+    .file-label{display:inline-flex;align-items:center;gap:8px;height:42px;border:1px dashed #98a2b3;border-radius:10px;padding:0 14px;cursor:pointer;background:#f9fafb;width:235px;box-sizing:border-box}
+    .file-label input{display:none}
+    .file-label span:first-of-type{white-space:nowrap;font-weight:700}
+    .file-name{font-size:13px;color:#475467;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .btn{height:42px;border:0;border-radius:10px;padding:0 15px;font-weight:700;cursor:pointer}
+    .btn-primary{background:#2563eb;color:#fff}
+    .btn-soft{background:#eef4ff;color:#1d4ed8}
+    .btn-danger{background:#fee2e2;color:#b91c1c}
+    .btn:disabled{opacity:.45;cursor:not-allowed}
+    .check{display:flex;align-items:center;gap:6px;color:#475467;font-size:14px}
+    .summary-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px}
+    .summary-box{border-radius:14px;background:#f8fafc;padding:14px}
+    .summary-box b{display:block;font-size:22px;margin-top:4px}
+    .summary-box span{font-size:13px;color:#667085}
+    .notice{padding:12px 14px;border-radius:12px;background:#fffbeb;color:#92400e;margin-top:12px;font-size:14px;display:none}
+    .table-tools{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}
+    .search-input{height:38px;border:1px solid #d0d5dd;border-radius:9px;padding:0 12px;min-width:240px}
+    .table-scroll{overflow:auto;max-height:620px;border:1px solid #eef2f7;border-radius:12px}
+    .fee-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;white-space:nowrap}
+    .fee-table th{position:sticky;top:0;background:#f8fafc;z-index:1;color:#344054}
+    .fee-table th,.fee-table td{border-bottom:1px solid #eef2f7;padding:10px 9px;text-align:left}
+    .fee-table tr:hover td{background:#f9fafb}
+    .empty{padding:40px;text-align:center;color:#98a2b3}
+    .status{font-size:14px;color:#475467}
+    .pill{display:inline-flex;border-radius:999px;background:#eef4ff;color:#1d4ed8;padding:4px 9px;font-weight:700;font-size:12px}
+
+    .custom-month-picker{position:absolute;z-index:99999;width:310px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;box-shadow:0 12px 30px rgba(15,23,42,.14);padding:12px;box-sizing:border-box}
+    .custom-month-picker-header{display:flex;align-items:center;justify-content:space-between;height:34px;margin-bottom:8px}
+    .custom-month-picker-title{font-size:18px;font-weight:500;color:#334155;text-align:center;flex:1}
+    .custom-month-picker-nav{width:32px;height:32px;border:0;background:transparent;border-radius:8px;cursor:pointer;font-size:28px;line-height:28px;color:#475569;font-weight:300}
+    .custom-month-picker-nav:hover{background:#f1f5f9}
+    .custom-month-picker-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px 0}
+    .custom-month-picker-month{height:48px;border:1px solid transparent;background:#fff;border-radius:8px;cursor:pointer;font-size:14px;color:#334155}
+    .custom-month-picker-month:hover{background:#f8fafc;border-color:#cbd5e1}
+    .custom-month-picker-month.active{border-color:#94a3b8;background:#fff;color:#111827;font-weight:700}
+    .custom-month-picker-footer{display:flex;justify-content:space-between;align-items:center;margin-top:6px;padding-top:8px;border-top:1px solid #f1f5f9}
+    .custom-month-picker-link{border:0;background:transparent;color:#2563eb;cursor:pointer;font-size:13px;padding:6px 8px;border-radius:8px}
+    .custom-month-picker-link:hover{background:#eff6ff}
+
+    @media(max-width:900px){
+      .summary-grid{grid-template-columns:repeat(2,1fr)}
+      .page-head{align-items:flex-start;flex-direction:column}
+    }
   </style>
 </head>
+
 <body>
   <div class="topbar">
     <div class="logo-area"><img src="../images/logo.png" alt="로고" class="logo-img" /></div>
@@ -48,19 +100,21 @@
           <h1>월별 어르신 수가 보관함</h1>
           <p>월별 수가 파일을 업로드하면 구글시트 <b>월별어르신수가</b>에 저장되고 다른 확인 페이지에서 불러올 수 있습니다.</p>
         </div>
-        <button class="btn btn-soft" id="reloadBtn">새로고침</button>
+        <button class="btn btn-soft" id="reloadBtn" type="button">새로고침</button>
       </div>
 
       <section class="upload-card">
         <div class="control-row">
-          <input type="month" id="monthInput" class="month-input" />
+          <input type="text" id="monthInput" class="month-input" readonly placeholder="예: 2026-05" />
+
           <label class="file-label">
             <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
             <span>파일 선택</span><span class="file-name" id="fileName">선택된 파일 없음</span>
           </label>
+
           <label class="check"><input type="checkbox" id="replaceMonth" checked /> 같은 월 기존 자료 삭제 후 저장</label>
-          <button class="btn btn-primary" id="uploadBtn" disabled>업로드 저장</button>
-          <button class="btn btn-danger" id="deleteMonthBtn">선택 월 삭제</button>
+          <button class="btn btn-primary" id="uploadBtn" type="button" disabled>업로드 저장</button>
+          <button class="btn btn-danger" id="deleteMonthBtn" type="button">선택 월 삭제</button>
         </div>
         <div class="notice" id="noticeBox"></div>
       </section>
