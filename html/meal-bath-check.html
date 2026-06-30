@@ -1,88 +1,52 @@
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>월별 어르신 수가 보관함</title>
-  <link rel="stylesheet" href="../css/common.css" />
-  <link rel="stylesheet" href="../css/dashboard.css" />
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script defer src="../js/monthly-fee-library.js"></script>
-  <style>
-    .fee-wrap{padding:24px;max-width:1440px;margin:0 auto}.page-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:18px}.page-title h1{margin:0 0 6px;font-size:26px}.page-title p{margin:0;color:#667085}.upload-card,.summary-card,.table-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}.control-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}.month-input{height:42px;border:1px solid #d0d5dd;border-radius:10px;padding:0 12px}.file-label{display:inline-flex;align-items:center;gap:8px;height:42px;border:1px dashed #98a2b3;border-radius:10px;padding:0 14px;cursor:pointer;background:#f9fafb;max-width:360px}.file-label input{display:none}.file-name{font-size:13px;color:#475467;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.btn{height:42px;border:0;border-radius:10px;padding:0 15px;font-weight:700;cursor:pointer}.btn-primary{background:#2563eb;color:#fff}.btn-soft{background:#eef4ff;color:#1d4ed8}.btn-danger{background:#fee2e2;color:#b91c1c}.btn:disabled{opacity:.45;cursor:not-allowed}.check{display:flex;align-items:center;gap:6px;color:#475467;font-size:14px}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:12px}.summary-box{border-radius:14px;background:#f8fafc;padding:14px}.summary-box b{display:block;font-size:22px;margin-top:4px}.summary-box span{font-size:13px;color:#667085}.notice{padding:12px 14px;border-radius:12px;background:#fffbeb;color:#92400e;margin-top:12px;font-size:14px;display:none}.table-tools{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:12px}.search-input{height:38px;border:1px solid #d0d5dd;border-radius:9px;padding:0 12px;min-width:240px}.table-scroll{overflow:auto;max-height:620px;border:1px solid #eef2f7;border-radius:12px}.fee-table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px;white-space:nowrap}.fee-table th{position:sticky;top:0;background:#f8fafc;z-index:1;color:#344054}.fee-table th,.fee-table td{border-bottom:1px solid #eef2f7;padding:10px 9px;text-align:left}.fee-table tr:hover td{background:#f9fafb}.empty{padding:40px;text-align:center;color:#98a2b3}.status{font-size:14px;color:#475467}.pill{display:inline-flex;border-radius:999px;background:#eef4ff;color:#1d4ed8;padding:4px 9px;font-weight:700;font-size:12px}@media(max-width:900px){.summary-grid{grid-template-columns:repeat(2,1fr)}.page-head{align-items:flex-start;flex-direction:column}}
-  </style>
-</head>
-<body>
-  <div class="topbar">
-    <div class="logo-area"><img src="../images/logo.png" alt="로고" class="logo-img" /></div>
-    <div class="topbar-right">
-      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
-      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
-      <div class="user-area"><div class="user-badge">사회복지사</div><p class="date-text" id="todayText"></p></div>
+<!-- meal-bath-check.html 수정 부분 -->
+
+<style>
+/* 기존 CSS 대신 아래로 교체 */
+
+.check-action-row{
+    display:grid;
+    grid-template-columns:380px auto auto;
+    gap:12px;
+    align-items:end;
+    margin-top:22px;
+}
+
+.check-field input[type="file"]{
+    width:380px;
+    height:42px;
+    padding:6px 10px;
+    border:1px solid #d8dfec;
+    border-radius:10px;
+    background:#fff;
+    box-sizing:border-box;
+}
+
+@media (max-width:900px){
+    .check-action-row{
+        grid-template-columns:1fr;
+    }
+
+    .check-field input[type="file"]{
+        width:100%;
+    }
+}
+</style>
+
+<!-- HTML은 그대로 두고 아래 구조를 사용 -->
+
+<div class="check-action-row">
+
+    <div class="check-field">
+        <label for="excelFile">장기요양급여 제공기록지 파일</label>
+        <input type="file" id="excelFile" accept=".xlsx,.xls">
     </div>
-  </div>
 
-  <div class="main-layout">
-    <aside class="sidebar">
-      <a href="care-plan-library.html" class="menu-item">요양급여제공계획서 확인</a>
-      <a href="attendance-library.html" class="menu-item">출석관리</a>
-      <a href="monthly-fee-library.html" class="menu-item active">월별 어르신 수가</a>
-      <a href="bath-check.html" class="menu-item">목욕 확인</a>
-      <a href="physical-check.html" class="menu-item">물리치료 확인</a>
-      <a href="meal-check.html" class="menu-item">식사 확인</a>
-      <a href="nursing-check.html" class="menu-item">간호기록 확인</a>
-      <a href="medication-check.html" class="menu-item">투약 확인</a>
-    </aside>
+    <button class="check-btn" id="checkBtn" type="button">
+        검사 시작
+    </button>
 
-    <main class="content fee-wrap">
-      <div class="page-head">
-        <div class="page-title">
-          <h1>월별 어르신 수가 보관함</h1>
-          <p>월별 수가 파일을 업로드하면 구글시트 <b>월별어르신수가</b>에 저장되고 다른 확인 페이지에서 불러올 수 있습니다.</p>
-        </div>
-        <button class="btn btn-soft" id="reloadBtn">새로고침</button>
-      </div>
+    <button class="check-btn danger" id="resetBtn" type="button">
+        초기화
+    </button>
 
-      <section class="upload-card">
-        <div class="control-row">
-          <input type="month" id="monthInput" class="month-input" />
-          <label class="file-label">
-            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
-            <span>파일 선택</span><span class="file-name" id="fileName">선택된 파일 없음</span>
-          </label>
-          <label class="check"><input type="checkbox" id="replaceMonth" checked /> 같은 월 기존 자료 삭제 후 저장</label>
-          <button class="btn btn-primary" id="uploadBtn" disabled>업로드 저장</button>
-          <button class="btn btn-danger" id="deleteMonthBtn">선택 월 삭제</button>
-        </div>
-        <div class="notice" id="noticeBox"></div>
-      </section>
-
-      <section class="summary-card">
-        <div class="summary-grid">
-          <div class="summary-box"><span>조회 월</span><b id="summaryMonth">-</b></div>
-          <div class="summary-box"><span>어르신 수</span><b id="summaryRecipients">0명</b></div>
-          <div class="summary-box"><span>수가 행 수</span><b id="summaryRows">0건</b></div>
-          <div class="summary-box"><span>총 금액</span><b id="summaryAmount">0원</b></div>
-        </div>
-      </section>
-
-      <section class="table-card">
-        <div class="table-tools">
-          <div class="status" id="statusText">자료를 불러오세요.</div>
-          <input type="search" id="searchInput" class="search-input" placeholder="이름, 인정번호, 수가명 검색" />
-        </div>
-        <div class="table-scroll">
-          <table class="fee-table">
-            <thead>
-              <tr>
-                <th>월</th><th>수급자명</th><th>인정번호</th><th>생년월일</th><th>서비스구분</th><th>수가코드</th><th>수가명</th><th>수가</th><th>일수</th><th>금액</th>
-              </tr>
-            </thead>
-            <tbody id="tableBody"><tr><td colspan="10" class="empty">저장된 자료가 없습니다.</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-  </div>
-</body>
-</html>
+</div>
