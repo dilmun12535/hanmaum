@@ -21,6 +21,14 @@ window.addEventListener("DOMContentLoaded", () => {
     state.displayMode = "saved";
     loadMonthlyFee();
   });
+  ["viewSavedBtn", "viewSavedBtnMobile"].forEach((id) => {
+    const btn = $(id);
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      state.displayMode = "saved";
+      loadMonthlyFee();
+    });
+  });
   $("deleteMonthBtn").addEventListener("click", deleteMonth);
   $("searchInput").addEventListener("input", renderTable);
 
@@ -544,7 +552,7 @@ function renderSummary() {
 
   $("statusText").textContent = state.displayMode === "preview"
     ? `미리보기 ${rows.length.toLocaleString()}건 표시 중`
-    : `${rows.length.toLocaleString()}건 표시 중`;
+    : `저장된 자료 ${rows.length.toLocaleString()}건 표시 중`;
 }
 
 function renderTable() {
