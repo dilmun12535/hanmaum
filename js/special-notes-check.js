@@ -413,32 +413,32 @@
     setStatus("attendanceLibraryStatus", "출석관리 보관함 불러오는 중...", "warn");
     setStatus("feeLibraryStatus", "계획서/수가 보관함 불러오는 중...", "warn");
 
-    const counsel = await fetchAny(["getCounselList", "getCounsels", "getCounsel", "listCounsel", "counselList"]);
+    const counsel = await fetchAny(["listCounsel"]);
     state.libraries.counsel = counsel.rows.map(normalizeLibraryRow);
     if (state.libraries.counsel.length) {
       setStatus("counselLibraryStatus", `상담일지 ${state.libraries.counsel.length}건 연결됨`, "ok");
     } else {
-      setStatus("counselLibraryStatus", "상담일지 0건 또는 action 이름 확인 필요", "warn");
+      setStatus("counselLibraryStatus", "상담일지 0건", "warn");
     }
 
-    const attendance = await fetchAny(["getAttendanceList", "getAttendance", "listAttendance", "attendanceList"]);
+    const attendance = await fetchAny(["listAttendance"]);
     state.libraries.attendance = attendance.rows.map(normalizeLibraryRow);
     if (state.libraries.attendance.length) {
       setStatus("attendanceLibraryStatus", `출석관리 ${state.libraries.attendance.length}건 연결됨`, "ok");
     } else {
-      setStatus("attendanceLibraryStatus", "출석관리 0건 또는 action 이름 확인 필요", "warn");
+      setStatus("attendanceLibraryStatus", "출석관리 0건", "warn");
     }
 
-    const plan = await fetchAny(["getPlanList", "getPlans", "getPlan", "listPlan", "planList"]);
+    const plan = await fetchAny(["listPlan"]);
     state.libraries.plan = plan.rows.map(normalizeLibraryRow);
 
-    const fee = await fetchAny(["getMonthlyFeeList", "getMonthlyFee", "getFeeList", "monthlyFeeList"]);
+    const fee = await fetchAny(["listMonthlyFee"]);
     state.libraries.fee = fee.rows.map(normalizeLibraryRow);
 
     if (state.libraries.plan.length || state.libraries.fee.length) {
       setStatus("feeLibraryStatus", `계획서 ${state.libraries.plan.length}건 / 월별수가 ${state.libraries.fee.length}건 연결됨`, "ok");
     } else {
-      setStatus("feeLibraryStatus", "계획서/월별수가 0건 또는 action 이름 확인 필요", "warn");
+      setStatus("feeLibraryStatus", "계획서/월별수가 0건", "warn");
     }
   }
 
@@ -534,36 +534,6 @@
     return { planExists, meal, lunch, dinner, mealCount, bath, medication, text: allText };
   }
 
-  function parseWorkbook(file) {
-    return new Promise((resolve, reject) => {
-      if (!file) {
-        reject(new Error("파일이 없습니다."));
-        return;
-      }
-
-      const reader = new FileReader();
-
-      reader.onload = (event) => {
-        try {
-          const data = new Uint8Array(event.target.result);
-          const wb = XLSX.read(data, { type: "array", cellDates: false });
-          const parsed = [];
-
-          wb.SheetNames.forEach((sheetName) => {
-            const ws = wb.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: False, defval: "" });
-          });
-        } catch (err) {
-          reject(err);
-        }
-      };
-
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  // 위 raw: False 오타 방지용으로 parseWorkbook을 다시 정의합니다.
   function parseWorkbook(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
