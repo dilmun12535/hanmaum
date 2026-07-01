@@ -9,7 +9,8 @@
   const progressText = $("progressText");
   const progressFill = $("progressFill");
   const errorText = $("errorText");
-  const categoryList = $("categoryList");
+  const personList = $("personList");
+  const searchInput = $("searchInput");
   const detailEmpty = $("detailEmpty");
   const detailBody = $("detailBody");
   const detailName = $("detailName");
@@ -26,7 +27,7 @@
   };
 
   let people = [];
-  let selectedCategory = "all";
+  let selectedIndex = -1;
   let currentTab = "all";
 
   const LABELS = {
@@ -249,26 +250,15 @@
     return { sheetName, name, dateCount: dateColumns.length, days, issues, rowsFound: { lunchRow, dinnerRow, bathTimeRow, toiletRow, nursingRow, medicineRow, cognitiveRow, ptRow } };
   }
 
-  function issuesForType(type) {
-    const all = [];
-    people.forEach(p => {
-      p.days.forEach(day => {
-        const issues = day.issues.filter(i => type === "all" || i.type === type);
-        const hasIssue = issues.length > 0;
-        if (type === "all") {
-          if (hasIssue) issues.forEach(i => all.push({ person: p, day, issue: i }));
-        } else {
-          all.push({ person: p, day, issue: issues[0] || null });
-        }
-      });
-    });
-    return all;
-  }
-
-  function categoryStatus(type) {
-    const list = people.flatMap(p => p.issues).filter(i => type === "all" || i.type === type);
+  function statusFor(person, type) {
+    const list = person.issues.filter(i => i.type === type);
     if (list.some(i => i.level === "error")) return "err";
     if (list.some(i => i.level === "warning")) return "warn";
+    return "ok";
+  }
+  function overallStatus(person) {
+    if (person.issues.some(i => i.level === "error")) return "err";
+    if (person.issues.some(i => i.level === "warning")) return "warn";
     return "ok";
   }
   function statusText(cls) {
@@ -280,7 +270,7 @@
     const errors = allIssues.filter(i => i.level === "error");
     const warns = allIssues.filter(i => i.level === "warning");
     statIds.person.textContent = people.length;
-    statIds.list.textContent = `${Object.keys(LABELS).length + 1}개`;
+    statIds.list.textContent = `${people.length}명`;
     statIds.error.textContent = errors.length;
     statIds.warn.textContent = warns.length;
     ["meal", "bath", "toilet", "nursing", "medicine"].forEach(type => {
@@ -288,33 +278,50 @@
     });
   }
 
-  function renderCategoryList() {
-    const cats = [["all", "전체 오류"], ...Object.entries(LABELS)];
-    categoryList.innerHTML = cats.map(([type, label]) => {
-      const status = categoryStatus(type);
-      const issueCount = people.flatMap(p => p.issues).filter(i => type === "all" || i.type === type).length;
-      const targetCount = type === "all" ? people.length : issuesForType(type).length;
-      return `<button class="category-item ${selectedCategory === type ? "active" : ""}" data-type="${type}">
-        <div class="category-top"><div class="category-name">${escapeHtml(label)}</div><span class="badge ${status}">${statusText(status)}</span></div>
-        <div class="category-meta">대상 ${targetCount}건 · 오류/주의 ${issueCount}건</div>
+  function renderPersonList() {
+    const keyword = onlyName(searchInput.value);
+    const filtered = people
+      .map((p, index) => ({ p, index }))
+      .filter(({ p }) => !keyword || onlyName(p.name).includes(keyword));
+    if (!filtered.length) {
+      personList.innerHTML = `<div class="detail-empty">표시할 어르신이 없습니다.</div>`;
+      return;
+    }
+    personList.innerHTML = filtered.map(({ p, index }) => {
+      const overall = overallStatus(p);
+      return `<button class="person-item ${index === selectedIndex ? "active" : ""}" data-index="${index}">
+        <div class="person-top"><div class="person-name">${escapeHtml(p.name)}</div><span class="badge ${overall}">${statusText(overall)}</span></div>
+        <div class="person-meta">${escapeHtml(p.sheetName)} · ${p.dateCount}일 · 오류 ${p.issues.filter(i => i.level === "error").length} / 주의 ${p.issues.filter(i => i.level === "warning").length}</div>
+        <div class="status-row">
+          ${Object.entries(LABELS).map(([type, label]) => `<span class="status-chip ${statusFor(p, type)}">${label}</span>`).join("")}
+        </div>
       </button>`;
     }).join("");
-    categoryList.querySelectorAll(".category-item").forEach(btn => btn.addEventListener("click", () => selectCategory(btn.dataset.type)));
+    personList.querySelectorAll(".person-item").forEach(btn => btn.addEventListener("click", () => selectPerson(Number(btn.dataset.index))));
   }
 
-  function dayValueForType(day, type) {
-    if (type === "meal") return [day.values.lunch, day.values.dinner].filter(Boolean).join(" / ") || "-";
+  function cellClass(day, type) {
+    const list = day.issues.filter(i => i.type === type);
+    if (list.some(i => i.level === "error")) return "cell-error";
+    if (list.some(i => i.level === "warning")) return "cell-warn";
+    return "cell-ok";
+  }
+  function cellText(day, type) {
+    const list = day.issues.filter(i => i.type === type);
+    if (list.length) return list.map(i => i.title).join(" / ");
+    if (type === "meal") return [day.values.lunch, day.values.dinner].filter(Boolean).join(" / ") || "정상";
     if (type === "bath") return [day.values.bathTime, day.values.bathMethod].filter(Boolean).join(" / ") || "-";
-    if (type === "toilet") return day.values.toiletText || "-";
-    if (type === "nursing") return day.values.nursing || "-";
+    if (type === "toilet") return day.values.toiletText || "정상";
+    if (type === "nursing") return day.values.nursing || "정상";
     if (type === "medicine") return day.values.medicine || "-";
     if (type === "cognitive") return day.values.cognitive || "-";
     if (type === "pt") return day.values.pt || "-";
-    return "-";
+    return "";
   }
 
   function renderDetail() {
-    if (!people.length) {
+    const person = people[selectedIndex];
+    if (!person) {
       detailEmpty.style.display = "block";
       detailBody.style.display = "none";
       downloadBtn.disabled = true;
@@ -323,55 +330,32 @@
     detailEmpty.style.display = "none";
     detailBody.style.display = "block";
     downloadBtn.disabled = false;
+    const overall = overallStatus(person);
+    detailName.textContent = person.name;
+    detailMeta.textContent = `${person.sheetName} · ${person.dateCount}일 검사`;
+    detailBadge.className = `badge ${overall}`;
+    detailBadge.textContent = statusText(overall);
 
-    const label = selectedCategory === "all" ? "전체 오류" : LABELS[selectedCategory];
-    const allCategoryIssues = people.flatMap(p => p.issues).filter(i => selectedCategory === "all" || i.type === selectedCategory);
-    const status = categoryStatus(selectedCategory);
-    detailName.textContent = label;
-    detailMeta.textContent = `${people.length}명 검사 · 오류/주의 ${allCategoryIssues.length}건`;
-    detailBadge.className = `badge ${status}`;
-    detailBadge.textContent = statusText(status);
+    const types = currentTab === "all" ? Object.keys(LABELS) : [currentTab];
+    detailHead.innerHTML = `<tr><th>일자</th>${types.map(t => `<th>${LABELS[t]}</th>`).join("")}<th>특이사항</th></tr>`;
+    detailRows.innerHTML = person.days.map(day => `<tr>
+      <td>${escapeHtml(day.label)}</td>
+      ${types.map(type => `<td class="${cellClass(day, type)}">${escapeHtml(cellText(day, type))}</td>`).join("")}
+      <td class="cell-note ${day.values.notes ? "cell-warn" : "cell-empty"}" title="${escapeHtml(day.values.notes)}">${escapeHtml(day.values.notes || "-")}</td>
+    </tr>`).join("");
 
-    let rows = [];
-    if (selectedCategory === "all") {
-      people.forEach(p => p.issues.forEach(i => rows.push({ person: p, date: i.date, type: i.type, level: i.level, title: i.title, desc: i.desc, value: i.value || "" })));
-    } else {
-      people.forEach(p => p.days.forEach(day => {
-        const issue = day.issues.find(i => i.type === selectedCategory);
-        rows.push({ person: p, date: day.label, fullDate: day.date, type: selectedCategory, level: issue ? issue.level : "ok", title: issue ? issue.title : "정상", desc: issue ? issue.desc : "", value: issue ? (issue.value || dayValueForType(day, selectedCategory)) : dayValueForType(day, selectedCategory), notes: day.values.notes || "" });
-      }));
-    }
-
-    if (currentTab !== "all") rows = rows.filter(r => r.level === currentTab);
-    rows.sort((a, b) => (LABELS[a.type] || "").localeCompare(LABELS[b.type] || "", "ko") || a.person.name.localeCompare(b.person.name, "ko") || String(a.fullDate || a.date).localeCompare(String(b.fullDate || b.date)));
-
-    detailHead.innerHTML = `<tr><th>구분</th><th>성명</th><th>일자</th><th>판정</th><th>내용/현재값</th><th>특이사항</th><th>사유</th></tr>`;
-    detailRows.innerHTML = rows.length ? rows.map(r => {
-      const cls = r.level === "error" ? "cell-error" : r.level === "warning" ? "cell-warn" : "cell-ok";
-      const 판정 = r.level === "error" ? "오류" : r.level === "warning" ? "주의" : "정상";
-      return `<tr>
-        <td>${escapeHtml(LABELS[r.type] || r.type)}</td>
-        <td>${escapeHtml(r.person.name)}</td>
-        <td>${escapeHtml(r.date)}</td>
-        <td class="${cls}">${판정}</td>
-        <td class="${cls}">${escapeHtml(r.title)}${r.value ? ` / ${escapeHtml(r.value)}` : ""}</td>
-        <td class="cell-note ${r.notes ? "cell-warn" : "cell-empty"}" title="${escapeHtml(r.notes || "")}">${escapeHtml(r.notes || "-")}</td>
-        <td>${escapeHtml(r.desc || "-")}</td>
-      </tr>`;
-    }).join("") : `<tr><td colspan="7" class="cell-empty">표시할 결과가 없습니다.</td></tr>`;
-
-    const issueRows = rows.filter(r => r.level === "error" || r.level === "warning");
-    issueList.innerHTML = issueRows.length
-      ? issueRows.slice(0, 80).map(r => `<div class="issue-card ${r.level === "warning" ? "warn" : ""}">
-          <div class="issue-title">${escapeHtml(LABELS[r.type] || r.type)} · ${escapeHtml(r.person.name)} · ${escapeHtml(r.date)} · ${escapeHtml(r.title)}</div>
-          <div class="issue-desc">${escapeHtml(r.desc || "")}${r.value ? `<br>현재값: ${escapeHtml(r.value)}` : ""}</div>
+    const visibleIssues = person.issues.filter(i => currentTab === "all" || i.type === currentTab);
+    issueList.innerHTML = visibleIssues.length
+      ? visibleIssues.map(i => `<div class="issue-card ${i.level === "warning" ? "warn" : ""}">
+          <div class="issue-title">${escapeHtml(i.date)} · ${escapeHtml(LABELS[i.type])} · ${escapeHtml(i.title)}</div>
+          <div class="issue-desc">${escapeHtml(i.desc)}${i.value ? `<br>현재값: ${escapeHtml(i.value)}` : ""}</div>
         </div>`).join("")
-      : `<div class="issue-card warn"><div class="issue-title">표시할 오류가 없습니다.</div><div class="issue-desc">현재 선택한 구분에서는 특이 오류가 없습니다.</div></div>`;
+      : `<div class="issue-card warn"><div class="issue-title">표시할 오류가 없습니다.</div><div class="issue-desc">현재 선택한 범위에서는 특이 오류가 없습니다.</div></div>`;
   }
 
-  function selectCategory(type) {
-    selectedCategory = type;
-    renderCategoryList();
+  function selectPerson(index) {
+    selectedIndex = index;
+    renderPersonList();
     renderDetail();
   }
 
@@ -385,8 +369,8 @@
     checkBtn.disabled = true;
     resetBtn.disabled = true;
     people = [];
-    selectedCategory = selectedCategory || "all";
-    renderCategoryList();
+    selectedIndex = -1;
+    renderPersonList();
     renderDetail();
 
     try {
@@ -403,8 +387,8 @@
       }
       people = parsed.sort((a, b) => a.name.localeCompare(b.name, "ko"));
       updateStats();
-      renderCategoryList();
-      if (people.length) selectCategory("all");
+      renderPersonList();
+      if (people.length) selectPerson(0);
       else showError("선택한 월의 날짜 칸을 찾지 못했습니다. 제공기록지 양식 또는 검사 월을 확인해주세요.");
       setProgress(sheetNames.length, sheetNames.length, "검사 완료");
     } catch (err) {
@@ -418,14 +402,14 @@
 
   function resetAll() {
     people = [];
-    selectedCategory = "all";
+    selectedIndex = -1;
     currentTab = "all";
     recordFile.value = "";
     clearError();
     progressArea.style.display = "none";
     progressFill.style.width = "0%";
     updateStats();
-    renderCategoryList();
+    renderPersonList();
     renderDetail();
   }
 
@@ -446,6 +430,7 @@
 
   checkBtn.addEventListener("click", runCheck);
   resetBtn.addEventListener("click", resetAll);
+  searchInput.addEventListener("input", renderPersonList);
   downloadBtn.addEventListener("click", downloadCsv);
   document.querySelectorAll(".tab-btn").forEach(btn => {
     btn.addEventListener("click", () => {
