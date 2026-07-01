@@ -389,6 +389,8 @@
       toDateKey(row.serviceDate) ||
       toDateKey(row.attendanceDate) ||
       toDateKey(row.changeDate) ||
+      toDateKey(row.reflectionDate) ||
+      toDateKey(row.반영일) ||
       toDateKey(row.작성일자) ||
       toDateKey(row.일자) ||
       toDateKey(row.변경일);
@@ -667,23 +669,31 @@
         addRequired(list, row, "식사", "lunch-missing", "점심 미실시 내용이 특이사항에 필요합니다.", ["점심", "중식"], ["안드", "미실시", "거부", "섭취안", "식사안", "드지않", "결식"], "점심을 제공하였으나 드시지 않으셨으며 상태를 관찰하였음.", `계획서/상담일지 기준 식사 ${benefits.mealCount || ""}회 대상`);
       }
 
-      if (benefits.dinner && (!saturday || saturdayMealExplicit) && (!isMarked(row.dinner) || isNegative(row.dinner))) {
+      // 토요일은 모든 어르신이 기본적으로 석식을 드시지 않는 날이므로 석식 누락 검사를 하지 않습니다.
+      if (benefits.dinner && !saturday && (!isMarked(row.dinner) || isNegative(row.dinner))) {
         addRequired(list, row, "식사", "dinner-missing", "석식 미실시 내용이 특이사항에 필요합니다.", ["석식", "저녁"], ["안드", "미실시", "거부", "섭취안", "식사안", "드지않", "결식"], "석식을 제공하였으나 드시지 않으셨으며 상태를 관찰하였음.", `계획서/상담일지 기준 식사 ${benefits.mealCount || ""}회 대상`);
       }
 
-      let earlyBaseMin = 16 * 60 + 30;
+      /*
+        조기하원 기준
+        - 석식 제공 대상: 17:10~18:10 하원 → 17:10 이전이면 조기하원
+        - 석식 미제공 대상: 16:10~17:10 하원 → 16:10 이전이면 조기하원
+        - 출석 보관함에 개인별 기준 하원시간이 있으면 그 시간을 우선 적용하되, 30분 전부터는 조기하원으로 보지 않습니다.
+      */
+      let earlyBaseMin = benefits.dinner ? (17 * 60 + 10) : (16 * 60 + 10);
       const latestAttendance = latestBeforeOrOn(state.libraries.attendance, row.date, person);
 
       if (latestAttendance) {
-        const range = getTimeRange(textOfLibraryRow(latestAttendance));
+        const text = textOfLibraryRow(latestAttendance);
+        const range = getTimeRange(text);
         const libEnd = timeToMin(range.end);
-        if (libEnd !== null) earlyBaseMin = libEnd - 30;
+        if (libEnd !== null) {
+          earlyBaseMin = libEnd - 30;
+        }
       }
 
-      if (saturday && !latestAttendance) earlyBaseMin = 16 * 60;
-
       if (endMin !== null && endMin < earlyBaseMin) {
-        addRequired(list, row, "조기하원", "early-leave", `${row.endTime} 조기 하원 내용이 특이사항에 필요합니다.`, ["조기", "일찍", "하원", "귀가"], ["하원", "귀가", "가심"], `${row.endTime}경 개인 사정으로 조기 하원하심.`, row.timeText);
+        addRequired(list, row, "조기하원", "early-leave", `${row.endTime} 조기 하원 내용이 특이사항에 필요합니다.`, ["조기", "일찍", "하원", "귀가"], ["하원", "귀가", "가심"], `${row.endTime}경 개인 사정으로 조기 하원하심.`, `기준: ${benefits.dinner ? "석식 대상 17:10 이후 하원" : "석식 미대상 16:10 이후 하원"} / 기록: ${row.timeText}`);
       }
 
       if ((benefits.bath && (!isMarked(row.bath) || isNegative(row.bath))) || bathN.includes("거부") || bathN.includes("미실시")) {
@@ -762,19 +772,35 @@
       <tr>
         <td>${badge(row.status)}</td>
         <td><b>${escapeHtml(row.name)}</b><div class="small">${escapeHtml(row.longTermNo || "")}</div></td>
-        <td>${escapeHtml(row.date)}<div class="small">${getWeekday(row.date)}</div></td>
-        <td>${escapeHtml(row.type)}</td>
+        <td class="date-cell">${escapeHtml(row.date)} (${getWeekday(row.date)})</td>
+        <td class="type-cell">${escapeHtml(row.type)}</td>
         <td class="note-text">${escapeHtml(row.requiredText)}</td>
         <td class="note-text">${escapeHtml(row.uploaded || "없음")}</td>
         <td>${escapeHtml(row.reason)}${row.sourceText ? `<div class="small">근거: ${escapeHtml(String(row.sourceText).slice(0, 100))}</div>` : ""}</td>
-        <td class="note-text">${escapeHtml(row.recommend)}<br /><button type="button" class="copy-btn" data-row="${idx}">문구 선택</button></td>
+        <td class="note-text">${escapeHtml(row.recommend)}<br /><button type="button" class="copy-btn" data-row="${idx}">복사</button></td>
       </tr>
     `).join("");
 
     body.querySelectorAll(".copy-btn").forEach((btn) => {
-      btn.addEventListener("click", () => {
+      btn.addEventListener("click", async () => {
         const row = rows[Number(btn.dataset.row)];
-        window.prompt("추천 문구를 복사하세요.", row.recommend);
+        const text = row.recommend || "";
+
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            btn.textContent = "복사됨";
+            btn.classList.add("copied");
+            setTimeout(() => {
+              btn.textContent = "복사";
+              btn.classList.remove("copied");
+            }, 1200);
+          } else {
+            window.prompt("아래 문구를 복사하세요.", text);
+          }
+        } catch (err) {
+          window.prompt("아래 문구를 복사하세요.", text);
+        }
       });
     });
   }
