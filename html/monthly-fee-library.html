@@ -16,6 +16,7 @@
     .page-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:18px}
     .page-title h1{margin:0 0 6px;font-size:26px}
     .page-title p{margin:0;color:#667085}
+    .head-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
     .upload-card,.summary-card,.table-card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;box-shadow:0 8px 24px rgba(15,23,42,.06);padding:18px;margin-bottom:16px}
     .control-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
     .month-input{height:42px;border:1px solid #d0d5dd;border-radius:10px;padding:0 12px;width:175px;box-sizing:border-box;background:#fff;cursor:pointer}
@@ -26,6 +27,7 @@
     .btn{height:42px;border:0;border-radius:10px;padding:0 15px;font-weight:700;cursor:pointer}
     .btn-primary{background:#2563eb;color:#fff}
     .btn-soft{background:#eef4ff;color:#1d4ed8}
+    .btn-outline{background:#fff;color:#1d4ed8;border:1px solid #bfdbfe}
     .btn-danger{background:#fee2e2;color:#b91c1c}
     .btn:disabled{opacity:.45;cursor:not-allowed}
     .check{display:flex;align-items:center;gap:6px;color:#475467;font-size:14px}
@@ -100,7 +102,10 @@
           <h1>월별 어르신 수가 보관함</h1>
           <p>월별 수가 파일을 업로드하면 구글시트 <b>월별어르신수가</b>에 저장되고 다른 확인 페이지에서 불러올 수 있습니다.</p>
         </div>
-        <button class="btn btn-soft" id="reloadBtn" type="button">새로고침</button>
+        <div class="head-actions">
+          <button class="btn btn-outline" id="viewSavedBtn" type="button">저장 자료 보기</button>
+          <button class="btn btn-soft" id="reloadBtn" type="button">새로고침</button>
+        </div>
       </div>
 
       <section class="upload-card">
@@ -114,6 +119,7 @@
 
           <label class="check"><input type="checkbox" id="replaceMonth" checked /> 같은 월 기존 자료 삭제 후 저장</label>
           <button class="btn btn-primary" id="uploadBtn" type="button" disabled>업로드 저장</button>
+          <button class="btn btn-soft" id="viewSavedBtnMobile" type="button">저장 자료 보기</button>
           <button class="btn btn-danger" id="deleteMonthBtn" type="button">선택 월 삭제</button>
         </div>
         <div class="notice" id="noticeBox"></div>
