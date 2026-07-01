@@ -113,6 +113,108 @@
     return Number(m[1]) * 60 + Number(m[2] || 0);
   }
 
+  function actualUseMinutes(row) {
+    const start = timeToMin(row.startTime);
+    const end = timeToMin(row.endTime);
+
+    if (start === null || end === null) return null;
+
+    let minutes = end - start;
+    if (minutes < 0) minutes += 24 * 60;
+
+    return minutes;
+  }
+
+  function formatMinutes(minutes) {
+    if (minutes === null || minutes === undefined || Number.isNaN(minutes)) return "";
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    if (m === 0) return `${h}시간`;
+    return `${h}시간 ${m}분`;
+  }
+
+  function parseFeeTimeBand(text) {
+    const raw = String(text || "");
+    const t = normalize(raw);
+
+    /*
+      월별 수가명/수가코드에서 이용시간 구간을 추정합니다.
+      예: 3시간 이상~6시간 미만, 6시간 이상~8시간 미만,
+          8시간 이상~10시간 미만, 10시간 이상~12시간 미만, 12시간 이상
+    */
+    let m = t.match(/(\d{1,2})시간이상(\d{1,2})시간미만/);
+    if (m) {
+      return {
+        min: Number(m[1]) * 60,
+        max: Number(m[2]) * 60,
+        label: `${m[1]}시간 이상 ${m[2]}시간 미만`
+      };
+    }
+
+    m = t.match(/(\d{1,2})시간~(\d{1,2})시간/);
+    if (m) {
+      return {
+        min: Number(m[1]) * 60,
+        max: Number(m[2]) * 60,
+        label: `${m[1]}시간 이상 ${m[2]}시간 미만`
+      };
+    }
+
+    m = t.match(/(\d{1,2})시간이상/);
+    if (m) {
+      return {
+        min: Number(m[1]) * 60,
+        max: null,
+        label: `${m[1]}시간 이상`
+      };
+    }
+
+    /*
+      수가코드만 들어있는 경우를 위한 보조 추정입니다.
+      실제 코드 체계가 센터 파일과 다르면 월별수가 rowsJson/serviceName 문구를 우선 사용합니다.
+    */
+    if (/주야간|주간|야간|방문요양|서비스/.test(t)) {
+      if (/3시간|3~6|3-6/.test(t)) return { min: 180, max: 360, label: "3시간 이상 6시간 미만" };
+      if (/6시간|6~8|6-8/.test(t)) return { min: 360, max: 480, label: "6시간 이상 8시간 미만" };
+      if (/8시간|8~10|8-10/.test(t)) return { min: 480, max: 600, label: "8시간 이상 10시간 미만" };
+      if (/10시간|10~12|10-12/.test(t)) return { min: 600, max: 720, label: "10시간 이상 12시간 미만" };
+      if (/12시간/.test(t)) return { min: 720, max: null, label: "12시간 이상" };
+    }
+
+    return null;
+  }
+
+  function getFeeTimeBandForDate(feeRows, recordDate) {
+    const candidates = feeRows
+      .map((fee) => {
+        const serviceDates = Array.isArray(fee.serviceDates) ? fee.serviceDates : [];
+        const dateMatch = serviceDates.length ? serviceDates.includes(recordDate) : true;
+        if (!dateMatch) return null;
+
+        const text = [
+          fee.serviceName,
+          fee.serviceType,
+          fee.serviceCode,
+          fee.rows ? JSON.stringify(fee.rows) : "",
+          textOfLibraryRow(fee)
+        ].join(" ");
+
+        const band = parseFeeTimeBand(text);
+        if (!band) return null;
+
+        return { ...band, sourceText: text };
+      })
+      .filter(Boolean);
+
+    if (!candidates.length) return null;
+
+    /*
+      같은 날짜에 여러 수가가 잡힌 경우, 가장 긴 구간을 우선합니다.
+      주야간보호 기본수가와 가산수가가 섞여도 시간 구간이 있는 항목만 사용합니다.
+    */
+    return candidates.sort((a, b) => (b.min || 0) - (a.min || 0))[0];
+  }
+
   function getTimeRange(value) {
     const s = String(value ?? "").trim();
     const matches = [...s.matchAll(/(\d{1,2})\s*[:시]\s*(\d{1,2})?/g)]
@@ -642,6 +744,9 @@
       const latestPlan = latestBeforeOrOn(state.libraries.plan, row.date, person);
       const latestFee = latestBeforeOrOn(state.libraries.fee, row.date, person);
       const benefits = detectPlanBenefits(latestPlan, latestFee, counselToday);
+      const personFeeRows = state.libraries.fee.filter((fee) => samePerson(person, fee));
+      const feeTimeBand = getFeeTimeBandForDate(personFeeRows, row.date);
+      const usedMinutes = actualUseMinutes(row);
 
       const saturday = isSaturday(row.date);
       const saturdayMealExplicit = /토요일식사|토요식사|토요일점심|토요일중식|토요일석식|토요일저녁|토요일제공|토요제공/.test(normalize(benefits.text));
@@ -672,6 +777,34 @@
       // 토요일은 모든 어르신이 기본적으로 석식을 드시지 않는 날이므로 석식 누락 검사를 하지 않습니다.
       if (benefits.dinner && !saturday && (!isMarked(row.dinner) || isNegative(row.dinner))) {
         addRequired(list, row, "식사", "dinner-missing", "석식 미실시 내용이 특이사항에 필요합니다.", ["석식", "저녁"], ["안드", "미실시", "거부", "섭취안", "식사안", "드지않", "결식"], "석식을 제공하였으나 드시지 않으셨으며 상태를 관찰하였음.", `계획서/상담일지 기준 식사 ${benefits.mealCount || ""}회 대상`);
+      }
+
+      if (feeTimeBand && usedMinutes !== null) {
+        const tooShort = usedMinutes < feeTimeBand.min;
+        const tooLong = feeTimeBand.max !== null && usedMinutes >= feeTimeBand.max;
+
+        if (tooShort || tooLong) {
+          const actualLabel = formatMinutes(usedMinutes);
+          const needText = tooShort
+            ? `저장된 수가 기준보다 이용시간이 짧습니다. 기준 ${feeTimeBand.label}, 실제 ${actualLabel} 이용 내용이 특이사항에 필요합니다.`
+            : `저장된 수가 기준보다 이용시간이 깁니다. 기준 ${feeTimeBand.label}, 실제 ${actualLabel} 이용 내용이 특이사항에 필요합니다.`;
+
+          const recommendText = tooShort
+            ? `${row.endTime}경 개인 사정으로 수가 기준보다 짧게 이용 후 하원하심.`
+            : `수가 기준보다 이용시간이 길어 실제 이용시간 ${actualLabel}으로 확인됨.`;
+
+          addRequired(
+            list,
+            row,
+            "이용시간",
+            tooShort ? "fee-time-short" : "fee-time-long",
+            needText,
+            ["이용시간", "수가", "시간", "하원", "연장"],
+            tooShort ? ["짧", "조기", "일찍", "하원", "귀가"] : ["길", "연장", "늦", "초과"],
+            recommendText,
+            `수가 기준: ${feeTimeBand.label} / 실제: ${row.startTime || "시작미확인"} ~ ${row.endTime || "종료미확인"}`
+          );
+        }
       }
 
       /*
