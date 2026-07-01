@@ -3,19 +3,21 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>출석 보관함</title>
+  <title>인지활동 제공 확인</title>
 
   <link rel="stylesheet" href="../css/common.css" />
   <link rel="stylesheet" href="../css/dashboard.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
   <style>
+    /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
     .info-table th, .info-table td {
       border: 1px solid #e2e8f0 !important;
       text-align: center;
       vertical-align: middle;
     }
 
+    /* 한마음 전산 전체 메뉴와 100% 일치하도록 일체형 안내상자 클래스를 정의합니다 */
     .unified-notice-box {
       background-color: #f8fafc;
       border: 1px solid #e2e8f0;
@@ -41,7 +43,9 @@
       font-size: 13px;
       line-height: 1.6;
     }
-    .unified-notice-list li { margin-bottom: 4px; }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
   </style>
 </head>
 <body>
@@ -68,13 +72,13 @@
         <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
         <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
         <a href="./monthly-fee-library.html" class="menu-item">수가 보관함</a>
-        <a href="./attendance.html" class="menu-item active">출석 보관함</a>
+        <a href="./attendance-library.html" class="menu-item">출석 보관함</a>
         <a href="./total-check.html" class="menu-item">종합 확인</a>
         <a href="./meal-check.html" class="menu-item">식사 제공 확인</a>
         <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a>
         <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
-        <a href="./fixed-bath-cognitive-check.html" class="menu-item">정량/목욕의자</a>
-        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
+        <a href="./fee-time-check.html" class="menu-item">정량/목욕의자</a>
+        <a href="./cognitive-check.html" class="menu-item active">인지활동 제공 확인</a>
         <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a>
         <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a>
         <a href="./medication-check.html" class="menu-item">투약 확인</a>
@@ -85,51 +89,50 @@
     <main class="content-area">
       <div class="content-box">
         <div class="page-header">
-          <h2>출석 보관함</h2>
-          <p>이동서비스 예상급여비용 파일을 업로드하여 수급자별 출석일을 저장합니다.</p>
+          <h2>인지활동 제공 확인</h2>
+          <p>출석관리 자료와 프로그램 참여 기록을 기준으로 5등급·인지지원등급 어르신의 인지활동 제공 여부를 일자별로 확인합니다.</p>
         </div>
 
         <div class="page-actions">
           <div class="date-group">
-            <label for="attendanceMonth">확인 월</label>
-            <input type="text" id="attendanceMonth" placeholder="예: 2026-06" autocomplete="off" />
+            <label for="checkMonth">확인 월</label>
+            <input type="text" id="checkMonth" placeholder="예: 2026-05" autocomplete="off" />
           </div>
 
           <div class="date-group">
-            <label for="attendanceFile">2-1.일정관리->일정일괄출력->예상급여비용</label>
-            <input type="file" id="attendanceFile" accept=".xlsx,.xls" />
+            <label for="cognitiveFile">5-7. 수급자 참여프로그램 리포트 출력</label>
+            <input type="file" id="cognitiveFile" accept=".xlsx,.xls" />
           </div>
 
           <div class="action-buttons">
-            <button type="button" class="primary-btn" id="registerAttendanceBtn">출석 등록</button>
-            <button type="button" class="secondary-btn" id="loadAttendanceBtn">저장 내역 조회</button>
-            <button type="button" class="danger-btn" id="clearAttendanceBtn">해당 월 삭제</button>
+            <button type="button" class="primary-btn" id="checkCognitiveBtn">인지활동 확인</button>
+            <button type="button" class="danger-btn" id="clearCognitiveBtn">초기화</button>
           </div>
         </div>
 
         <div class="unified-notice-box">
-          <h5 class="unified-notice-title">💡 출석 등록 및 보관 기준 안내</h5>
+          <h5 class="unified-notice-title">
+            💡 인지활동 확인 기준 안내
+          </h5>
           <ul class="unified-notice-list">
-            <li><b style="color: #1e293b;">데이터 자동 파싱:</b> 업로드된 파일 내의 모든 시트를 분석하여 <b style="color: #1e293b;">수급자명, 인정번호, 등급, 급여개시일, 제공 날짜, 서비스시간</b>을 추출합니다.</li>
-            <li><b style="color: #1e293b;">출석일 인정 요건:</b> 실질적인 서비스 제공 시간이 기재되어 있고, 상단에서 지정한 확인 월에 부합하는 날짜만 유효한 <b style="color: #1e293b;">출석일</b>로 저장합니다.</li>
-            <li><b style="color: #1e293b;">기준 데이터 연동:</b> 이곳에 등록 및 저장된 출석 마스터 자료는 이후 목욕, 식사, 간호, 인지활동 등 <b>모든 데이터 검증 화면의 대조용 기본 출석판</b>으로 활용됩니다.</li>
+            <li><b style="color: #1e293b;">점검 대상:</b> 인지 맞춤형 급여 제공 기준에 의거하여, <b style="color: #1e293b;">5등급 및 인지지원등급</b> 수급자 어르신만 연산 확인 대상입니다.</li>
+            <li><b style="color: #1e293b;">제공 횟수 기준:</b> 출석관리에서 연동된 <b style="color: #1e293b;">출석일마다</b> 프로그램 참여 기록 중 '인지기능/인지활동' 내역이 1회 이상 완벽히 매칭되어야 합니다.</li>
+            <li><b style="color: #1e293b;">결과 표출 방식:</b> 출석하신 날에 인지 기록이 비어있으면 <span style="color: #e11d48; font-weight: 600;">누락</span>으로 표시되며, 등원하지 않으신 날은 <span style="color: #64748b; font-weight: 600;">결석(-)</span>으로 안전하게 제외 처리됩니다.</li>
           </ul>
         </div>
 
         <div class="table-wrap">
-          <table class="info-table attendance-table" style="border-collapse: collapse; width: 100%;">
-            <thead id="attendanceTableHead">
+          <table class="info-table cognitive-table" style="border-collapse: collapse; width: 100%;">
+            <thead id="cognitiveTableHead">
               <tr>
                 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">인정번호</th>
                 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">등급</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">급여개시일</th>
                 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">출석일수</th>
               </tr>
             </thead>
-            <tbody id="attendanceResultBody">
+            <tbody id="cognitiveResultBody">
               <tr class="empty-row">
-                <td colspan="5" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 출석 파일을 선택한 뒤 출석 등록을 눌러주세요.</td>
+                <td colspan="3" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 프로그램 참여 기록 파일을 선택해주세요.</td>
               </tr>
             </tbody>
           </table>
@@ -145,8 +148,8 @@
   <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
   <script>
     document.addEventListener("DOMContentLoaded", function () {
-      if (document.getElementById("attendanceMonth") && typeof flatpickr !== "undefined") {
-        flatpickr("#attendanceMonth", {
+      if (document.getElementById("checkMonth") && typeof flatpickr !== "undefined") {
+        flatpickr("#checkMonth", {
           locale: "ko",
           plugins: [
             new monthSelectPlugin({
@@ -183,6 +186,6 @@
       }
     });
   </script>
-  <script src="../js/attendance.js"></script>
+  <script src="../js/cognitive-check.js"></script>
 </body>
 </html>
