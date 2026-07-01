@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>제공기록지 통합 검증</title>
+  <title>통합 확인</title>
 
   <link rel="stylesheet" href="../css/common.css" />
   <link rel="stylesheet" href="../css/dashboard.css" />
@@ -11,6 +11,7 @@
   <script defer src="../js/unified-record-check.js"></script>
 
   <style>
+
     :root{--blue:#2563eb;--navy:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc;--red:#dc2626;--orange:#d97706;--green:#16a34a}
     body{background:#f4f7fb;color:#0f172a}
     .record-wrap{padding:24px;max-width:1500px;margin:0 auto}
@@ -62,18 +63,66 @@
     .issue-list{display:grid;gap:8px;margin-top:14px}.issue-card{border:1px solid #fecaca;background:#fff7f7;border-radius:14px;padding:12px}.issue-card.warn{border-color:#fde68a;background:#fffbeb}.issue-card .issue-title{font-weight:950;color:#991b1b;margin-bottom:5px}.issue-card.warn .issue-title{color:#92400e}.issue-card .issue-desc{font-size:13px;color:#334155;line-height:1.5}
     .guide{font-size:12px;color:#64748b;line-height:1.45;margin-top:10px}
     @media(max-width:1100px){.upload-grid{grid-template-columns:1fr}.summary-grid{grid-template-columns:repeat(2,1fr)}.content-grid{grid-template-columns:1fr}.person-list{max-height:330px}}
+  
+    .content-box { max-width: none; }
+    .record-wrap { padding:0; max-width:none; margin:0; }
+    .page-header h2 { color:#0f3a8a; font-size:26px; font-weight:900; }
+    .page-header p { color:#64748b; }
+    .upload-card, .summary-card, .panel { box-shadow:none; }
+    .upload-card { border-radius:8px; }
+    .summary-card { border-radius:8px; }
+    .panel { border-radius:8px; }
+    .content-grid { grid-template-columns:260px 1fr; }
+    @media(max-width:1100px){.content-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-  <div class="record-wrap">
-    <div class="page-head">
-      <div class="page-title">
-        <h1>제공기록지 통합 검증</h1>
-        <p>장기요양급여 제공기록지 엑셀 파일 하나로 식사·목욕·화장실·간호·투약·인지·물리치료를 한 번에 확인합니다.</p>
-      </div>
+  <div class="topbar">
+    <div class="logo-area">
+      <img src="../images/logo.png" alt="로고" class="logo-img" />
     </div>
 
-    <section class="upload-card">
+    <div class="topbar-right">
+      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
+      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
+
+      <div class="user-area">
+        <div class="user-badge">사회복지사</div>
+        <p class="date-text" id="todayText"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="main-layout">
+    <aside class="sidebar">
+      <div class="menu-title">메뉴</div>
+      <nav class="menu-list">
+        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
+        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
+        <a href="./monthly-fee-library.html" class="menu-item">수가 보관함</a>
+        <a href="./attendance.html" class="menu-item">출석 보관함</a>
+        <a href="./record-check.html" class="menu-item active">통합 확인</a>
+        <a href="./meal-check.html" class="menu-item">식사 제공 확인</a>
+        <a href="./bath-check.html" class="menu-item">목욕 제공 확인</a>
+        <a href="./toilet-check.html" class="menu-item">화장실 제공 확인</a>
+        <a href="./meal-bath-check.html" class="menu-item">정량/목욕의자</a>
+        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
+        <a href="./therapy-check.html" class="menu-item">물리치료 제공 확인</a>
+        <a href="./nursing-vital-check.html" class="menu-item">간호제공 확인</a>
+        <a href="./medication-check.html" class="menu-item">투약 확인</a>
+        <a href="./special-notes-check.html" class="menu-item">특이사항 검증</a>
+      </nav>
+    </aside>
+
+    <main class="content-area">
+      <div class="content-box">
+        <div class="page-header">
+          <h2>제공기록지 통합 검증</h2>
+          <p>장기요양급여 제공기록지 엑셀 파일 하나로 식사·목욕·화장실·간호·투약·인지·물리치료를 한 번에 확인합니다.</p>
+        </div>
+
+        <div class="record-wrap">
+          <section class="upload-card">
       <div class="upload-grid">
         <div class="field">
           <label for="checkMonth">검사 월</label>
@@ -129,6 +178,12 @@
         </div>
       </main>
     </section>
+  
+        </div>
+      </div>
+    </main>
   </div>
+
+  <script src="../js/main.js"></script>
 </body>
 </html>
