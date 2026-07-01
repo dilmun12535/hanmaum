@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>제공기록지 통합 검증</title>
+
+  <link rel="stylesheet" href="../css/common.css" />
+  <link rel="stylesheet" href="../css/dashboard.css" />
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script defer src="../js/unified-record-check.js"></script>
+
+  <style>
+    :root{--blue:#2563eb;--navy:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc;--red:#dc2626;--orange:#d97706;--green:#16a34a}
+    body{background:#f4f7fb;color:#0f172a}
+    .record-wrap{padding:24px;max-width:1500px;margin:0 auto}
+    .page-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:18px}
+    .page-title h1{margin:0 0 6px;font-size:26px;font-weight:900;color:#0f172a}
+    .page-title p{margin:0;color:#64748b;font-size:14px}
+    .upload-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:20px;box-shadow:0 10px 24px rgba(15,23,42,.06);margin-bottom:18px}
+    .upload-grid{display:grid;grid-template-columns:180px 1fr auto auto;gap:12px;align-items:end}
+    .field label{display:block;font-size:13px;font-weight:800;color:#334155;margin-bottom:7px}
+    .field input[type="month"],.field input[type="file"]{width:100%;height:42px;border:1px solid #cbd5e1;border-radius:12px;padding:0 12px;background:#fff;font-size:14px;box-sizing:border-box}
+    .main-btn,.sub-btn,.mini-btn{border:0;border-radius:12px;font-weight:900;cursor:pointer;white-space:nowrap}
+    .main-btn{height:42px;padding:0 18px;background:var(--blue);color:#fff}
+    .sub-btn{height:42px;padding:0 18px;background:#e2e8f0;color:#0f172a}
+    .mini-btn{height:32px;padding:0 10px;background:#eef2ff;color:#1d4ed8;font-size:12px}
+    .main-btn:disabled,.sub-btn:disabled{opacity:.55;cursor:not-allowed}
+    .progress-area{display:none;margin-top:14px}
+    .progress-text{font-size:13px;color:#475569;font-weight:800;margin-bottom:8px}
+    .progress-bar{height:10px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+    .progress-fill{height:100%;width:0%;background:#2563eb;transition:.2s}
+    .error-text{display:none;margin-top:12px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;padding:12px;border-radius:12px;font-weight:800}
+    .summary-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:18px}
+    .summary-card{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:0 8px 18px rgba(15,23,42,.04)}
+    .summary-card .label{font-size:12px;color:#64748b;font-weight:800;margin-bottom:6px}
+    .summary-card .value{font-size:24px;font-weight:950;color:#0f172a}
+    .summary-card.bad .value{color:#dc2626}.summary-card.warn .value{color:#d97706}.summary-card.good .value{color:#16a34a}
+    .content-grid{display:grid;grid-template-columns:280px 1fr;gap:16px;align-items:start}
+    .panel{background:#fff;border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 24px rgba(15,23,42,.05);overflow:hidden}
+    .panel-head{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .panel-head h2{font-size:16px;margin:0;font-weight:950;color:#0f172a}
+    .search-input{width:100%;height:36px;border:1px solid #cbd5e1;border-radius:10px;padding:0 10px;box-sizing:border-box;margin-top:10px}
+    .category-list{max-height:680px;overflow:auto;padding:8px}.category-item{width:100%;text-align:left;border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:13px;margin-bottom:8px;cursor:pointer}.category-item:hover,.category-item.active{border-color:#2563eb;background:#eff6ff}.category-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.category-name{font-weight:950;color:#0f172a;font-size:15px}.category-meta{font-size:12px;color:#64748b;margin-top:4px}.person-list{max-height:680px;overflow:auto;padding:8px}
+    .person-item{width:100%;text-align:left;border:1px solid #e2e8f0;background:#fff;border-radius:14px;padding:12px;margin-bottom:8px;cursor:pointer}
+    .person-item:hover,.person-item.active{border-color:#2563eb;background:#eff6ff}
+    .person-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .person-name{font-weight:950;color:#0f172a;font-size:15px}.person-meta{font-size:12px;color:#64748b;margin-top:4px}
+    .badge{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:4px 8px;font-size:11px;font-weight:950;background:#e2e8f0;color:#334155}
+    .badge.ok{background:#dcfce7;color:#166534}.badge.err{background:#fee2e2;color:#991b1b}.badge.warn{background:#fef3c7;color:#92400e}
+    .status-row{display:flex;flex-wrap:wrap;gap:4px;margin-top:9px}.status-chip{font-size:11px;font-weight:900;border-radius:999px;padding:4px 7px;background:#f1f5f9;color:#334155}.status-chip.err{background:#fee2e2;color:#991b1b}.status-chip.warn{background:#fef3c7;color:#92400e}.status-chip.ok{background:#dcfce7;color:#166534}
+    .detail-empty{padding:70px 20px;text-align:center;color:#94a3b8;font-weight:900}
+    .detail-body{display:none;padding:16px}
+    .detail-title{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:14px}
+    .detail-title h3{margin:0 0 6px;font-size:22px;font-weight:950}.detail-title p{margin:0;color:#64748b;font-size:13px}
+    .tabs{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 14px}.tab-btn{border:1px solid #cbd5e1;background:#fff;border-radius:999px;padding:8px 12px;font-weight:900;cursor:pointer}.tab-btn.active{background:#2563eb;border-color:#2563eb;color:#fff}
+    .table-wrap{overflow:auto;border:1px solid var(--line);border-radius:14px}
+    table{border-collapse:separate;border-spacing:0;width:100%;min-width:1000px;background:#fff}
+    th,td{border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;padding:9px 8px;font-size:12px;text-align:center;vertical-align:middle;white-space:nowrap}
+    th{background:#f8fafc;font-weight:950;color:#334155;position:sticky;top:0;z-index:2}td:first-child,th:first-child{position:sticky;left:0;background:#fff;z-index:1;font-weight:950;color:#0f172a;text-align:left}th:first-child{background:#f8fafc;z-index:3}
+    .cell-ok{background:#f0fdf4;color:#166534;font-weight:900}.cell-error{background:#fef2f2;color:#991b1b;font-weight:950}.cell-warn{background:#fffbeb;color:#92400e;font-weight:950}.cell-empty{color:#cbd5e1;background:#fff}.cell-note{max-width:180px;overflow:hidden;text-overflow:ellipsis}
+    .issue-list{display:grid;gap:8px;margin-top:14px}.issue-card{border:1px solid #fecaca;background:#fff7f7;border-radius:14px;padding:12px}.issue-card.warn{border-color:#fde68a;background:#fffbeb}.issue-card .issue-title{font-weight:950;color:#991b1b;margin-bottom:5px}.issue-card.warn .issue-title{color:#92400e}.issue-card .issue-desc{font-size:13px;color:#334155;line-height:1.5}
+    .guide{font-size:12px;color:#64748b;line-height:1.45;margin-top:10px}
+    @media(max-width:1100px){.upload-grid{grid-template-columns:1fr}.summary-grid{grid-template-columns:repeat(2,1fr)}.content-grid{grid-template-columns:1fr}.person-list{max-height:330px}}
+  </style>
+</head>
+<body>
+  <div class="record-wrap">
+    <div class="page-head">
+      <div class="page-title">
+        <h1>제공기록지 통합 검증</h1>
+        <p>장기요양급여 제공기록지 엑셀 파일 하나로 식사·목욕·화장실·간호·투약·인지·물리치료를 한 번에 확인합니다.</p>
+      </div>
+    </div>
+
+    <section class="upload-card">
+      <div class="upload-grid">
+        <div class="field">
+          <label for="checkMonth">검사 월</label>
+          <input type="month" id="checkMonth" />
+        </div>
+        <div class="field">
+          <label for="recordFile">제공기록지 엑셀 업로드</label>
+          <input type="file" id="recordFile" accept=".xlsx,.xls,.xlsm" />
+        </div>
+        <button class="main-btn" id="checkBtn">검사 시작</button>
+        <button class="sub-btn" id="resetBtn">초기화</button>
+      </div>
+      <div class="guide">※ 현재 버전은 엑셀 파일 자체 내용 기준의 1차 검증입니다. 계획서·상담일지·출석관리 DB 연동 판정은 다음 단계에서 붙이면 됩니다.</div>
+      <div class="progress-area" id="progressArea">
+        <div class="progress-text" id="progressText">대기 중</div>
+        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      </div>
+      <div class="error-text" id="errorText"></div>
+    </section>
+
+    <section class="summary-grid">
+      <div class="summary-card"><div class="label">시트/어르신</div><div class="value" id="personCount">0</div></div>
+      <div class="summary-card bad"><div class="label">전체 오류</div><div class="value" id="errorCount">0</div></div>
+      <div class="summary-card warn"><div class="label">주의</div><div class="value" id="warnCount">0</div></div>
+      <div class="summary-card"><div class="label">식사</div><div class="value" id="mealCount">0</div></div>
+      <div class="summary-card"><div class="label">목욕</div><div class="value" id="bathCount">0</div></div>
+      <div class="summary-card"><div class="label">화장실</div><div class="value" id="toiletCount">0</div></div>
+      <div class="summary-card"><div class="label">간호</div><div class="value" id="nursingCount">0</div></div>
+      <div class="summary-card"><div class="label">투약</div><div class="value" id="medicineCount">0</div></div>
+    </section>
+
+    <section class="content-grid">
+      <aside class="panel">
+        <div class="panel-head"><h2>구분별 보기</h2><span class="badge" id="listBadge">0개</span></div>
+        <div class="category-list" id="categoryList"><div class="detail-empty">엑셀을 업로드해주세요.</div></div>
+      </aside>
+
+      <main class="panel">
+        <div class="panel-head"><h2>구분 상세</h2><button class="mini-btn" id="downloadBtn" disabled>결과 CSV 다운로드</button></div>
+        <div class="detail-empty" id="detailEmpty">왼쪽에서 목욕·화장실 같은 구분을 선택하면 해당 구분 결과가 표시됩니다.</div>
+        <div class="detail-body" id="detailBody">
+          <div class="detail-title">
+            <div><h3 id="detailName">-</h3><p id="detailMeta">-</p></div>
+            <span class="badge" id="detailBadge">-</span>
+          </div>
+          <div class="tabs" id="tabs">
+            <button class="tab-btn active" data-tab="all">전체 대상</button>
+            <button class="tab-btn" data-tab="error">오류만</button>
+            <button class="tab-btn" data-tab="warning">주의만</button>
+          </div>
+          <div class="table-wrap"><table id="detailTable"><thead id="detailHead"></thead><tbody id="detailRows"></tbody></table></div>
+          <div class="issue-list" id="issueList"></div>
+        </div>
+      </main>
+    </section>
+  </div>
+</body>
+</html>
