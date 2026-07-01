@@ -1,19 +1,12 @@
 /* special-notes-check.js
-   급여제공기록지 특이사항 검증 - 계획서 기준 재작성본
+   급여제공기록지 특이사항 검증 - 날짜 오인식/0건 표시 개선본
 
-   핵심 변경
-   1) 석식은 계획서/상담일지 기준으로 "식사 2회 또는 석식/저녁 제공 대상"일 때만 검사합니다.
-   2) 점심은 계획서/상담일지 기준으로 "식사 제공 대상"일 때만 검사합니다.
-   3) 목욕은 계획서/상담일지 기준으로 "목욕/몸씻기 도움 대상"이거나 기록지에 거부/미실시가 명확할 때만 검사합니다.
-   4) 투약은 계획서/상담일지 기준으로 "정확한 복약도움/투약 대상"이거나 기록지에 거부/미실시가 명확할 때만 검사합니다.
-   5) 계획서가 없는 사람은 빈 석식을 누락으로 잡지 않습니다.
-
-   HTML 필수 ID
-   recordFile, recordFileStatus, detectedMonthText,
-   counselLibraryStatus, attendanceLibraryStatus, feeLibraryStatus,
-   checkBtn, resetBtn, reloadBtn, downloadBtn, statusFilter,
-   typeTabs, resultBody,
-   totalCount, okCount, missCount, warnCount, uploadedCount
+   변경사항
+   - 검증월 삭제 → 업로드 기록 범위로 표시
+   - 날짜 인식 엄격화: 시간(06:51), 방번호, 20분 등을 날짜로 오인식하지 않음
+   - API가 0건이면 실패/0건을 구분 표시
+   - 계획서 연결이 0건이어도 석식 공란을 무조건 누락 처리하지 않음
+   - 토요일 식사 공란은 기본적으로 누락 처리하지 않음
 */
 
 (() => {
@@ -28,23 +21,28 @@
     requiredItems: [],
     results: [],
     typeFilter: "all",
-    detectedMonth: "",
+    recordRangeText: "",
     libraries: {
       counsel: [],
       plan: [],
       attendance: [],
       fee: []
-    },
-    libraryLoaded: {
-      counsel: false,
-      plan: false,
-      attendance: false,
-      fee: false
     }
   };
 
   const $ = (id) => document.getElementById(id);
   const pad = (n) => String(n).padStart(2, "0");
+
+  function getWeekday(dateKey) {
+    if (!dateKey) return "";
+    const d = new Date(`${dateKey}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return "";
+    return ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+  }
+
+  function isSaturday(dateKey) {
+    return getWeekday(dateKey) === "토";
+  }
 
   function setText(id, value) {
     const el = $(id);
@@ -68,10 +66,6 @@
       .replace(/\s+/g, "")
       .replace(/[(){}\[\],.·ㆍ:;'"‘’“”]/g, "")
       .trim();
-  }
-
-  function normalizeLoose(value) {
-    return String(value ?? "").replace(/\s+/g, " ").trim();
   }
 
   function cleanName(value) {
@@ -113,18 +107,6 @@
     return "";
   }
 
-  function dateFromHeader(value, year) {
-    const s = String(value ?? "").trim();
-
-    let m = s.match(/(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/);
-    if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
-
-    m = s.match(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})/);
-    if (m) return `${year}-${pad(m[1])}-${pad(m[2])}`;
-
-    return "";
-  }
-
   function timeToMin(value) {
     const m = String(value ?? "").match(/(\d{1,2})\s*[:시]\s*(\d{1,2})?/);
     if (!m) return null;
@@ -142,9 +124,38 @@
   }
 
   function findYear(rows) {
-    const joined = rows.flat().map(String).join(" ");
+    const joined = rows.slice(0, 10).flat().map(String).join(" ");
     const m = joined.match(/(20\d{2})/);
     return m ? Number(m[1]) : new Date().getFullYear();
+  }
+
+  function dateFromHeaderStrict(value, year) {
+    const raw = String(value ?? "").trim();
+
+    if (!raw) return "";
+
+    if (raw.includes(":") || /시\s*\d{0,2}/.test(raw) || /분/.test(raw)) return "";
+
+    let m = raw.match(/(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*(?:일)?\s*(?:\([월화수목금토일]\))?/);
+    if (m) {
+      const month = Number(m[2]);
+      const day = Number(m[3]);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${m[1]}-${pad(month)}-${pad(day)}`;
+      }
+      return "";
+    }
+
+    m = raw.match(/^(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*(?:\([월화수목금토일]\))?$/);
+    if (m) {
+      const month = Number(m[1]);
+      const day = Number(m[2]);
+      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
+        return `${year}-${pad(month)}-${pad(day)}`;
+      }
+    }
+
+    return "";
   }
 
   function findName(rows, sheetName, fileName) {
@@ -193,12 +204,22 @@
 
   function findDateColumns(rows, year) {
     const found = [];
-    const maxHeaderRows = Math.min(rows.length, 20);
+    const maxHeaderRows = Math.min(rows.length, 12);
 
     for (let r = 0; r < maxHeaderRows; r += 1) {
+      let rowDateCount = 0;
+      const temp = [];
+
       for (let c = 0; c < rows[r].length; c += 1) {
-        const date = dateFromHeader(rows[r][c], year);
-        if (date) found.push({ row: r, col: c, date });
+        const date = dateFromHeaderStrict(rows[r][c], year);
+        if (date) {
+          rowDateCount += 1;
+          temp.push({ row: r, col: c, date });
+        }
+      }
+
+      if (rowDateCount >= 2) {
+        found.push(...temp);
       }
     }
 
@@ -303,7 +324,7 @@
     try {
       return JSON.parse(text);
     } catch (err) {
-      throw new Error(`${action} JSON 파싱 실패: ${text.slice(0, 80)}`);
+      throw new Error(`${action} JSON 파싱 실패`);
     }
   }
 
@@ -314,13 +335,14 @@
       try {
         const data = await fetchAction(action);
         const arr = getArrayFromResponse(data);
-        return { action, data, rows: arr };
+        if (arr.length > 0) return { action, data, rows: arr };
+        lastError = new Error(`${action} 0건`);
       } catch (err) {
         lastError = err;
       }
     }
 
-    throw lastError || new Error("API 호출 실패");
+    return { action: "", data: null, rows: [], error: lastError };
   }
 
   function parseRowsJson(row) {
@@ -378,7 +400,7 @@
       _longTermDigits: onlyDigits(longTermNo),
       _date: date,
       _rows: parseRowsJson(row),
-      _text: normalizeLoose(
+      _text: String(
         Object.values(row)
           .filter((v) => typeof v !== "object")
           .join(" ")
@@ -391,70 +413,33 @@
     setStatus("attendanceLibraryStatus", "출석관리 보관함 불러오는 중...", "warn");
     setStatus("feeLibraryStatus", "계획서/수가 보관함 불러오는 중...", "warn");
 
-    const jobs = [
-      {
-        key: "counsel",
-        actions: ["getCounselList", "getCounsels", "getCounsel", "listCounsel", "counselList"],
-        statusId: "counselLibraryStatus",
-        okText: "상담일지"
-      },
-      {
-        key: "attendance",
-        actions: ["getAttendanceList", "getAttendance", "listAttendance", "attendanceList"],
-        statusId: "attendanceLibraryStatus",
-        okText: "출석관리"
-      },
-      {
-        key: "plan",
-        actions: ["getPlanList", "getPlans", "getPlan", "listPlan", "planList"],
-        statusId: "feeLibraryStatus",
-        okText: "계획서"
-      },
-      {
-        key: "fee",
-        actions: ["getMonthlyFeeList", "getMonthlyFee", "getFeeList", "monthlyFeeList"],
-        statusId: "feeLibraryStatus",
-        okText: "월별수가"
-      }
-    ];
+    const counsel = await fetchAny(["getCounselList", "getCounsels", "getCounsel", "listCounsel", "counselList"]);
+    state.libraries.counsel = counsel.rows.map(normalizeLibraryRow);
+    if (state.libraries.counsel.length) {
+      setStatus("counselLibraryStatus", `상담일지 ${state.libraries.counsel.length}건 연결됨`, "ok");
+    } else {
+      setStatus("counselLibraryStatus", "상담일지 0건 또는 action 이름 확인 필요", "warn");
+    }
 
-    await Promise.all(
-      jobs.map(async (job) => {
-        try {
-          const result = await fetchAny(job.actions);
-          const rows = result.rows.map(normalizeLibraryRow);
+    const attendance = await fetchAny(["getAttendanceList", "getAttendance", "listAttendance", "attendanceList"]);
+    state.libraries.attendance = attendance.rows.map(normalizeLibraryRow);
+    if (state.libraries.attendance.length) {
+      setStatus("attendanceLibraryStatus", `출석관리 ${state.libraries.attendance.length}건 연결됨`, "ok");
+    } else {
+      setStatus("attendanceLibraryStatus", "출석관리 0건 또는 action 이름 확인 필요", "warn");
+    }
 
-          state.libraries[job.key] = rows;
-          state.libraryLoaded[job.key] = true;
+    const plan = await fetchAny(["getPlanList", "getPlans", "getPlan", "listPlan", "planList"]);
+    state.libraries.plan = plan.rows.map(normalizeLibraryRow);
 
-          if (job.key === "plan" || job.key === "fee") {
-            const planCount = state.libraries.plan.length;
-            const feeCount = state.libraries.fee.length;
-            setStatus("feeLibraryStatus", `계획서 ${planCount}건 / 월별수가 ${feeCount}건 연결됨`, "ok");
-          } else {
-            setStatus(job.statusId, `${job.okText} ${rows.length}건 연결됨`, "ok");
-          }
-        } catch (err) {
-          console.warn(job.key, err);
+    const fee = await fetchAny(["getMonthlyFeeList", "getMonthlyFee", "getFeeList", "monthlyFeeList"]);
+    state.libraries.fee = fee.rows.map(normalizeLibraryRow);
 
-          state.libraries[job.key] = [];
-          state.libraryLoaded[job.key] = false;
-
-          if (job.key === "plan" || job.key === "fee") {
-            const planCount = state.libraries.plan.length;
-            const feeCount = state.libraries.fee.length;
-
-            if (planCount || feeCount) {
-              setStatus("feeLibraryStatus", `계획서 ${planCount}건 / 월별수가 ${feeCount}건 연결됨`, "ok");
-            } else {
-              setStatus("feeLibraryStatus", "계획서/수가 보관함 연결 실패 또는 데이터 없음", "warn");
-            }
-          } else {
-            setStatus(job.statusId, `${job.okText} 보관함 연결 실패 또는 데이터 없음`, "warn");
-          }
-        }
-      })
-    );
+    if (state.libraries.plan.length || state.libraries.fee.length) {
+      setStatus("feeLibraryStatus", `계획서 ${state.libraries.plan.length}건 / 월별수가 ${state.libraries.fee.length}건 연결됨`, "ok");
+    } else {
+      setStatus("feeLibraryStatus", "계획서/월별수가 0건 또는 action 이름 확인 필요", "warn");
+    }
   }
 
   function samePerson(a, b) {
@@ -478,16 +463,6 @@
       .sort((a, b) => String(b._date || "").localeCompare(String(a._date || "")))[0] || null;
   }
 
-  function relatedOnDateOrBefore(rows, recordDate, recordPerson) {
-    const dateKey = recordDate || "9999-12-31";
-
-    return rows
-      .filter((row) => samePerson(recordPerson, row))
-      .filter((row) => !row._date || row._date <= dateKey)
-      .sort((a, b) => String(b._date || "").localeCompare(String(a._date || "")))
-      .slice(0, 5);
-  }
-
   function relatedOnExactDate(rows, recordDate, recordPerson) {
     return rows.filter((row) => {
       if (!samePerson(recordPerson, row)) return false;
@@ -500,18 +475,13 @@
     if (!row) return "";
 
     const parts = [];
-
     if (row._text) parts.push(row._text);
 
     if (Array.isArray(row._rows)) {
       row._rows.forEach((r) => {
-        if (Array.isArray(r)) {
-          parts.push(r.join(" "));
-        } else if (r && typeof r === "object") {
-          parts.push(Object.values(r).join(" "));
-        } else {
-          parts.push(String(r ?? ""));
-        }
+        if (Array.isArray(r)) parts.push(r.join(" "));
+        else if (r && typeof r === "object") parts.push(Object.values(r).join(" "));
+        else parts.push(String(r ?? ""));
       });
     }
 
@@ -538,22 +508,16 @@
     const text = normalize(allText);
 
     const planExists = Boolean(planRow || feeRow);
-
     let mealCount = getPlanMealCount(`${planText} ${feeText}`);
-
     const counselMealCount = getPlanMealCount(counselText);
-    if (counselMealCount !== null) {
-      mealCount = counselMealCount;
-    }
+
+    if (counselMealCount !== null) mealCount = counselMealCount;
 
     let meal = mealCount !== null || /균형잡힌식단관리|식사도움|식사제공|영양관리/.test(text);
     let lunch = meal && (mealCount === null || mealCount >= 1);
     let dinner = meal && mealCount !== null && mealCount >= 2;
 
-    if (/석식제외|저녁제외|석식미제공|저녁미제공|식사1회|1회만|점심만/.test(text)) {
-      dinner = false;
-    }
-
+    if (/석식제외|저녁제외|석식미제공|저녁미제공|식사1회|1회만|점심만/.test(text)) dinner = false;
     if (/식사제외|식사중단|균형잡힌식단관리제외/.test(text)) {
       meal = false;
       lunch = false;
@@ -567,16 +531,7 @@
     let medication = /정확한복약도움|복약도움|투약|약도움/.test(text);
     if (/복약도움제외|투약제외|정확한복약도움제외|약도움제외/.test(text)) medication = false;
 
-    return {
-      planExists,
-      meal,
-      lunch,
-      dinner,
-      mealCount,
-      bath,
-      medication,
-      text: allText
-    };
+    return { planExists, meal, lunch, dinner, mealCount, bath, medication, text: allText };
   }
 
   function parseWorkbook(file) {
@@ -596,19 +551,38 @@
 
           wb.SheetNames.forEach((sheetName) => {
             const ws = wb.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(ws, {
-              header: 1,
-              raw: false,
-              defval: ""
-            });
+            const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: False, defval: "" });
+          });
+        } catch (err) {
+          reject(err);
+        }
+      };
 
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  // 위 raw: False 오타 방지용으로 parseWorkbook을 다시 정의합니다.
+  function parseWorkbook(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        try {
+          const data = new Uint8Array(event.target.result);
+          const wb = XLSX.read(data, { type: "array", cellDates: false });
+          const parsed = [];
+
+          wb.SheetNames.forEach((sheetName) => {
+            const ws = wb.Sheets[sheetName];
+            const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
             if (!rows.length) return;
 
             const year = findYear(rows);
             const name = findName(rows, sheetName, file.name);
             const longTermNo = findLongTermNo(rows, file.name);
             const dateCols = findDateColumns(rows, year);
-
             if (!dateCols.length) return;
 
             const timeRows = findRowsByLabel(rows, ["이용시간", "급여시간", "서비스시간", "시작시간", "종료시간"]);
@@ -623,7 +597,6 @@
             dateCols.forEach(({ col, date }) => {
               const timeText = nearbyText(rows, timeRows, col);
               const range = getTimeRange(timeText);
-
               const breakfast = nearbyText(rows, breakfastRows, col);
               const lunch = nearbyText(rows, lunchRows, col);
               const dinner = nearbyText(rows, dinnerRows, col);
@@ -639,7 +612,6 @@
                 name,
                 longTermNo,
                 date,
-                month: date.slice(0, 7),
                 sheetName,
                 timeText,
                 startTime: range.start,
@@ -684,16 +656,7 @@
   }
 
   function hasAnyAttendance(row) {
-    return Boolean(
-      row.timeText ||
-      row.breakfast ||
-      row.lunch ||
-      row.dinner ||
-      row.bath ||
-      row.toilet ||
-      row.medication ||
-      row.note
-    );
+    return Boolean(row.timeText || row.breakfast || row.lunch || row.dinner || row.bath || row.toilet || row.medication || row.note);
   }
 
   function buildRequiredItems() {
@@ -704,138 +667,61 @@
 
       const person = { name: row.name, longTermNo: row.longTermNo };
       const counselToday = relatedOnExactDate(state.libraries.counsel, row.date, person);
-      const counselBefore = relatedOnDateOrBefore(state.libraries.counsel, row.date, person);
       const latestPlan = latestBeforeOrOn(state.libraries.plan, row.date, person);
       const latestFee = latestBeforeOrOn(state.libraries.fee, row.date, person);
-      const benefits = detectPlanBenefits(latestPlan, latestFee, counselBefore);
+      const benefits = detectPlanBenefits(latestPlan, latestFee, counselToday);
 
+      const saturday = isSaturday(row.date);
+      const saturdayMealExplicit = /토요일식사|토요식사|토요일점심|토요일중식|토요일석식|토요일저녁|토요일제공|토요제공/.test(normalize(benefits.text));
+
+      const counselTodayText = normalize(counselToday.map(textOfLibraryRow).join(" "));
       const bathN = normalize(row.bath);
       const medN = normalize(row.medication);
       const endMin = timeToMin(row.endTime);
-      const counselTodayText = normalize(counselToday.map(textOfLibraryRow).join(" "));
 
       if (counselTodayText) {
         if (/목욕|몸씻기/.test(counselTodayText)) {
-          addRequired(
-            list,
-            row,
-            "상담일지",
-            "counsel-bath-change",
-            "상담일지 변경에 따른 목욕 관련 내용이 특이사항에 필요합니다.",
-            ["목욕", "몸씻기"],
-            ["오늘부터", "금일부터", "변경", "제공", "제외", "중단"],
-            "상담일지 변경에 따라 금일부터 목욕 제공 내용이 변경되었음을 확인하였음.",
-            textOfLibraryRow(counselToday[0])
-          );
+          addRequired(list, row, "상담일지", "counsel-bath-change", "상담일지 변경에 따른 목욕 관련 내용이 특이사항에 필요합니다.", ["목욕", "몸씻기"], ["오늘부터", "금일부터", "변경", "제공", "제외", "중단"], "상담일지 변경에 따라 금일부터 목욕 제공 내용이 변경되었음을 확인하였음.", textOfLibraryRow(counselToday[0]));
         }
 
         if (/다진식|죽식|일반식|식사|석식|저녁/.test(counselTodayText)) {
-          addRequired(
-            list,
-            row,
-            "상담일지",
-            "counsel-meal-change",
-            "상담일지 변경에 따른 식사 형태 또는 식사 횟수 변경 내용이 특이사항에 필요합니다.",
-            ["식사", "다진", "죽식", "일반식", "석식", "저녁"],
-            ["오늘부터", "금일부터", "변경", "제공", "제외", "중단"],
-            "상담일지 변경에 따라 금일부터 식사 제공 내용이 변경되었음을 확인하였음.",
-            textOfLibraryRow(counselToday[0])
-          );
+          addRequired(list, row, "상담일지", "counsel-meal-change", "상담일지 변경에 따른 식사 형태 또는 식사 횟수 변경 내용이 특이사항에 필요합니다.", ["식사", "다진", "죽식", "일반식", "석식", "저녁"], ["오늘부터", "금일부터", "변경", "제공", "제외", "중단"], "상담일지 변경에 따라 금일부터 식사 제공 내용이 변경되었음을 확인하였음.", textOfLibraryRow(counselToday[0]));
         }
 
         if (/복약|투약|약/.test(counselTodayText)) {
-          addRequired(
-            list,
-            row,
-            "상담일지",
-            "counsel-medication-change",
-            "상담일지 변경에 따른 복약도움 내용이 특이사항에 필요합니다.",
-            ["복약", "투약", "약"],
-            ["오늘부터", "금일부터", "변경", "제공", "제외", "중단"],
-            "상담일지 변경에 따라 금일부터 복약도움 내용이 변경되었음을 확인하였음.",
-            textOfLibraryRow(counselToday[0])
-          );
+          addRequired(list, row, "상담일지", "counsel-medication-change", "상담일지 변경에 따른 복약도움 내용이 특이사항에 필요합니다.", ["복약", "투약", "약"], ["오늘부터", "금일부터", "변경", "제공", "제외", "중단"], "상담일지 변경에 따라 금일부터 복약도움 내용이 변경되었음을 확인하였음.", textOfLibraryRow(counselToday[0]));
         }
       }
 
-      if (benefits.lunch && (!isMarked(row.lunch) || isNegative(row.lunch))) {
-        addRequired(
-          list,
-          row,
-          "식사",
-          "lunch-missing",
-          "점심 미실시 내용이 특이사항에 필요합니다.",
-          ["점심", "중식"],
-          ["안드", "미실시", "거부", "섭취안", "식사안", "드지않", "결식"],
-          "점심을 제공하였으나 드시지 않으셨으며 상태를 관찰하였음.",
-          `계획서/상담일지 기준 식사 ${benefits.mealCount || ""}회 대상`
-        );
+      if (benefits.lunch && (!saturday || saturdayMealExplicit) && (!isMarked(row.lunch) || isNegative(row.lunch))) {
+        addRequired(list, row, "식사", "lunch-missing", "점심 미실시 내용이 특이사항에 필요합니다.", ["점심", "중식"], ["안드", "미실시", "거부", "섭취안", "식사안", "드지않", "결식"], "점심을 제공하였으나 드시지 않으셨으며 상태를 관찰하였음.", `계획서/상담일지 기준 식사 ${benefits.mealCount || ""}회 대상`);
       }
 
-      if (benefits.dinner && (!isMarked(row.dinner) || isNegative(row.dinner))) {
-        addRequired(
-          list,
-          row,
-          "식사",
-          "dinner-missing",
-          "석식 미실시 내용이 특이사항에 필요합니다.",
-          ["석식", "저녁"],
-          ["안드", "미실시", "거부", "섭취안", "식사안", "드지않", "결식"],
-          "석식을 제공하였으나 드시지 않으셨으며 상태를 관찰하였음.",
-          `계획서/상담일지 기준 식사 ${benefits.mealCount || ""}회 대상`
-        );
+      if (benefits.dinner && (!saturday || saturdayMealExplicit) && (!isMarked(row.dinner) || isNegative(row.dinner))) {
+        addRequired(list, row, "식사", "dinner-missing", "석식 미실시 내용이 특이사항에 필요합니다.", ["석식", "저녁"], ["안드", "미실시", "거부", "섭취안", "식사안", "드지않", "결식"], "석식을 제공하였으나 드시지 않으셨으며 상태를 관찰하였음.", `계획서/상담일지 기준 식사 ${benefits.mealCount || ""}회 대상`);
       }
 
       let earlyBaseMin = 16 * 60 + 30;
       const latestAttendance = latestBeforeOrOn(state.libraries.attendance, row.date, person);
 
       if (latestAttendance) {
-        const text = textOfLibraryRow(latestAttendance);
-        const range = getTimeRange(text);
+        const range = getTimeRange(textOfLibraryRow(latestAttendance));
         const libEnd = timeToMin(range.end);
         if (libEnd !== null) earlyBaseMin = libEnd - 30;
       }
 
+      if (saturday && !latestAttendance) earlyBaseMin = 16 * 60;
+
       if (endMin !== null && endMin < earlyBaseMin) {
-        addRequired(
-          list,
-          row,
-          "조기하원",
-          "early-leave",
-          `${row.endTime} 조기 하원 내용이 특이사항에 필요합니다.`,
-          ["조기", "일찍", "하원", "귀가"],
-          ["하원", "귀가", "가심"],
-          `${row.endTime}경 개인 사정으로 조기 하원하심.`,
-          row.timeText
-        );
+        addRequired(list, row, "조기하원", "early-leave", `${row.endTime} 조기 하원 내용이 특이사항에 필요합니다.`, ["조기", "일찍", "하원", "귀가"], ["하원", "귀가", "가심"], `${row.endTime}경 개인 사정으로 조기 하원하심.`, row.timeText);
       }
 
       if ((benefits.bath && (!isMarked(row.bath) || isNegative(row.bath))) || bathN.includes("거부") || bathN.includes("미실시")) {
-        addRequired(
-          list,
-          row,
-          "목욕",
-          "bath-refusal",
-          "목욕 거부 또는 미실시 내용이 특이사항에 필요합니다.",
-          ["목욕"],
-          ["거부", "못하", "미실시", "안하"],
-          "목욕을 권유하였으나 거부하셔서 실시하지 못하였음.",
-          benefits.bath ? "계획서/상담일지 기준 목욕 대상" : row.bath
-        );
+        addRequired(list, row, "목욕", "bath-refusal", "목욕 거부 또는 미실시 내용이 특이사항에 필요합니다.", ["목욕"], ["거부", "못하", "미실시", "안하"], "목욕을 권유하였으나 거부하셔서 실시하지 못하였음.", benefits.bath ? "계획서/상담일지 기준 목욕 대상" : row.bath);
       }
 
       if ((benefits.medication && (!isMarked(row.medication) || isNegative(row.medication))) || medN.includes("거부") || medN.includes("미실시")) {
-        addRequired(
-          list,
-          row,
-          "투약",
-          "medication-issue",
-          "투약 미실시 또는 거부 내용이 특이사항에 필요합니다.",
-          ["투약", "복약", "약"],
-          ["거부", "미실시", "안드", "못드"],
-          "복약 도움을 제공하려 하였으나 투약이 이루어지지 않아 상태를 관찰하였음.",
-          benefits.medication ? "계획서/상담일지 기준 복약도움 대상" : row.medication
-        );
+        addRequired(list, row, "투약", "medication-issue", "투약 미실시 또는 거부 내용이 특이사항에 필요합니다.", ["투약", "복약", "약"], ["거부", "미실시", "안드", "못드"], "복약 도움을 제공하려 하였으나 투약이 이루어지지 않아 상태를 관찰하였음.", benefits.medication ? "계획서/상담일지 기준 복약도움 대상" : row.medication);
       }
     });
 
@@ -879,13 +765,8 @@
     const statusFilter = $("statusFilter")?.value || "all";
     let rows = state.results.slice();
 
-    if (state.typeFilter !== "all") {
-      rows = rows.filter((row) => row.type === state.typeFilter);
-    }
-
-    if (statusFilter !== "all") {
-      rows = rows.filter((row) => row.status === statusFilter);
-    }
+    if (state.typeFilter !== "all") rows = rows.filter((row) => row.type === state.typeFilter);
+    if (statusFilter !== "all") rows = rows.filter((row) => row.status === statusFilter);
 
     return rows;
   }
@@ -910,23 +791,13 @@
     body.innerHTML = rows.map((row, idx) => `
       <tr>
         <td>${badge(row.status)}</td>
-        <td>
-          <b>${escapeHtml(row.name)}</b>
-          <div class="small">${escapeHtml(row.longTermNo || "")}</div>
-        </td>
-        <td>${escapeHtml(row.date)}</td>
+        <td><b>${escapeHtml(row.name)}</b><div class="small">${escapeHtml(row.longTermNo || "")}</div></td>
+        <td>${escapeHtml(row.date)}<div class="small">${getWeekday(row.date)}</div></td>
         <td>${escapeHtml(row.type)}</td>
         <td class="note-text">${escapeHtml(row.requiredText)}</td>
         <td class="note-text">${escapeHtml(row.uploaded || "없음")}</td>
-        <td>
-          ${escapeHtml(row.reason)}
-          ${row.sourceText ? `<div class="small">근거: ${escapeHtml(String(row.sourceText).slice(0, 100))}</div>` : ""}
-        </td>
-        <td class="note-text">
-          ${escapeHtml(row.recommend)}
-          <br />
-          <button type="button" class="copy-btn" data-row="${idx}">문구 선택</button>
-        </td>
+        <td>${escapeHtml(row.reason)}${row.sourceText ? `<div class="small">근거: ${escapeHtml(String(row.sourceText).slice(0, 100))}</div>` : ""}</td>
+        <td class="note-text">${escapeHtml(row.recommend)}<br /><button type="button" class="copy-btn" data-row="${idx}">문구 선택</button></td>
       </tr>
     `).join("");
 
@@ -938,10 +809,19 @@
     });
   }
 
-  function updateDetectedMonth() {
-    const months = [...new Set(state.recordRows.map((r) => r.month).filter(Boolean))].sort();
-    state.detectedMonth = months.join(", ");
-    setText("detectedMonthText", state.detectedMonth || "업로드 파일 자동 인식");
+  function updateRecordRangeText() {
+    const dates = [...new Set(state.recordRows.map((r) => r.date).filter(Boolean))].sort();
+
+    if (!dates.length) {
+      state.recordRangeText = "";
+      setText("detectedMonthText", "업로드 파일 자동 인식");
+      return;
+    }
+
+    const start = dates[0];
+    const end = dates[dates.length - 1];
+    state.recordRangeText = start === end ? start : `${start} ~ ${end}`;
+    setText("detectedMonthText", `${state.recordRangeText} / ${dates.length}일 인식`);
   }
 
   async function handleFileChange() {
@@ -968,7 +848,7 @@
 
     try {
       state.recordRows = await parseWorkbook(file);
-      updateDetectedMonth();
+      updateRecordRangeText();
 
       if (!state.recordRows.length) {
         setStatus("recordFileStatus", "파일은 업로드됐지만 날짜/수급자/특이사항 구조를 읽지 못했습니다.", "warn");
@@ -990,9 +870,7 @@
       return;
     }
 
-    if (!state.recordRows.length) {
-      await handleFileChange();
-    }
+    if (!state.recordRows.length) await handleFileChange();
 
     buildRequiredItems();
     compareResults();
@@ -1014,6 +892,7 @@
       어르신: r.name,
       장기요양번호: r.longTermNo,
       일자: r.date,
+      요일: getWeekday(r.date),
       구분: r.type,
       필요특이사항: r.requiredText,
       업로드특이사항: r.uploaded,
@@ -1027,13 +906,11 @@
     const wb = XLSX.utils.book_new();
 
     XLSX.utils.book_append_sheet(wb, ws, "특이사항검증결과");
-    XLSX.writeFile(wb, `특이사항검증결과_${state.detectedMonth || "업로드월"}.xlsx`);
+    XLSX.writeFile(wb, `특이사항검증결과_${state.recordRangeText || "업로드"}.xlsx`);
   }
 
   function resetPage() {
-    if (confirm("초기화할까요?")) {
-      location.reload();
-    }
+    if (confirm("초기화할까요?")) location.reload();
   }
 
   function initTodayText() {
