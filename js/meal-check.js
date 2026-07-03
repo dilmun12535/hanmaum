@@ -572,7 +572,8 @@ function getMealRuleAtDate(plan, name, targetDate) {
   }
 
   // 토요일은 센터 운영 기준으로 전원 점심 1회만 제공합니다.
-  const dayOfWeek = new Date(targetDate).getDay();
+  // 계획서가 2회여도 토요일은 1회로 판정합니다.
+  const dayOfWeek = new Date(`${normalizeDateText(targetDate)}T00:00:00`).getDay();
   if (dayOfWeek === 6) {
     mealCount = 1;
     mealCountSource = "토요일 기본";
