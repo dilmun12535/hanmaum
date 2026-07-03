@@ -631,7 +631,7 @@ function timeToMinutes(timeText) {
 function isEarlyLeave(leaveTime) {
   const minutes = timeToMinutes(leaveTime);
   if (minutes === null) return false;
-  return minutes < (16 * 60 + 40);
+  return minutes < (17 * 60 + 10);
 }
 
 function getAttendanceMonth(monthValue) {
