@@ -70,6 +70,52 @@ function normalizeRecipientName(value) {
   return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
 }
 
+
+function normalizeCareGrade(value) {
+  const text = String(value || "").replace(/\s/g, "").trim();
+  if (!text) return "";
+  if (text.includes("인지지원")) return "인지지원";
+  const match = text.match(/[1-5]\s*등급|[1-5]/);
+  return match ? `${match[0].replace(/[^1-5]/g, "")}등급` : "";
+}
+
+function getCareGradeFromObject(obj) {
+  if (!obj || typeof obj !== "object") return "";
+
+  const directKeys = [
+    "grade", "careGrade", "longTermGrade", "recipientGrade",
+    "등급", "장기요양등급", "인정등급", "수급자등급"
+  ];
+
+  for (const key of directKeys) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const grade = normalizeCareGrade(obj[key]);
+      if (grade) return grade;
+    }
+  }
+
+  const text = JSON.stringify(obj || "");
+  if (/인지\s*지원/.test(text)) return "인지지원";
+
+  const gradeMatch = text.match(/[1-5]\s*등급/);
+  if (gradeMatch) return normalizeCareGrade(gradeMatch[0]);
+
+  return "";
+}
+
+function isSameRecipientWithGrade(sourceName, targetName, sourceGrade = "", targetGrade = "") {
+  if (!isSameRecipient(sourceName, targetName)) return false;
+
+  const cleanSourceGrade = normalizeCareGrade(sourceGrade);
+  const cleanTargetGrade = normalizeCareGrade(targetGrade);
+
+  if (cleanSourceGrade && cleanTargetGrade) {
+    return cleanSourceGrade === cleanTargetGrade;
+  }
+
+  return true;
+}
+
 function isSameRecipient(nameA, nameB) {
   const cleanA = normalizeRecipientName(nameA);
   const cleanB = normalizeRecipientName(nameB);
@@ -286,12 +332,13 @@ function parseMealReport(workbook, monthValue) {
   return Object.values(resultMap);
 }
 
-function getLatestPlansByRecipient(name, checkDate) {
+function getLatestPlansByRecipient(name, checkDate, careGrade = "") {
   const checkDateText = normalizeDateText(checkDate);
   const library = carePlanLibraryCache || [];
   const validPlans = library.filter((plan) => {
     const writtenDate = normalizeDateText(plan.writtenDate);
-    return writtenDate && writtenDate <= checkDateText && isSameRecipient(plan.recipientName, name);
+    const planGrade = getCareGradeFromObject(plan) || getCareGradeFromObject(plan.rows) || getCareGradeFromObject(plan.rowsJson);
+    return writtenDate && writtenDate <= checkDateText && isSameRecipientWithGrade(plan.recipientName, name, planGrade, careGrade);
   });
 
   validPlans.sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
@@ -467,10 +514,11 @@ function getCounselDate(counsel) {
   );
 }
 
-function getLatestMealCounsel(name, targetDate) {
+function getLatestMealCounsel(name, targetDate, careGrade = "") {
   const targetDateText = normalizeDateText(targetDate);
   const counsels = counselLibraryCache.filter((item) => {
-    if (!isSameRecipient(item.recipientName || item.name, name)) return false;
+    const counselGrade = getCareGradeFromObject(item);
+    if (!isSameRecipientWithGrade(item.recipientName || item.name, name, counselGrade, careGrade)) return false;
     const refDate = getCounselDate(item);
     if (!refDate || refDate > targetDateText) return false;
 
@@ -532,12 +580,12 @@ function getMealCountFromCounselText(text, fallback) {
   return fallback;
 }
 
-function getMealRuleAtDate(plan, name, targetDate) {
+function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
   const planDate = plan ? normalizeDateText(plan.writtenDate) : "";
   const planMealCount = getMealCountFromPlan(plan);
   const planSpecialFood = hasFoodPrepPlan(plan);
 
-  const counsel = getLatestMealCounsel(name, targetDate);
+  const counsel = getLatestMealCounsel(name, targetDate, careGrade);
   const counselDate = counsel ? getCounselDate(counsel) : "";
 
   let mealCount = planMealCount;
@@ -603,8 +651,8 @@ function buildMealRuleSourceHtml(mainText, sourceText, isActive = true) {
   `;
 }
 
-function getCounselTextForMonth(name, monthEndDate) {
-  const counsel = getLatestMealCounsel(name, monthEndDate);
+function getCounselTextForMonth(name, monthEndDate, careGrade = "") {
+  const counsel = getLatestMealCounsel(name, monthEndDate, careGrade);
   if (!counsel) return "없음";
   const refDate = getCounselDate(counsel) || "-";
   return `${String(refDate).substring(0,10)}<br>[${counsel.changeType || "-"}]<br>${counsel.careContent || "-"}`;
@@ -641,6 +689,16 @@ function getAttendanceMonth(monthValue) {
       const leaveTimes = parseJsonObject(item.leaveTimes || item.leaveTimesJson);
       return {
         name: String(item.recipientName || item.name || "").trim(),
+        careGrade: normalizeCareGrade(
+          item.careGrade ||
+          item.grade ||
+          item.longTermGrade ||
+          item.recipientGrade ||
+          item["등급"] ||
+          item["장기요양등급"] ||
+          item["인정등급"] ||
+          ""
+        ),
         dates: item.dates || item.attendanceDates || [],
         leaveTimes
       };
@@ -735,13 +793,15 @@ function buildResults(monthValue, mealRows) {
 
   return attendanceRows.map((attendance) => {
     const name = attendance.name;
-    const plan = getLatestPlansByRecipient(name, monthEndDate);
+    const careGrade = attendance.careGrade || "";
+    const plan = getLatestPlansByRecipient(name, monthEndDate, careGrade);
     const meal = mealRows.find((item) => isSameRecipient(item.name, name));
 
     return {
       name,
+      careGrade,
       planDate: plan ? plan.writtenDate : "-",
-      counselText: getCounselTextForMonth(name, monthEndDate),
+      counselText: getCounselTextForMonth(name, monthEndDate, careGrade),
       attendanceDates: attendance.dates || [],
       leaveTimes: attendance.leaveTimes || {},
       plan,
@@ -783,14 +843,14 @@ function renderResults(monthValue, results) {
     const row = document.createElement("tr");
     const attendanceSet = new Set(item.attendanceDates || []);
     const monthEndDate = getMonthEndDate(monthValue);
-    const monthEndPlan = getLatestPlansByRecipient(item.name, monthEndDate);
-    const monthEndRule = getMealRuleAtDate(monthEndPlan, item.name, monthEndDate);
+    const monthEndPlan = getLatestPlansByRecipient(item.name, monthEndDate, item.careGrade);
+    const monthEndRule = getMealRuleAtDate(monthEndPlan, item.name, monthEndDate, item.careGrade);
 
     let problemCount = 0;
     const dayCells = days.map((day) => {
       const isAttendanceDay = attendanceSet.has(day);
-      const dayPlan = getLatestPlansByRecipient(item.name, day);
-      const rule = getMealRuleAtDate(dayPlan, item.name, day);
+      const dayPlan = getLatestPlansByRecipient(item.name, day, item.careGrade);
+      const rule = getMealRuleAtDate(dayPlan, item.name, day, item.careGrade);
       const leaveTime = item.leaveTimes ? item.leaveTimes[day] : "";
       const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule, leaveTime, day) : "정상";
       if (isAttendanceDay && result !== "정상" && result !== "일찍 하원") problemCount += 1;
@@ -802,7 +862,9 @@ function renderResults(monthValue, results) {
     const errorCellBg = problemCount > 0 ? 'background-color: #fff5f5 !important;' : 'background-color: #ffffff !important;';
 
     row.innerHTML = `
-      <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
+      <td style="font-weight:600; text-align:center; ${errorCellBg}">
+        ${item.name || "-"}${item.careGrade ? `<br><span style="font-size:11px; color:#64748b; font-weight:700;">${item.careGrade}</span>` : ""}
+      </td>
       <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
       <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px; ${errorCellBg}">${item.counselText || "없음"}</td>
       <td style="text-align:center; font-weight:700; ${errorCellBg}">${buildMealRuleSourceHtml(`${monthEndRule.mealCount || 0}회`, monthEndRule.mealCountSource, (monthEndRule.mealCount || 0) > 0)}</td>
