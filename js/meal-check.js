@@ -75,16 +75,33 @@ function normalizeCareGrade(value) {
   const text = String(value || "").replace(/\s/g, "").trim();
   if (!text) return "";
   if (text.includes("인지지원")) return "인지지원";
-  const match = text.match(/[1-5]\s*등급|[1-5]/);
-  return match ? `${match[0].replace(/[^1-5]/g, "")}등급` : "";
+  const gradeMatch = text.match(/[1-5]\s*등급/);
+  if (gradeMatch) return `${gradeMatch[0].replace(/[^1-5]/g, "")}등급`;
+  const numberMatch = text.match(/(?:^|[^0-9])([1-5])(?:$|[^0-9])/);
+  if (numberMatch) return `${numberMatch[1]}등급`;
+  return "";
 }
 
 function getCareGradeFromObject(obj) {
-  if (!obj || typeof obj !== "object") return "";
+  if (!obj) return "";
+
+  if (typeof obj === "string" || typeof obj === "number") {
+    return normalizeCareGrade(obj);
+  }
+
+  if (Array.isArray(obj)) {
+    for (const item of obj) {
+      const grade = getCareGradeFromObject(item);
+      if (grade) return grade;
+    }
+    return "";
+  }
+
+  if (typeof obj !== "object") return "";
 
   const directKeys = [
-    "grade", "careGrade", "longTermGrade", "recipientGrade",
-    "등급", "장기요양등급", "인정등급", "수급자등급"
+    "grade", "careGrade", "longTermGrade", "recipientGrade", "ltcGrade",
+    "등급", "장기요양등급", "인정등급", "수급자등급", "요양등급"
   ];
 
   for (const key of directKeys) {
@@ -94,10 +111,18 @@ function getCareGradeFromObject(obj) {
     }
   }
 
-  const text = JSON.stringify(obj || "");
-  if (/인지\s*지원/.test(text)) return "인지지원";
+  for (const [key, value] of Object.entries(obj)) {
+    const keyText = normalizeText(key);
+    if (keyText.includes("등급") || keyText.toLowerCase().includes("grade")) {
+      const grade = normalizeCareGrade(value);
+      if (grade) return grade;
+    }
+  }
 
-  const gradeMatch = text.match(/[1-5]\s*등급/);
+  const fullText = JSON.stringify(obj || "");
+  if (/인지\s*지원/.test(fullText)) return "인지지원";
+
+  const gradeMatch = fullText.match(/[1-5]\s*등급/);
   if (gradeMatch) return normalizeCareGrade(gradeMatch[0]);
 
   return "";
@@ -335,11 +360,27 @@ function parseMealReport(workbook, monthValue) {
 function getLatestPlansByRecipient(name, checkDate, careGrade = "") {
   const checkDateText = normalizeDateText(checkDate);
   const library = carePlanLibraryCache || [];
-  const validPlans = library.filter((plan) => {
+
+  const candidates = library.filter((plan) => {
     const writtenDate = normalizeDateText(plan.writtenDate);
-    const planGrade = getCareGradeFromObject(plan) || getCareGradeFromObject(plan.rows) || getCareGradeFromObject(plan.rowsJson);
-    return writtenDate && writtenDate <= checkDateText && isSameRecipientWithGrade(plan.recipientName, name, planGrade, careGrade);
+    return writtenDate && writtenDate <= checkDateText && isSameRecipient(plan.recipientName, name);
   });
+
+  const cleanCareGrade = normalizeCareGrade(careGrade);
+  let validPlans = candidates;
+
+  if (cleanCareGrade) {
+    const gradeMatched = candidates.filter((plan) => {
+      const planGrade =
+        getCareGradeFromObject(plan) ||
+        getCareGradeFromObject(plan.rows) ||
+        getCareGradeFromObject(plan.rowsJson) ||
+        normalizeCareGrade(String(plan.rowsJson || ""));
+      return planGrade && planGrade === cleanCareGrade;
+    });
+
+    if (gradeMatched.length > 0) validPlans = gradeMatched;
+  }
 
   validPlans.sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
   return validPlans[0] || null;
@@ -516,20 +557,35 @@ function getCounselDate(counsel) {
 
 function getLatestMealCounsel(name, targetDate, careGrade = "") {
   const targetDateText = normalizeDateText(targetDate);
-  const counsels = counselLibraryCache.filter((item) => {
-    const counselGrade = getCareGradeFromObject(item);
-    if (!isSameRecipientWithGrade(item.recipientName || item.name, name, counselGrade, careGrade)) return false;
+  const cleanCareGrade = normalizeCareGrade(careGrade);
+
+  const baseCounsels = counselLibraryCache.filter((item) => {
+    if (!isSameRecipient(item.recipientName || item.name, name)) return false;
+
     const refDate = getCounselDate(item);
     if (!refDate || refDate > targetDateText) return false;
 
     const category = item.category || "";
     const text = normalizeText(`${item.careContent || ""} ${item.reason || ""} ${item.changeType || ""}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
     return category === "식사" || text.includes("식단") || text.includes("식사") || text.includes("음식준비") || text.includes("다진식") || text.includes("죽식");
-  }).sort((a, b) => {
+  });
+
+  let counsels = baseCounsels;
+
+  if (cleanCareGrade) {
+    const gradeMatched = baseCounsels.filter((item) => {
+      const counselGrade = getCareGradeFromObject(item);
+      return counselGrade && counselGrade === cleanCareGrade;
+    });
+    if (gradeMatched.length > 0) counsels = gradeMatched;
+  }
+
+  counsels.sort((a, b) => {
     const dateA = getCounselDate(a);
     const dateB = getCounselDate(b);
     return dateB.localeCompare(dateA);
   });
+
   return counsels[0] || null;
 }
 
@@ -670,6 +726,30 @@ function parseJsonObject(value) {
   }
 }
 
+
+function getCareGradeFromAttendanceItem(item) {
+  if (!item) return "";
+  const directGrade = normalizeCareGrade(
+    item.careGrade ||
+    item.grade ||
+    item.longTermGrade ||
+    item.recipientGrade ||
+    item.ltcGrade ||
+    item["등급"] ||
+    item["장기요양등급"] ||
+    item["인정등급"] ||
+    item["수급자등급"] ||
+    item["요양등급"] ||
+    ""
+  );
+  if (directGrade) return directGrade;
+
+  const objectGrade = getCareGradeFromObject(item);
+  if (objectGrade) return objectGrade;
+
+  return normalizeCareGrade(`${item.rowsJson || ""} ${item.rawJson || ""} ${item.extraJson || ""}`);
+}
+
 function timeToMinutes(timeText) {
   const match = String(timeText || "").match(/(\d{1,2})\s*[:시]\s*(\d{1,2})/);
   if (!match) return null;
@@ -689,16 +769,7 @@ function getAttendanceMonth(monthValue) {
       const leaveTimes = parseJsonObject(item.leaveTimes || item.leaveTimesJson);
       return {
         name: String(item.recipientName || item.name || "").trim(),
-        careGrade: normalizeCareGrade(
-          item.careGrade ||
-          item.grade ||
-          item.longTermGrade ||
-          item.recipientGrade ||
-          item["등급"] ||
-          item["장기요양등급"] ||
-          item["인정등급"] ||
-          ""
-        ),
+        careGrade: getCareGradeFromAttendanceItem(item),
         dates: item.dates || item.attendanceDates || [],
         leaveTimes
       };
