@@ -661,13 +661,29 @@ function getFoodTypeResult(mealValue, specialFood) {
 
 function getDayResult(dayData, rule, leaveTime, targetDate = "") {
   if (!rule) return "정상";
-  const mealCount = isSaturdayDate(targetDate) ? 1 : rule.mealCount;
+
   const specialFood = rule.specialFood;
+
+  // 토요일은 센터 운영 기준으로 전원 점심 1회만 제공합니다.
+  // 따라서 토요일은 저녁 기록 여부와 하원시간을 검사하지 않고,
+  // 점심이 정상 식사형태로 기록되어 있으면 정상입니다.
+  if (isSaturdayDate(targetDate)) {
+    if (!dayData || !dayData.lunch) return "누락";
+
+    const lunchResult = getFoodTypeResult(dayData.lunch, specialFood);
+    if (lunchResult === "누락") return "누락";
+    if (lunchResult === "식사형태 오류") return "식사형태 오류";
+
+    return "정상";
+  }
+
+  const mealCount = rule.mealCount;
 
   if (mealCount <= 0) {
     if (dayData && (dayData.lunch || dayData.dinner)) return "오류";
     return "정상";
   }
+
   if (!dayData || (!dayData.lunch && !dayData.dinner)) return "기록 없음";
 
   const lunchResult = getFoodTypeResult(dayData.lunch, specialFood);
@@ -682,7 +698,8 @@ function getDayResult(dayData, rule, leaveTime, targetDate = "") {
 
   if (lunchResult === "누락" || dinnerResult === "누락") return "누락";
   if (lunchResult === "식사형태 오류" || dinnerResult === "식사형태 오류") return "식사형태 오류";
-  if (mealCount === 1 && dayData.dinner && !isSaturdayDate(targetDate)) return "저녁 확인";
+  if (mealCount === 1 && dayData.dinner) return "저녁 확인";
+
   return "정상";
 }
 
