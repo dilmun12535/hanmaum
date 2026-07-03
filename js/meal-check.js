@@ -12,8 +12,8 @@ async function syncCarePlanLibraryFromGoogleSheet() {
   try {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
-    carePlanLibraryCache = JSON.parse(text);
-    carePlanLibraryCache = Array.isArray(carePlanLibraryCache) ? carePlanLibraryCache.map(attachCareGrade) : [];
+    const parsed = JSON.parse(text);
+    carePlanLibraryCache = Array.isArray(parsed) ? parsed.map(attachCareGrade) : [];
     return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
@@ -371,20 +371,32 @@ function parseMealReport(workbook, monthValue) {
 function getLatestPlansByRecipient(name, checkDate, careGrade = "") {
   const checkDateText = normalizeDateText(checkDate);
   const library = carePlanLibraryCache || [];
+
   const candidates = library.filter((plan) => {
     const writtenDate = normalizeDateText(plan.writtenDate);
     return writtenDate && writtenDate <= checkDateText && isSameRecipient(plan.recipientName, name);
   });
 
+  if (candidates.length === 0) return null;
+
   const cleanCareGrade = normalizeCareGrade(careGrade);
   let validPlans = candidates;
 
+  // 계획서 안에서 등급이 확실히 확인되는 경우에만 등급으로 좁힙니다.
+  // 계획서에 등급 정보가 없으면 이름 기준 계획서를 그대로 사용합니다.
   if (cleanCareGrade) {
     const gradeMatched = candidates.filter((plan) => {
-      const planGrade = plan.__careGrade || getCareGradeFromAny(plan);
+      const planGrade =
+        plan.__careGrade ||
+        getCareGradeFromAny(plan) ||
+        getCareGradeFromAny(plan.rows) ||
+        getCareGradeFromAny(plan.rowsJson);
       return planGrade && planGrade === cleanCareGrade;
     });
-    if (gradeMatched.length > 0) validPlans = gradeMatched;
+
+    if (gradeMatched.length > 0) {
+      validPlans = gradeMatched;
+    }
   }
 
   validPlans.sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
@@ -574,14 +586,20 @@ function getLatestMealCounsel(name, targetDate, careGrade = "") {
     return category === "식사" || text.includes("식단") || text.includes("식사") || text.includes("음식준비") || text.includes("다진식") || text.includes("죽식");
   });
 
+  if (baseCounsels.length === 0) return null;
+
   let counsels = baseCounsels;
 
+  // 상담일지에 등급이 있는 경우에만 등급으로 좁힙니다.
   if (cleanCareGrade) {
     const gradeMatched = baseCounsels.filter((item) => {
       const counselGrade = item.__careGrade || getCareGradeFromAny(item);
       return counselGrade && counselGrade === cleanCareGrade;
     });
-    if (gradeMatched.length > 0) counsels = gradeMatched;
+
+    if (gradeMatched.length > 0) {
+      counsels = gradeMatched;
+    }
   }
 
   counsels.sort((a, b) => {
