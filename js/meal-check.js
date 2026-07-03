@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbwJhnr6jFypaNIPzsaCUx8zk9Lc0SHN3AYPzhoT0uoMW_eTDPVlnrIzONA1gCD0_A5WDQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_kgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -167,6 +167,15 @@ function getDayColorClass(dateText) {
   if (weekday === 0 || holidayList.includes(dateText)) return "meal-day-red";
   if (weekday === 6) return "meal-day-blue";
   return "";
+}
+
+
+function isSaturdayDate(dateText) {
+  const normalized = normalizeDateText(dateText);
+  if (!normalized) return false;
+  const [year, month, day] = normalized.split("-").map(Number);
+  if (!year || !month || !day) return false;
+  return new Date(year, month - 1, day).getDay() === 6;
 }
 
 function sheetToRowsWithMerges(sheet) {
@@ -572,9 +581,8 @@ function getMealRuleAtDate(plan, name, targetDate) {
   }
 
   // 토요일은 센터 운영 기준으로 전원 점심 1회만 제공합니다.
-  // 계획서가 2회여도 토요일은 1회로 판정합니다.
-  const dayOfWeek = new Date(`${normalizeDateText(targetDate)}T00:00:00`).getDay();
-  if (dayOfWeek === 6) {
+  // 계획서·상담일지가 2회여도 토요일은 1회로 판정합니다.
+  if (isSaturdayDate(targetDate)) {
     mealCount = 1;
     mealCountSource = "토요일 기본";
   }
@@ -651,9 +659,9 @@ function getFoodTypeResult(mealValue, specialFood) {
   return "식사형태 오류";
 }
 
-function getDayResult(dayData, rule, leaveTime) {
+function getDayResult(dayData, rule, leaveTime, targetDate = "") {
   if (!rule) return "정상";
-  const mealCount = rule.mealCount;
+  const mealCount = isSaturdayDate(targetDate) ? 1 : rule.mealCount;
   const specialFood = rule.specialFood;
 
   if (mealCount <= 0) {
@@ -674,7 +682,7 @@ function getDayResult(dayData, rule, leaveTime) {
 
   if (lunchResult === "누락" || dinnerResult === "누락") return "누락";
   if (lunchResult === "식사형태 오류" || dinnerResult === "식사형태 오류") return "식사형태 오류";
-  if (mealCount === 1 && dayData.dinner) return "저녁 확인";
+  if (mealCount === 1 && dayData.dinner && !isSaturdayDate(targetDate)) return "저녁 확인";
   return "정상";
 }
 
@@ -684,9 +692,9 @@ function makeResultClass(result) {
   return "status-danger";
 }
 
-function buildDayCell(isAttendanceDay, dayData, rule, leaveTime) {
+function buildDayCell(isAttendanceDay, dayData, rule, leaveTime, targetDate = "") {
   if (!isAttendanceDay) return `<td class="meal-day-cell empty-day">결석</td>`;
-  const result = getDayResult(dayData, rule, leaveTime);
+  const result = getDayResult(dayData, rule, leaveTime, targetDate);
   const resultClass = makeResultClass(result);
 
   let cellBgStyle = "background-color: #ffffff !important;";
@@ -694,7 +702,7 @@ function buildDayCell(isAttendanceDay, dayData, rule, leaveTime) {
 
   const lunch = dayData ? (dayData.lunch || "-") : "-";
   const dinner = dayData ? (dayData.dinner || "-") : "-";
-  const leaveLine = leaveTime && rule && rule.mealCount >= 2 ? `<br><span class="leave-time-badge">🕒 ${leaveTime}</span>` : "";
+  const leaveLine = leaveTime && rule && rule.mealCount >= 2 && !isSaturdayDate(targetDate) ? `<br><span class="leave-time-badge">🕒 ${leaveTime}</span>` : "";
 
   return `
     <td class="meal-day-cell" style="${cellBgStyle}">
@@ -767,9 +775,9 @@ function renderResults(monthValue, results) {
       const dayPlan = getLatestPlansByRecipient(item.name, day);
       const rule = getMealRuleAtDate(dayPlan, item.name, day);
       const leaveTime = item.leaveTimes ? item.leaveTimes[day] : "";
-      const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule, leaveTime) : "정상";
+      const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule, leaveTime, day) : "정상";
       if (isAttendanceDay && result !== "정상" && result !== "일찍 하원") problemCount += 1;
-      return buildDayCell(isAttendanceDay, item.mealDays[day], rule, leaveTime);
+      return buildDayCell(isAttendanceDay, item.mealDays[day], rule, leaveTime, day);
     }).join("");
 
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
