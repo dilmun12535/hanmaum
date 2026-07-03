@@ -4,33 +4,57 @@ let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 let attendanceLibraryCache = [];
 
+
+function parseApiJson(text, fallbackValue, label) {
+  const raw = String(text || "").trim();
+
+  if (!raw) {
+    console.warn(`${label}: 빈 응답`);
+    return fallbackValue;
+  }
+
+  if (raw.startsWith("<!DOCTYPE") || raw.startsWith("<html") || raw.startsWith("<")) {
+    console.error(`${label}: JSON이 아니라 HTML 응답을 받았습니다. Apps Script 배포/권한/URL 응답을 확인해야 합니다.`, raw.slice(0, 300));
+    alert(`${label} 응답이 JSON이 아닙니다. Apps Script 배포 URL 또는 권한을 확인해주세요.`);
+    return fallbackValue;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    console.error(`${label}: JSON 파싱 오류`, error, raw.slice(0, 300));
+    alert(`${label} 데이터를 읽는 중 오류가 발생했습니다.`);
+    return fallbackValue;
+  }
+}
+
 function makePayloadUrl(payload) {
   return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
 }
 
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
+    const response = await fetch(`${CARE_PLAN_API_URL}?_=${Date.now()}`, { method: "GET", redirect: "follow" });
     const text = await response.text();
-    const parsed = JSON.parse(text);
-    carePlanLibraryCache = Array.isArray(parsed) ? parsed.map(attachCareGrade) : [];
+    const parsed = parseApiJson(text, [], "급여계획서 동기화");
+    carePlanLibraryCache = Array.isArray(parsed) ? parsed.map((item) => attachCareGrade(item)) : [];
     return carePlanLibraryCache;
   } catch (error) {
-    console.error("급여제공계획서 동기화 오류:", error);
-    return [];
+    console.error("급여계획서 동기화 오류:", error);
+    return carePlanLibraryCache || [];
   }
 }
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, { method: "GET", redirect: "follow" });
+    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel&_=${Date.now()}`, { method: "GET", redirect: "follow" });
     const text = await response.text();
-    counselLibraryCache = JSON.parse(text);
-    counselLibraryCache = Array.isArray(counselLibraryCache) ? counselLibraryCache.map(attachCareGrade) : [];
+    const parsed = parseApiJson(text, [], "상담일지 동기화");
+    counselLibraryCache = Array.isArray(parsed) ? parsed.map((item) => attachCareGrade(item)) : [];
     return counselLibraryCache;
   } catch (error) {
     console.error("상담일지 동기화 오류:", error);
-    return [];
+    return counselLibraryCache || [];
   }
 }
 
@@ -39,17 +63,18 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
     const response = await fetch(
       makePayloadUrl({
         action: "listAttendance",
-        month: monthValue
+        month: monthValue,
+        _: Date.now()
       }),
       { method: "GET", redirect: "follow" }
     );
     const text = await response.text();
-    const attendance = JSON.parse(text);
-    attendanceLibraryCache = Array.isArray(attendance) ? attendance.map(attachCareGrade) : [];
+    const attendance = parseApiJson(text, [], "출석관리 동기화");
+    attendanceLibraryCache = Array.isArray(attendance) ? attendance.map((item) => attachCareGrade(item)) : [];
     return attendanceLibraryCache;
   } catch (error) {
     console.error("출석관리 동기화 오류:", error);
-    return attendanceLibraryCache;
+    return attendanceLibraryCache || [];
   }
 }
 
