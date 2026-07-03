@@ -760,6 +760,13 @@ function timeToMinutes(timeText) {
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
+
+function isBeforeDinnerStart(leaveTime) {
+  const minutes = timeToMinutes(leaveTime);
+  if (minutes === null) return false;
+  return minutes < (16 * 60 + 45);
+}
+
 function isEarlyLeave(leaveTime) {
   const minutes = timeToMinutes(leaveTime);
   if (minutes === null) return false;
@@ -814,11 +821,20 @@ function getDayResult(dayData, rule, leaveTime, targetDate = "") {
     if (dayData && (dayData.lunch || dayData.dinner)) return "오류";
     return "정상";
   }
+
   if (!dayData || (!dayData.lunch && !dayData.dinner)) return "기록 없음";
 
   const lunchResult = getFoodTypeResult(dayData.lunch, specialFood);
 
-  if (mealCount >= 2 && !dayData.dinner && isEarlyLeave(leaveTime)) {
+  // 평일에 석식 시작 전 하원했는데 저녁 기록이 있으면 실제 제공 여부 확인 필요
+  if (dayData.dinner && isBeforeDinnerStart(leaveTime)) {
+    if (lunchResult === "누락") return "누락";
+    if (lunchResult === "식사형태 오류") return "식사형태 오류";
+    return "저녁 확인";
+  }
+
+  // 2회 대상자가 석식 시작 전 하원했고 저녁 기록이 없으면 정상적인 일찍 하원 처리
+  if (mealCount >= 2 && !dayData.dinner && isBeforeDinnerStart(leaveTime)) {
     if (lunchResult === "누락") return "누락";
     if (lunchResult === "식사형태 오류") return "식사형태 오류";
     return "일찍 하원";
@@ -828,7 +844,10 @@ function getDayResult(dayData, rule, leaveTime, targetDate = "") {
 
   if (lunchResult === "누락" || dinnerResult === "누락") return "누락";
   if (lunchResult === "식사형태 오류" || dinnerResult === "식사형태 오류") return "식사형태 오류";
+
+  // 1회 대상자는 평일 저녁 기록이 있으면 확인 필요
   if (mealCount === 1 && dayData.dinner) return "저녁 확인";
+
   return "정상";
 }
 
