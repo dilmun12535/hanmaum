@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbwJhnr6jFypaNIPzsaCUx8zk9Lc0SHN3AYPzhoT0uoMW_eTDPVlnrIzONA1gCD0_A5WDQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_AkgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -631,7 +631,7 @@ function timeToMinutes(timeText) {
 function isEarlyLeave(leaveTime) {
   const minutes = timeToMinutes(leaveTime);
   if (minutes === null) return false;
-  return minutes < (17 * 60 + 10);
+  return minutes < (16 * 60 + 40);
 }
 
 function getAttendanceMonth(monthValue) {
