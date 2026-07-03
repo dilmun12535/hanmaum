@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_AkgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbwJhnr6jFypaNIPzsaCUx8zk9Lc0SHN3AYPzhoT0uoMW_eTDPVlnrIzONA1gCD0_A5WDQ/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -569,6 +569,13 @@ function getMealRuleAtDate(plan, name, targetDate) {
       if (isAddCounsel(counsel)) specialFood = true;
       specialFoodSource = "상담";
     }
+  }
+
+  // 토요일은 센터 운영 기준으로 전원 점심 1회만 제공합니다.
+  const dayOfWeek = new Date(targetDate).getDay();
+  if (dayOfWeek === 6) {
+    mealCount = 1;
+    mealCountSource = "토요일 기본";
   }
 
   return {
