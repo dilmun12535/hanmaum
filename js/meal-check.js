@@ -858,4 +858,4 @@ clearMealBtn.addEventListener("click", () => {
   mealFileInput.value = "";
   mealTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>식사 횟수</th><th>음식 준비</th></tr>`;
   mealResultBody.innerHTML = `<tr><td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td></tr>`;
-});
+})
