@@ -13,6 +13,7 @@ async function syncCarePlanLibraryFromGoogleSheet() {
     const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
     const text = await response.text();
     carePlanLibraryCache = JSON.parse(text);
+    carePlanLibraryCache = Array.isArray(carePlanLibraryCache) ? carePlanLibraryCache.map(attachCareGrade) : [];
     return carePlanLibraryCache;
   } catch (error) {
     console.error("급여제공계획서 동기화 오류:", error);
@@ -25,6 +26,7 @@ async function syncCounselLibraryFromGoogleSheet() {
     const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, { method: "GET", redirect: "follow" });
     const text = await response.text();
     counselLibraryCache = JSON.parse(text);
+    counselLibraryCache = Array.isArray(counselLibraryCache) ? counselLibraryCache.map(attachCareGrade) : [];
     return counselLibraryCache;
   } catch (error) {
     console.error("상담일지 동기화 오류:", error);
@@ -43,7 +45,7 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
     );
     const text = await response.text();
     const attendance = JSON.parse(text);
-    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+    attendanceLibraryCache = Array.isArray(attendance) ? attendance.map(attachCareGrade) : [];
     return attendanceLibraryCache;
   } catch (error) {
     console.error("출석관리 동기화 오류:", error);
@@ -77,55 +79,62 @@ function normalizeCareGrade(value) {
   if (text.includes("인지지원")) return "인지지원";
   const gradeMatch = text.match(/[1-5]\s*등급/);
   if (gradeMatch) return `${gradeMatch[0].replace(/[^1-5]/g, "")}등급`;
-  const numberMatch = text.match(/(?:^|[^0-9])([1-5])(?:$|[^0-9])/);
-  if (numberMatch) return `${numberMatch[1]}등급`;
   return "";
 }
 
-function getCareGradeFromObject(obj) {
-  if (!obj) return "";
-
-  if (typeof obj === "string" || typeof obj === "number") {
-    return normalizeCareGrade(obj);
+function getCareGradeFromAny(value) {
+  if (!value) return "";
+  if (typeof value === "string" || typeof value === "number") {
+    return normalizeCareGrade(value);
   }
 
-  if (Array.isArray(obj)) {
-    for (const item of obj) {
-      const grade = getCareGradeFromObject(item);
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const grade = getCareGradeFromAny(item);
       if (grade) return grade;
     }
     return "";
   }
 
-  if (typeof obj !== "object") return "";
+  if (typeof value === "object") {
+    const directGrade = normalizeCareGrade(
+      value.careGrade ||
+      value.grade ||
+      value.longTermGrade ||
+      value.recipientGrade ||
+      value.ltcGrade ||
+      value["등급"] ||
+      value["장기요양등급"] ||
+      value["인정등급"] ||
+      value["수급자등급"] ||
+      value["요양등급"] ||
+      ""
+    );
+    if (directGrade) return directGrade;
 
-  const directKeys = [
-    "grade", "careGrade", "longTermGrade", "recipientGrade", "ltcGrade",
-    "등급", "장기요양등급", "인정등급", "수급자등급", "요양등급"
-  ];
-
-  for (const key of directKeys) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      const grade = normalizeCareGrade(obj[key]);
-      if (grade) return grade;
+    for (const [key, cellValue] of Object.entries(value)) {
+      const keyText = normalizeText(key);
+      if (keyText.includes("등급") || keyText.toLowerCase().includes("grade")) {
+        const grade = normalizeCareGrade(cellValue);
+        if (grade) return grade;
+      }
     }
+
+    const text = JSON.stringify(value || "");
+    if (/인지\s*지원/.test(text)) return "인지지원";
+    const match = text.match(/[1-5]\s*등급/);
+    if (match) return normalizeCareGrade(match[0]);
   }
-
-  for (const [key, value] of Object.entries(obj)) {
-    const keyText = normalizeText(key);
-    if (keyText.includes("등급") || keyText.toLowerCase().includes("grade")) {
-      const grade = normalizeCareGrade(value);
-      if (grade) return grade;
-    }
-  }
-
-  const fullText = JSON.stringify(obj || "");
-  if (/인지\s*지원/.test(fullText)) return "인지지원";
-
-  const gradeMatch = fullText.match(/[1-5]\s*등급/);
-  if (gradeMatch) return normalizeCareGrade(gradeMatch[0]);
 
   return "";
+}
+
+function attachCareGrade(item) {
+  if (!item || typeof item !== "object") return item;
+  if (!item.__careGrade) {
+    item.__careGrade = getCareGradeFromAny(item);
+  }
+  return item;
 }
 
 function isSameRecipientWithGrade(sourceName, targetName, sourceGrade = "", targetGrade = "") {
@@ -134,6 +143,8 @@ function isSameRecipientWithGrade(sourceName, targetName, sourceGrade = "", targ
   const cleanSourceGrade = normalizeCareGrade(sourceGrade);
   const cleanTargetGrade = normalizeCareGrade(targetGrade);
 
+  // 양쪽 모두 등급이 있을 때만 등급까지 비교합니다.
+  // 한쪽에 등급이 없으면 이름 기준으로 fallback하여 자료 누락을 막습니다.
   if (cleanSourceGrade && cleanTargetGrade) {
     return cleanSourceGrade === cleanTargetGrade;
   }
@@ -360,7 +371,6 @@ function parseMealReport(workbook, monthValue) {
 function getLatestPlansByRecipient(name, checkDate, careGrade = "") {
   const checkDateText = normalizeDateText(checkDate);
   const library = carePlanLibraryCache || [];
-
   const candidates = library.filter((plan) => {
     const writtenDate = normalizeDateText(plan.writtenDate);
     return writtenDate && writtenDate <= checkDateText && isSameRecipient(plan.recipientName, name);
@@ -371,14 +381,9 @@ function getLatestPlansByRecipient(name, checkDate, careGrade = "") {
 
   if (cleanCareGrade) {
     const gradeMatched = candidates.filter((plan) => {
-      const planGrade =
-        getCareGradeFromObject(plan) ||
-        getCareGradeFromObject(plan.rows) ||
-        getCareGradeFromObject(plan.rowsJson) ||
-        normalizeCareGrade(String(plan.rowsJson || ""));
+      const planGrade = plan.__careGrade || getCareGradeFromAny(plan);
       return planGrade && planGrade === cleanCareGrade;
     });
-
     if (gradeMatched.length > 0) validPlans = gradeMatched;
   }
 
@@ -561,7 +566,6 @@ function getLatestMealCounsel(name, targetDate, careGrade = "") {
 
   const baseCounsels = counselLibraryCache.filter((item) => {
     if (!isSameRecipient(item.recipientName || item.name, name)) return false;
-
     const refDate = getCounselDate(item);
     if (!refDate || refDate > targetDateText) return false;
 
@@ -574,7 +578,7 @@ function getLatestMealCounsel(name, targetDate, careGrade = "") {
 
   if (cleanCareGrade) {
     const gradeMatched = baseCounsels.filter((item) => {
-      const counselGrade = getCareGradeFromObject(item);
+      const counselGrade = item.__careGrade || getCareGradeFromAny(item);
       return counselGrade && counselGrade === cleanCareGrade;
     });
     if (gradeMatched.length > 0) counsels = gradeMatched;
@@ -685,7 +689,13 @@ function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
   }
 
   // 토요일은 센터 운영 기준으로 전원 점심 1회만 제공합니다.
-  // 계획서·상담일지가 2회여도 토요일은 1회로 판정합니다.
+  const dayOfWeek = new Date(targetDate).getDay();
+  if (dayOfWeek === 6) {
+    mealCount = 1;
+    mealCountSource = "토요일 기본";
+  }
+
+  // 토요일은 센터 운영 기준으로 전원 점심 1회만 제공합니다.
   if (isSaturdayDate(targetDate)) {
     mealCount = 1;
     mealCountSource = "토요일 기본";
@@ -726,30 +736,6 @@ function parseJsonObject(value) {
   }
 }
 
-
-function getCareGradeFromAttendanceItem(item) {
-  if (!item) return "";
-  const directGrade = normalizeCareGrade(
-    item.careGrade ||
-    item.grade ||
-    item.longTermGrade ||
-    item.recipientGrade ||
-    item.ltcGrade ||
-    item["등급"] ||
-    item["장기요양등급"] ||
-    item["인정등급"] ||
-    item["수급자등급"] ||
-    item["요양등급"] ||
-    ""
-  );
-  if (directGrade) return directGrade;
-
-  const objectGrade = getCareGradeFromObject(item);
-  if (objectGrade) return objectGrade;
-
-  return normalizeCareGrade(`${item.rowsJson || ""} ${item.rawJson || ""} ${item.extraJson || ""}`);
-}
-
 function timeToMinutes(timeText) {
   const match = String(timeText || "").match(/(\d{1,2})\s*[:시]\s*(\d{1,2})/);
   if (!match) return null;
@@ -769,7 +755,7 @@ function getAttendanceMonth(monthValue) {
       const leaveTimes = parseJsonObject(item.leaveTimes || item.leaveTimesJson);
       return {
         name: String(item.recipientName || item.name || "").trim(),
-        careGrade: getCareGradeFromAttendanceItem(item),
+        careGrade: item.__careGrade || getCareGradeFromAny(item),
         dates: item.dates || item.attendanceDates || [],
         leaveTimes
       };
@@ -793,9 +779,7 @@ function getDayResult(dayData, rule, leaveTime, targetDate = "") {
 
   const specialFood = rule.specialFood;
 
-  // 토요일은 센터 운영 기준으로 전원 점심 1회만 제공합니다.
-  // 따라서 토요일은 저녁 기록 여부와 하원시간을 검사하지 않고,
-  // 점심이 정상 식사형태로 기록되어 있으면 정상입니다.
+  // 토요일은 점심만 있으면 정상입니다. 저녁과 하원시간은 검사하지 않습니다.
   if (isSaturdayDate(targetDate)) {
     if (!dayData || !dayData.lunch) return "누락";
 
@@ -812,7 +796,6 @@ function getDayResult(dayData, rule, leaveTime, targetDate = "") {
     if (dayData && (dayData.lunch || dayData.dinner)) return "오류";
     return "정상";
   }
-
   if (!dayData || (!dayData.lunch && !dayData.dinner)) return "기록 없음";
 
   const lunchResult = getFoodTypeResult(dayData.lunch, specialFood);
@@ -828,7 +811,6 @@ function getDayResult(dayData, rule, leaveTime, targetDate = "") {
   if (lunchResult === "누락" || dinnerResult === "누락") return "누락";
   if (lunchResult === "식사형태 오류" || dinnerResult === "식사형태 오류") return "식사형태 오류";
   if (mealCount === 1 && dayData.dinner) return "저녁 확인";
-
   return "정상";
 }
 
