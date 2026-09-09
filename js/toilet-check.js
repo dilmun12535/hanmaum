@@ -344,12 +344,21 @@ function findHeaderIndex(rows) {
 }
 
 function getResultText(totalCount, diaperCount, hasDiaperBenefit) {
-  if (diaperCount > 0 && !hasDiaperBenefit) {
+  // 기저귀 급여가 있는데 기저귀 교체 기록이 0회면 오류
+  if (hasDiaperBenefit && diaperCount === 0) {
+    return "기저귀 누락";
+  }
+
+  // 기저귀 급여가 없는데 기저귀 교체 기록이 있으면 오류
+  if (!hasDiaperBenefit && diaperCount > 0) {
     return "기저귀 오류";
   }
+
+  // 대변 + 소변 + 기저귀 전체 횟수는 5회 이상이어야 정상
   if (totalCount < 5) {
     return "횟수 부족";
   }
+
   return "정상";
 }
 
