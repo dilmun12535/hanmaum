@@ -945,25 +945,60 @@ function renderHeader(monthValue) {
 }
 
 
-let mealResultFilter="all";
-function ensureMealResultFilter(){
- if(document.getElementById("mealResultFilterWrap"))return;
- const table=mealTableHead?.closest("table"); if(!table)return;
- const wrap=document.createElement("div"); wrap.id="mealResultFilterWrap";
- wrap.style.cssText="display:flex;gap:8px;justify-content:flex-end;margin:0 0 12px";
- wrap.innerHTML=`<button type="button" id="mealFilterAll">전체</button><button type="button" id="mealFilterProblem">확인 필요만</button>`;
- table.parentNode.insertBefore(wrap,table);
- mealFilterAll.onclick=()=>{mealResultFilter="all";applyMealResultFilter()};
- mealFilterProblem.onclick=()=>{mealResultFilter="problem";applyMealResultFilter()};
+let mealResultFilter = "all";
+
+function ensureMealResultFilter() {
+  if (document.getElementById("mealResultFilterWrap")) return;
+
+  const table = mealTableHead && mealTableHead.closest("table");
+  if (!table) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "mealResultFilterWrap";
+  wrap.style.cssText = "display:flex;gap:8px;align-items:center;justify-content:flex-end;margin:0 0 12px 0;";
+  wrap.innerHTML = `
+    <button type="button" id="mealFilterAll"
+      style="padding:8px 14px;border:1px solid #cbd5e1;border-radius:8px;background:#1e40af;color:#fff;font-weight:700;cursor:pointer;">
+      전체
+    </button>
+    <button type="button" id="mealFilterProblem"
+      style="padding:8px 14px;border:1px solid #fecaca;border-radius:8px;background:#fff;color:#dc2626;font-weight:700;cursor:pointer;">
+      확인 필요만
+    </button>
+  `;
+
+  table.parentNode.insertBefore(wrap, table);
+
+  document.getElementById("mealFilterAll").addEventListener("click", () => {
+    mealResultFilter = "all";
+    applyMealResultFilter();
+  });
+
+  document.getElementById("mealFilterProblem").addEventListener("click", () => {
+    mealResultFilter = "problem";
+    applyMealResultFilter();
+  });
 }
-function applyMealResultFilter(){
- document.querySelectorAll("#mealResultBody tr[data-problem-count]").forEach(row=>{
-  row.style.display=mealResultFilter==="problem"&&Number(row.dataset.problemCount)<=0?"none":"";
- });
- const a=document.getElementById("mealFilterAll"),b=document.getElementById("mealFilterProblem");
- if(a&&b){[a,b].forEach(x=>x.style.cssText="padding:8px 14px;border:1px solid #cbd5e1;border-radius:8px;font-weight:700;cursor:pointer");
- a.style.background=mealResultFilter==="all"?"#1e40af":"#fff";a.style.color=mealResultFilter==="all"?"#fff":"#334155";
- b.style.background=mealResultFilter==="problem"?"#dc2626":"#fff";b.style.color=mealResultFilter==="problem"?"#fff":"#dc2626";}
+
+function applyMealResultFilter() {
+  const allBtn = document.getElementById("mealFilterAll");
+  const problemBtn = document.getElementById("mealFilterProblem");
+  const showProblemsOnly = mealResultFilter === "problem";
+
+  if (allBtn && problemBtn) {
+    allBtn.style.background = showProblemsOnly ? "#fff" : "#1e40af";
+    allBtn.style.color = showProblemsOnly ? "#334155" : "#fff";
+
+    problemBtn.style.background = showProblemsOnly ? "#dc2626" : "#fff";
+    problemBtn.style.color = showProblemsOnly ? "#fff" : "#dc2626";
+  }
+
+  Array.from(mealResultBody.querySelectorAll("tr")).forEach((row) => {
+    if (!row.hasAttribute("data-problem-count")) return;
+
+    const count = Number(row.getAttribute("data-problem-count") || "0");
+    row.style.display = showProblemsOnly && count === 0 ? "none" : "";
+  });
 }
 
 function renderResults(monthValue, results) {
@@ -998,6 +1033,8 @@ function renderResults(monthValue, results) {
     const overallClass = problemCount > 0 ? "status-danger" : "status-ok";
     const errorCellBg = problemCount > 0 ? 'background-color: #fff5f5 !important;' : 'background-color: #ffffff !important;';
 
+    row.setAttribute("data-problem-count", String(problemCount));
+
     row.innerHTML = `
       <td style="font-weight:600; text-align:center; ${errorCellBg}">
         ${item.name || "-"}${item.careGrade ? `<br><span style="font-size:11px; color:#64748b; font-weight:700;">${item.careGrade}</span>` : ""}
@@ -1011,6 +1048,7 @@ function renderResults(monthValue, results) {
     `;
     mealResultBody.appendChild(row);
   });
+
   ensureMealResultFilter();
   applyMealResultFilter();
 }
