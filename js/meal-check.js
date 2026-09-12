@@ -1,4 +1,4 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbwJhnr6jFypaNIPzsaCUx8zk9Lc0SHN3AYPzhoT0uoMW_eTDPVlnrIzONA1gCD0_A5WDQ/exec";
+const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_AkgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
 
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
@@ -34,10 +34,15 @@ function makePayloadUrl(payload) {
 
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(`${CARE_PLAN_API_URL}?_=${Date.now()}`, { method: "GET", redirect: "follow" });
+    const response = await fetch(CARE_PLAN_API_URL, {
+      method: "GET",
+      redirect: "follow"
+    });
     const text = await response.text();
     const parsed = parseApiJson(text, [], "급여계획서 동기화");
-    carePlanLibraryCache = Array.isArray(parsed) ? parsed.map((item) => attachCareGrade(item)) : [];
+    carePlanLibraryCache = Array.isArray(parsed)
+      ? parsed.map((item) => attachCareGrade(item))
+      : [];
     return carePlanLibraryCache;
   } catch (error) {
     console.error("급여계획서 동기화 오류:", error);
@@ -47,10 +52,18 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel&_=${Date.now()}`, { method: "GET", redirect: "follow" });
+    const response = await fetch(
+      makePayloadUrl({ action: "listCounsel" }),
+      {
+        method: "GET",
+        redirect: "follow"
+      }
+    );
     const text = await response.text();
     const parsed = parseApiJson(text, [], "상담일지 동기화");
-    counselLibraryCache = Array.isArray(parsed) ? parsed.map((item) => attachCareGrade(item)) : [];
+    counselLibraryCache = Array.isArray(parsed)
+      ? parsed.map((item) => attachCareGrade(item))
+      : [];
     return counselLibraryCache;
   } catch (error) {
     console.error("상담일지 동기화 오류:", error);
@@ -63,14 +76,18 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
     const response = await fetch(
       makePayloadUrl({
         action: "listAttendance",
-        month: monthValue,
-        _: Date.now()
+        month: monthValue
       }),
-      { method: "GET", redirect: "follow" }
+      {
+        method: "GET",
+        redirect: "follow"
+      }
     );
     const text = await response.text();
     const attendance = parseApiJson(text, [], "출석관리 동기화");
-    attendanceLibraryCache = Array.isArray(attendance) ? attendance.map((item) => attachCareGrade(item)) : [];
+    attendanceLibraryCache = Array.isArray(attendance)
+      ? attendance.map((item) => attachCareGrade(item))
+      : [];
     return attendanceLibraryCache;
   } catch (error) {
     console.error("출석관리 동기화 오류:", error);
@@ -78,9 +95,7 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
   }
 }
 
-// 초기 동기화 가동
-syncCarePlanLibraryFromGoogleSheet();
-syncCounselLibraryFromGoogleSheet();
+// 원격 동기화는 "식사 확인" 버튼을 눌렀을 때만 실행합니다.
 
 const checkMonthInput = document.getElementById("checkMonth");
 const mealFileInput = document.getElementById("mealFile");
@@ -1100,7 +1115,7 @@ checkMealBtn.addEventListener("click", async () => {
   if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
   if (!file) { alert("식사/화장실 기록 파일을 업로드해주세요."); return; }
 
-  alert("구글 시트에서 계획서, 상담일지, 출석 데이터를 원격 동기화 중입니다...");
+  console.log("계획서, 상담일지, 출석 데이터를 동기화합니다.");
   await syncCarePlanLibraryFromGoogleSheet();
   await syncCounselLibraryFromGoogleSheet();
   await syncAttendanceMonthFromGoogleSheet(checkMonth);
