@@ -944,6 +944,28 @@ function renderHeader(monthValue) {
   `;
 }
 
+
+let mealResultFilter="all";
+function ensureMealResultFilter(){
+ if(document.getElementById("mealResultFilterWrap"))return;
+ const table=mealTableHead?.closest("table"); if(!table)return;
+ const wrap=document.createElement("div"); wrap.id="mealResultFilterWrap";
+ wrap.style.cssText="display:flex;gap:8px;justify-content:flex-end;margin:0 0 12px";
+ wrap.innerHTML=`<button type="button" id="mealFilterAll">전체</button><button type="button" id="mealFilterProblem">확인 필요만</button>`;
+ table.parentNode.insertBefore(wrap,table);
+ mealFilterAll.onclick=()=>{mealResultFilter="all";applyMealResultFilter()};
+ mealFilterProblem.onclick=()=>{mealResultFilter="problem";applyMealResultFilter()};
+}
+function applyMealResultFilter(){
+ document.querySelectorAll("#mealResultBody tr[data-problem-count]").forEach(row=>{
+  row.style.display=mealResultFilter==="problem"&&Number(row.dataset.problemCount)<=0?"none":"";
+ });
+ const a=document.getElementById("mealFilterAll"),b=document.getElementById("mealFilterProblem");
+ if(a&&b){[a,b].forEach(x=>x.style.cssText="padding:8px 14px;border:1px solid #cbd5e1;border-radius:8px;font-weight:700;cursor:pointer");
+ a.style.background=mealResultFilter==="all"?"#1e40af":"#fff";a.style.color=mealResultFilter==="all"?"#fff":"#334155";
+ b.style.background=mealResultFilter==="problem"?"#dc2626":"#fff";b.style.color=mealResultFilter==="problem"?"#fff":"#dc2626";}
+}
+
 function renderResults(monthValue, results) {
   renderHeader(monthValue);
   mealResultBody.innerHTML = "";
@@ -989,6 +1011,8 @@ function renderResults(monthValue, results) {
     `;
     mealResultBody.appendChild(row);
   });
+  ensureMealResultFilter();
+  applyMealResultFilter();
 }
 
 function applyMealStyle() {
