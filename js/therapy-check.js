@@ -241,23 +241,52 @@ function hasTherapyPlan(plan) {
   if (!plan) return false;
 
   const rows = readPlanRows(plan);
-  const text = normalizeText(JSON.stringify(rows));
 
-  // 급여제공계획서 저장 형식이 페이지마다 달라서 물리치료 관련 표현을 넓게 잡습니다.
+  // M10, 기능회복훈련 같은 공통 코드/광범위 문구만으로는
+  // 물리치료 대상자로 판정하지 않습니다.
+  // 실제 계획서 데이터에 물리치료 계열 서비스명이 명시된 경우에만 true입니다.
   const therapyKeywords = [
     "물리치료",
     "물이치료",
-    "기능회복훈련",
-    "기능회복",
-    "기능훈련",
-    "재활훈련",
     "재활치료",
     "운동치료",
-    "작업치료",
-    "M10"
-  ];
+    "작업치료"
+  ].map(normalizeText);
 
-  return therapyKeywords.some((keyword) => text.includes(normalizeText(keyword)));
+  const isTherapyValue = (value) => {
+    const text = normalizeText(value);
+    if (!text) return false;
+    return therapyKeywords.some((keyword) => text.includes(keyword));
+  };
+
+  const inspect = (value, keyName = "") => {
+    if (value == null) return false;
+
+    const key = normalizeText(keyName).toLowerCase();
+
+    // 코드 필드는 물리치료 판정에서 제외
+    if (
+      key === "id" ||
+      key.includes("code") ||
+      key.includes("코드")
+    ) {
+      return false;
+    }
+
+    if (Array.isArray(value)) {
+      return value.some((item) => inspect(item));
+    }
+
+    if (typeof value === "object") {
+      return Object.entries(value).some(([childKey, childValue]) =>
+        inspect(childValue, childKey)
+      );
+    }
+
+    return isTherapyValue(value);
+  };
+
+  return rows.some((row) => inspect(row));
 }
 
 function getLatestTherapyCounsel(name, targetDate) {
