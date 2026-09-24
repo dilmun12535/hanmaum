@@ -1,18 +1,16 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="../images/logo.png" />
-  <title>제공기록지 식사·목욕 검증</title>
-
-  <link rel="stylesheet" href="../css/common.css" />
-  <link rel="stylesheet" href="../css/dashboard.css" />
-
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script defer src="../js/meal-bath-check.js"></script>
-
-  <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="../images/logo.png" rel="icon" type="image/png"/>
+<title>제공기록지 식사·목욕 검증</title>
+<link href="../css/common.css" rel="stylesheet"/>
+<link href="../css/dashboard.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script defer="" src="../js/meal-bath-check.js"></script>
+<style>
     .check-layout { display:flex; flex-direction:column; gap:22px; }
     .page-subtitle { color:#64748b; font-size:14px; line-height:1.7; margin-top:6px; }
 
@@ -294,163 +292,147 @@
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="logo-area">
-      <img src="../images/logo.png" alt="로고" class="logo-img" />
-    </div>
-    <div class="topbar-right">
-      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
-      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
-      <button type="button" class="logout-btn" onclick="hanmaumLogout()">로그아웃</button>
+<div class="topbar">
+<div class="logo-area">
+<img alt="로고" class="logo-img" src="../images/logo.png"/>
+</div>
+<div class="topbar-right">
+<div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
+<div class="icon-btn"><img alt="설정" src="../images/settings.png"/></div>
+<button class="logout-btn" onclick="hanmaumLogout()" type="button">로그아웃</button>
+<div class="user-area">
+<div class="user-badge">사회복지사</div>
+<p class="date-text" id="todayText"></p>
+</div>
+</div>
+</div>
+<div class="main-layout">
+<aside class="sidebar">
+<div class="menu-title">메뉴</div>
+<nav class="menu-list"><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details><a class="menu-item" href="./timely-notice.html">적기통보</a>
 
-      <div class="user-area">
-        <div class="user-badge">사회복지사</div>
-        <p class="date-text" id="todayText"></p>
-      </div>
-    </div>
-  </div>
 
-  <div class="main-layout">
-    <aside class="sidebar">
-      <div class="menu-title">메뉴</div>
-      <nav class="menu-list">
-        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
-        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
-        <a href="./monthly-fee-library.html" class="menu-item">수가 보관함</a>
-        <a href="./attendance.html" class="menu-item">출석 보관함</a>
 
-        <details class="menu-group" open>
-          <summary class="menu-parent active">요양기록지</summary>
-          <div class="submenu">
-            <a href="./meal-check.html" class="submenu-item">식사 제공 확인</a>
-            <a href="./bath-check.html" class="submenu-item">목욕 제공 확인</a>
-            <a href="./toilet-check.html" class="submenu-item">화장실 제공 확인</a>
-            <a href="./meal-bath-check.html" class="submenu-item active">정량/목욕의자</a>
-          </div>
-        </details>
 
-        <details class="menu-group">
-          <summary class="menu-parent">물리치료 기록지</summary>
-          <div class="submenu">
-            <a href="./therapy-check.html" class="submenu-item">물리치료 제공 확인</a>
-          </div>
-        </details>
-
-        <details class="menu-group">
-          <summary class="menu-parent">간호 기록지</summary>
-          <div class="submenu">
-            <a href="./nursing-vital-check.html" class="submenu-item">간호제공 확인</a>
-            <a href="./medication-check.html" class="submenu-item">투약 확인</a>
-          </div>
-        </details>
-
-        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
-        <a href="./special-notes-check.html" class="menu-item">특이사항 검증</a>
-      </nav>
-    </aside>
-
-    <main class="content-area">
-      <div class="content-box">
-        <div class="page-header">
-          <h2>제공기록지 식사·목욕 검증</h2>
-          <p class="page-subtitle">
+<details class="menu-group" open="">
+<summary class="menu-parent active">요양기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./meal-check.html">식사 제공 확인</a>
+<a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a>
+<a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a>
+<a class="submenu-item active" href="./meal-bath-check.html">정량/목욕의자</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">물리치료 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./therapy-check.html">물리치료 제공 확인</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">간호 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a>
+<a class="submenu-item" href="./medication-check.html">투약 확인</a>
+</div>
+</details>
+<a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a>
+<a class="menu-item" href="./special-notes-check.html">특이사항 검증</a>
+</nav>
+</aside>
+<main class="content-area">
+<div class="content-box">
+<div class="page-header">
+<h2>제공기록지 식사·목욕 검증</h2>
+<p class="page-subtitle">
             장기요양급여 제공기록지 엑셀 파일을 업로드하면 모든 시트를 검사하여 식사량과 목욕 방법 오류를 시각화합니다.
           </p>
-        </div>
-
-        <section class="check-layout">
-          <div class="check-action-row">
-            <div class="check-field">
-              <label for="excelFile">장기요양급여 제공기록지 파일</label>
-              <input type="file" id="excelFile" accept=".xlsx,.xls" />
-            </div>
-            <button class="check-btn" id="checkBtn" type="button">검사 시작</button>
-            <button class="check-btn danger" id="resetBtn" type="button">초기화</button>
-          </div>
-
-          <div class="guide-box">
-            <h3>💡 식사·목욕 검증 기준 안내</h3>
-            <ul>
-              <li><strong>식사:</strong> 점심/저녁 기록에 식사 내용이 있으면 반드시 <strong>정량</strong>이 포함되어야 정상입니다.</li>
-              <li><strong>목욕:</strong> 목욕 시간이 있거나 목욕 방법이 적혀 있으면 반드시 <strong>목욕의자(샤워식)</strong>이어야 정상입니다.</li>
-              <li><strong>표시 방식:</strong> 오류가 있는 날짜만 색상으로 표시하며, 오류가 없는 시트는 오류 목록에 표시하지 않습니다.</li>
-            </ul>
-          </div>
-
-          <div class="progress-area" id="progressArea">
-            <div class="progress-text" id="progressText">검사 준비 중...</div>
-            <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-          </div>
-
-          <div class="error-text" id="errorText"></div>
-
-          <section class="summary-grid">
-            <div class="summary-card">
-              <div class="label">검사 시트</div>
-              <div class="value" id="sheetCount">0</div>
-            </div>
-            <div class="summary-card meal">
-              <div class="label">식사 오류</div>
-              <div class="value" id="mealErrorCount">0</div>
-            </div>
-            <div class="summary-card bath">
-              <div class="label">목욕 오류</div>
-              <div class="value" id="bathErrorCount">0</div>
-            </div>
-            <div class="summary-card total">
-              <div class="label">총 오류</div>
-              <div class="value" id="totalErrorCount">0</div>
-            </div>
-          </section>
-
-          <div class="empty-box" id="emptyBox">오류가 없습니다. 식사와 목욕 기록이 기준에 맞게 작성되어 있습니다.</div>
-
-          <section class="visual-panel" id="visualSection" style="display:none;">
-            <div class="visual-head">
-              <div class="visual-title">수급자별 오류 시각화</div>
-              <div class="filter-row">
-                <button type="button" class="filter-btn active" data-filter="all">전체</button>
-                <button type="button" class="filter-btn" data-filter="meal">식사 오류</button>
-                <button type="button" class="filter-btn" data-filter="bath">목욕 오류</button>
-                <button type="button" class="filter-btn" data-filter="both">중복 오류</button>
-              </div>
-            </div>
-            <div class="matrix-wrap">
-              <table class="matrix-table">
-                <thead id="matrixHead"></thead>
-                <tbody id="matrixBody"></tbody>
-              </table>
-            </div>
-          </section>
-
-          <section id="resultSection" style="display:none;">
-            <div class="result-actions">
-              <strong>오류 목록</strong>
-              <button class="check-btn secondary" id="downloadBtn" type="button">오류 목록 CSV 다운로드</button>
-            </div>
-            <div class="result-table-wrap">
-              <table class="result-table">
-                <thead>
-                  <tr>
-                    <th>시트명</th>
-                    <th>수급자명</th>
-                    <th>날짜</th>
-                    <th>항목</th>
-                    <th>현재값</th>
-                    <th>정상값</th>
-                    <th>오류 내용</th>
-                  </tr>
-                </thead>
-                <tbody id="resultBody"></tbody>
-              </table>
-            </div>
-          </section>
-        </section>
-      </div>
-    </main>
-  </div>
-
-  <script type="module" src="../js/firebase-auth-guard.js"></script>
-  <script src="../js/main.js"></script>
+</div>
+<section class="check-layout">
+<div class="check-action-row">
+<div class="check-field">
+<label for="excelFile">장기요양급여 제공기록지 파일</label>
+<input accept=".xlsx,.xls" id="excelFile" type="file"/>
+</div>
+<button class="check-btn" id="checkBtn" type="button">검사 시작</button>
+<button class="check-btn danger" id="resetBtn" type="button">초기화</button>
+</div>
+<div class="guide-box">
+<h3>💡 식사·목욕 검증 기준 안내</h3>
+<ul>
+<li><strong>식사:</strong> 점심/저녁 기록에 식사 내용이 있으면 반드시 <strong>정량</strong>이 포함되어야 정상입니다.</li>
+<li><strong>목욕:</strong> 목욕 시간이 있거나 목욕 방법이 적혀 있으면 반드시 <strong>목욕의자(샤워식)</strong>이어야 정상입니다.</li>
+<li><strong>표시 방식:</strong> 오류가 있는 날짜만 색상으로 표시하며, 오류가 없는 시트는 오류 목록에 표시하지 않습니다.</li>
+</ul>
+</div>
+<div class="progress-area" id="progressArea">
+<div class="progress-text" id="progressText">검사 준비 중...</div>
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+</div>
+<div class="error-text" id="errorText"></div>
+<section class="summary-grid">
+<div class="summary-card">
+<div class="label">검사 시트</div>
+<div class="value" id="sheetCount">0</div>
+</div>
+<div class="summary-card meal">
+<div class="label">식사 오류</div>
+<div class="value" id="mealErrorCount">0</div>
+</div>
+<div class="summary-card bath">
+<div class="label">목욕 오류</div>
+<div class="value" id="bathErrorCount">0</div>
+</div>
+<div class="summary-card total">
+<div class="label">총 오류</div>
+<div class="value" id="totalErrorCount">0</div>
+</div>
+</section>
+<div class="empty-box" id="emptyBox">오류가 없습니다. 식사와 목욕 기록이 기준에 맞게 작성되어 있습니다.</div>
+<section class="visual-panel" id="visualSection" style="display:none;">
+<div class="visual-head">
+<div class="visual-title">수급자별 오류 시각화</div>
+<div class="filter-row">
+<button class="filter-btn active" data-filter="all" type="button">전체</button>
+<button class="filter-btn" data-filter="meal" type="button">식사 오류</button>
+<button class="filter-btn" data-filter="bath" type="button">목욕 오류</button>
+<button class="filter-btn" data-filter="both" type="button">중복 오류</button>
+</div>
+</div>
+<div class="matrix-wrap">
+<table class="matrix-table">
+<thead id="matrixHead"></thead>
+<tbody id="matrixBody"></tbody>
+</table>
+</div>
+</section>
+<section id="resultSection" style="display:none;">
+<div class="result-actions">
+<strong>오류 목록</strong>
+<button class="check-btn secondary" id="downloadBtn" type="button">오류 목록 CSV 다운로드</button>
+</div>
+<div class="result-table-wrap">
+<table class="result-table">
+<thead>
+<tr>
+<th>시트명</th>
+<th>수급자명</th>
+<th>날짜</th>
+<th>항목</th>
+<th>현재값</th>
+<th>정상값</th>
+<th>오류 내용</th>
+</tr>
+</thead>
+<tbody id="resultBody"></tbody>
+</table>
+</div>
+</section>
+</section>
+</div>
+</main>
+</div>
+<script src="../js/firebase-auth-guard.js" type="module"></script>
+<script src="../js/main.js"></script>
 </body>
 </html>

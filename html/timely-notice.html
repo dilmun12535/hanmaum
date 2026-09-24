@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <link href="../images/logo.png" rel="icon" type="image/png"/>
-<title>인지활동 제공 확인</title>
+<title>적기통보</title>
 <link href="../css/common.css" rel="stylesheet"/>
 <link href="../css/dashboard.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet"/>
@@ -67,12 +67,8 @@
 <div class="main-layout">
 <aside class="sidebar">
 <div class="menu-title">메뉴</div>
-<nav class="menu-list"><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details><a class="menu-item" href="./timely-notice.html">적기통보</a>
-
-
-
-
-<details class="menu-group">
+<nav class="menu-list"><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details><a class="menu-item active" href="./timely-notice.html">적기통보</a>
+<details class="menu-group" open="">
 <summary class="menu-parent">요양기록지</summary>
 <div class="submenu">
 <a class="submenu-item" href="./meal-check.html">식사 제공 확인</a>
@@ -94,58 +90,11 @@
 <a class="submenu-item" href="./medication-check.html">투약 확인</a>
 </div>
 </details>
-<a class="menu-item active" href="./cognitive-check.html">인지활동 제공 확인</a>
+<a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a>
 <a class="menu-item" href="./special-notes-check.html">특이사항 검증</a>
 </nav>
 </aside>
-<main class="content-area">
-<div class="content-box">
-<div class="page-header">
-<h2>인지활동 제공 확인</h2>
-<p>출석관리 자료와 프로그램 참여 기록을 기준으로 5등급·인지지원등급 어르신의 인지활동 제공 여부를 일자별로 확인합니다.</p>
-</div>
-<div class="page-actions">
-<div class="date-group">
-<label for="checkMonth">확인 월</label>
-<input autocomplete="off" id="checkMonth" placeholder="예: 2026-05" type="text"/>
-</div>
-<div class="date-group">
-<label for="cognitiveFile">5-7. 수급자 참여프로그램 리포트 출력</label>
-<input accept=".xlsx,.xls" id="cognitiveFile" type="file"/>
-</div>
-<div class="action-buttons">
-<button class="primary-btn" id="checkCognitiveBtn" type="button">인지활동 확인</button>
-<button class="danger-btn" id="clearCognitiveBtn" type="button">초기화</button>
-</div>
-</div>
-<div class="unified-notice-box">
-<h5 class="unified-notice-title">
-            💡 인지활동 확인 기준 안내
-          </h5>
-<ul class="unified-notice-list">
-<li><b style="color: #1e293b;">점검 대상:</b> 인지 맞춤형 급여 제공 기준에 의거하여, <b style="color: #1e293b;">5등급 및 인지지원등급</b> 수급자 어르신만 연산 확인 대상입니다.</li>
-<li><b style="color: #1e293b;">제공 횟수 기준:</b> 출석관리에서 연동된 <b style="color: #1e293b;">출석일마다</b> 프로그램 참여 기록 중 '인지기능/인지활동' 내역이 1회 이상 완벽히 매칭되어야 합니다.</li>
-<li><b style="color: #1e293b;">결과 표출 방식:</b> 출석하신 날에 인지 기록이 비어있으면 <span style="color: #e11d48; font-weight: 600;">누락</span>으로 표시되며, 등원하지 않으신 날은 <span style="color: #64748b; font-weight: 600;">결석(-)</span>으로 안전하게 제외 처리됩니다.</li>
-</ul>
-</div>
-<div class="table-wrap">
-<table class="info-table cognitive-table" style="border-collapse: collapse; width: 100%;">
-<thead id="cognitiveTableHead">
-<tr>
-<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
-<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">등급</th>
-<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">출석일수</th>
-</tr>
-</thead>
-<tbody id="cognitiveResultBody">
-<tr class="empty-row">
-<td colspan="3" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 프로그램 참여 기록 파일을 선택해주세요.</td>
-</tr>
-</tbody>
-</table>
-</div>
-</div>
-</main>
+<main class="content-area"><div style="height:calc(100vh - 86px); width:100%;"><iframe src="./timely-notice-tool.html" style="width:100%;height:100%;border:0;background:#f3f6fa;" title="적기통보"></iframe></div></main>
 </div>
 <script src="../js/firebase-auth-guard.js" type="module"></script>
 <script src="../js/main.js"></script>
@@ -169,31 +118,11 @@
           ],
           dateFormat: "Y-m",
           altInput: true,
-          allowInput: true,
-          onReady: function(selectedDates, dateStr, instance) {
-            const updateMonths = function() {
-              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
-              months.forEach(function(month, index) {
-                month.textContent = (index + 1) + "월";
-              });
-            };
-            updateMonths();
-            instance.calendarContainer.addEventListener("click", function() {
-              setTimeout(updateMonths, 0);
-            });
-          },
-          onYearChange: function(selectedDates, dateStr, instance) {
-            setTimeout(function() {
-              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
-              months.forEach(function(month, index) {
-                month.textContent = (index + 1) + "월";
-              });
-            }, 0);
-          }
+          allowInput: true
         });
       }
     });
   </script>
-<script src="../js/cognitive-check.js"></script>
+<script src="../js/bath-check.js?v=final_check"></script>
 </body>
 </html>

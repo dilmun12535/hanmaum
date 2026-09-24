@@ -1,17 +1,16 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="../images/logo.png" />
-  <title>통합 확인</title>
-
-  <link rel="stylesheet" href="../css/common.css" />
-  <link rel="stylesheet" href="../css/dashboard.css" />
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script defer src="../js/unified-record-check.js"></script>
-
-  <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="../images/logo.png" rel="icon" type="image/png"/>
+<title>통합 확인</title>
+<link href="../css/common.css" rel="stylesheet"/>
+<link href="../css/dashboard.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script defer="" src="../js/unified-record-check.js"></script>
+<style>
 
     :root{--blue:#2563eb;--navy:#0f172a;--muted:#64748b;--line:#e2e8f0;--bg:#f8fafc;--red:#dc2626;--orange:#d97706;--green:#16a34a}
     body{background:#f4f7fb;color:#0f172a}
@@ -78,134 +77,119 @@
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="logo-area">
-      <img src="../images/logo.png" alt="로고" class="logo-img" />
-    </div>
+<div class="topbar">
+<div class="logo-area">
+<img alt="로고" class="logo-img" src="../images/logo.png"/>
+</div>
+<div class="topbar-right">
+<div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
+<div class="icon-btn"><img alt="설정" src="../images/settings.png"/></div>
+<button class="logout-btn" onclick="hanmaumLogout()" type="button">로그아웃</button>
+<div class="user-area">
+<div class="user-badge">사회복지사</div>
+<p class="date-text" id="todayText"></p>
+</div>
+</div>
+</div>
+<div class="main-layout">
+<aside class="sidebar">
+<div class="menu-title">메뉴</div>
+<nav class="menu-list"><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details><a class="menu-item" href="./timely-notice.html">적기통보</a>
 
-    <div class="topbar-right">
-      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
-      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
 
-      <button type="button" class="logout-btn" onclick="hanmaumLogout()">로그아웃</button>
 
-      <div class="user-area">
-        <div class="user-badge">사회복지사</div>
-        <p class="date-text" id="todayText"></p>
-      </div>
-    </div>
-  </div>
 
-  <div class="main-layout">
-    <aside class="sidebar">
-      <div class="menu-title">메뉴</div>
-      <nav class="menu-list">
-        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
-        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
-        <a href="./monthly-fee-library.html" class="menu-item">수가 보관함</a>
-        <a href="./attendance.html" class="menu-item">출석 보관함</a>
-
-        <details class="menu-group">
-          <summary class="menu-parent">요양기록지</summary>
-          <div class="submenu">
-            <a href="./meal-check.html" class="submenu-item">식사 제공 확인</a>
-            <a href="./bath-check.html" class="submenu-item">목욕 제공 확인</a>
-            <a href="./toilet-check.html" class="submenu-item">화장실 제공 확인</a>
-            <a href="./meal-bath-check.html" class="submenu-item">정량/목욕의자</a>
-          </div>
-        </details>
-
-        <details class="menu-group">
-          <summary class="menu-parent">물리치료 기록지</summary>
-          <div class="submenu">
-            <a href="./therapy-check.html" class="submenu-item">물리치료 제공 확인</a>
-          </div>
-        </details>
-
-        <details class="menu-group">
-          <summary class="menu-parent">간호 기록지</summary>
-          <div class="submenu">
-            <a href="./nursing-vital-check.html" class="submenu-item">간호제공 확인</a>
-            <a href="./medication-check.html" class="submenu-item">투약 확인</a>
-          </div>
-        </details>
-
-        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
-        <a href="./special-notes-check.html" class="menu-item">특이사항 검증</a>
-      </nav>
-    </aside>
-
-    <main class="content-area">
-      <div class="content-box">
-        <div class="page-header">
-          <h2>제공기록지 통합 검증</h2>
-          <p>장기요양급여 제공기록지 엑셀 파일 하나로 식사·목욕·화장실·간호·투약·인지·물리치료를 한 번에 확인합니다.</p>
-        </div>
-
-        <div class="record-wrap">
-          <section class="upload-card">
-      <div class="upload-grid">
-        <div class="field">
-          <label for="checkMonth">검사 월</label>
-          <input type="month" id="checkMonth" />
-        </div>
-        <div class="field">
-          <label for="recordFile">제공기록지 엑셀 업로드</label>
-          <input type="file" id="recordFile" accept=".xlsx,.xls,.xlsm" />
-        </div>
-        <button class="main-btn" id="checkBtn">검사 시작</button>
-        <button class="sub-btn" id="resetBtn">초기화</button>
-      </div>
-      <div class="guide">※ 현재 버전은 엑셀 파일 자체 내용 기준의 1차 검증입니다. 계획서·상담일지·출석관리 DB 연동 판정은 다음 단계에서 붙이면 됩니다.</div>
-      <div class="progress-area" id="progressArea">
-        <div class="progress-text" id="progressText">대기 중</div>
-        <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-      </div>
-      <div class="error-text" id="errorText"></div>
-    </section>
-
-    <section class="summary-grid">
-      <div class="summary-card"><div class="label">시트/어르신</div><div class="value" id="personCount">0</div></div>
-      <div class="summary-card bad"><div class="label">전체 오류</div><div class="value" id="errorCount">0</div></div>
-      <div class="summary-card warn"><div class="label">주의</div><div class="value" id="warnCount">0</div></div>
-      <div class="summary-card"><div class="label">식사</div><div class="value" id="mealCount">0</div></div>
-      <div class="summary-card"><div class="label">목욕</div><div class="value" id="bathCount">0</div></div>
-      <div class="summary-card"><div class="label">화장실</div><div class="value" id="toiletCount">0</div></div>
-      <div class="summary-card"><div class="label">간호</div><div class="value" id="nursingCount">0</div></div>
-      <div class="summary-card"><div class="label">투약</div><div class="value" id="medicineCount">0</div></div>
-    </section>
-
-    <section class="content-grid">
-      <aside class="panel">
-        <div class="panel-head"><h2>구분별 보기</h2><span class="badge" id="listBadge">0개</span></div>
-        <div class="category-list" id="categoryList"><div class="detail-empty">엑셀을 업로드해주세요.</div></div>
-      </aside>
-
-      <main class="panel">
-        <div class="panel-head"><h2>구분 상세</h2><button class="mini-btn" id="downloadBtn" disabled>결과 CSV 다운로드</button></div>
-        <div class="detail-empty" id="detailEmpty">왼쪽에서 목욕·화장실 같은 구분을 선택하면 해당 구분 결과가 표시됩니다.</div>
-        <div class="detail-body" id="detailBody">
-          <div class="detail-title">
-            <div><h3 id="detailName">-</h3><p id="detailMeta">-</p></div>
-            <span class="badge" id="detailBadge">-</span>
-          </div>
-          <div class="tabs" id="tabs">
-            <button class="tab-btn active" data-tab="all">전체 대상</button>
-            <button class="tab-btn" data-tab="error">오류만</button>
-            <button class="tab-btn" data-tab="warning">주의만</button>
-          </div>
-          <div class="table-wrap"><table id="detailTable"><thead id="detailHead"></thead><tbody id="detailRows"></tbody></table></div>
-          <div class="issue-list" id="issueList"></div>
-        </div>
-      </main>
-    </section>
-  
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <script type="module" src="../js/firebase-auth-guard.js"></script>
-  <script src="../js/main.js"></script>
+<details class="menu-group">
+<summary class="menu-parent">요양기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./meal-check.html">식사 제공 확인</a>
+<a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a>
+<a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a>
+<a class="submenu-item" href="./meal-bath-check.html">정량/목욕의자</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">물리치료 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./therapy-check.html">물리치료 제공 확인</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">간호 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a>
+<a class="submenu-item" href="./medication-check.html">투약 확인</a>
+</div>
+</details>
+<a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a>
+<a class="menu-item" href="./special-notes-check.html">특이사항 검증</a>
+</nav>
+</aside>
+<main class="content-area">
+<div class="content-box">
+<div class="page-header">
+<h2>제공기록지 통합 검증</h2>
+<p>장기요양급여 제공기록지 엑셀 파일 하나로 식사·목욕·화장실·간호·투약·인지·물리치료를 한 번에 확인합니다.</p>
+</div>
+<div class="record-wrap">
+<section class="upload-card">
+<div class="upload-grid">
+<div class="field">
+<label for="checkMonth">검사 월</label>
+<input id="checkMonth" type="month"/>
+</div>
+<div class="field">
+<label for="recordFile">제공기록지 엑셀 업로드</label>
+<input accept=".xlsx,.xls,.xlsm" id="recordFile" type="file"/>
+</div>
+<button class="main-btn" id="checkBtn">검사 시작</button>
+<button class="sub-btn" id="resetBtn">초기화</button>
+</div>
+<div class="guide">※ 현재 버전은 엑셀 파일 자체 내용 기준의 1차 검증입니다. 계획서·상담일지·출석관리 DB 연동 판정은 다음 단계에서 붙이면 됩니다.</div>
+<div class="progress-area" id="progressArea">
+<div class="progress-text" id="progressText">대기 중</div>
+<div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+</div>
+<div class="error-text" id="errorText"></div>
+</section>
+<section class="summary-grid">
+<div class="summary-card"><div class="label">시트/어르신</div><div class="value" id="personCount">0</div></div>
+<div class="summary-card bad"><div class="label">전체 오류</div><div class="value" id="errorCount">0</div></div>
+<div class="summary-card warn"><div class="label">주의</div><div class="value" id="warnCount">0</div></div>
+<div class="summary-card"><div class="label">식사</div><div class="value" id="mealCount">0</div></div>
+<div class="summary-card"><div class="label">목욕</div><div class="value" id="bathCount">0</div></div>
+<div class="summary-card"><div class="label">화장실</div><div class="value" id="toiletCount">0</div></div>
+<div class="summary-card"><div class="label">간호</div><div class="value" id="nursingCount">0</div></div>
+<div class="summary-card"><div class="label">투약</div><div class="value" id="medicineCount">0</div></div>
+</section>
+<section class="content-grid">
+<aside class="panel">
+<div class="panel-head"><h2>구분별 보기</h2><span class="badge" id="listBadge">0개</span></div>
+<div class="category-list" id="categoryList"><div class="detail-empty">엑셀을 업로드해주세요.</div></div>
+</aside>
+<main class="panel">
+<div class="panel-head"><h2>구분 상세</h2><button class="mini-btn" disabled="" id="downloadBtn">결과 CSV 다운로드</button></div>
+<div class="detail-empty" id="detailEmpty">왼쪽에서 목욕·화장실 같은 구분을 선택하면 해당 구분 결과가 표시됩니다.</div>
+<div class="detail-body" id="detailBody">
+<div class="detail-title">
+<div><h3 id="detailName">-</h3><p id="detailMeta">-</p></div>
+<span class="badge" id="detailBadge">-</span>
+</div>
+<div class="tabs" id="tabs">
+<button class="tab-btn active" data-tab="all">전체 대상</button>
+<button class="tab-btn" data-tab="error">오류만</button>
+<button class="tab-btn" data-tab="warning">주의만</button>
+</div>
+<div class="table-wrap"><table id="detailTable"><thead id="detailHead"></thead><tbody id="detailRows"></tbody></table></div>
+<div class="issue-list" id="issueList"></div>
+</div>
+</main>
+</section>
+</div>
+</div>
+</main>
+</div>
+<script src="../js/firebase-auth-guard.js" type="module"></script>
+<script src="../js/main.js"></script>
 </body>
 </html>

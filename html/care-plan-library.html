@@ -1,14 +1,14 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="../images/logo.png" />
-  <title>요양급여제공계획서 보관함</title>
-
-  <link rel="stylesheet" href="../css/common.css" />
-  <link rel="stylesheet" href="../css/dashboard.css" />
-  <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="../images/logo.png" rel="icon" type="image/png"/>
+<title>요양급여제공계획서 보관함</title>
+<link href="../css/common.css" rel="stylesheet"/>
+<link href="../css/dashboard.css" rel="stylesheet"/>
+<style>
     .info-table th, .info-table td {
       border: 1px solid #e2e8f0 !important;
       text-align: center;
@@ -46,154 +46,131 @@
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="logo-area">
-      <img src="../images/logo.png" alt="로고" class="logo-img" />
-    </div>
+<div class="topbar">
+<div class="logo-area">
+<img alt="로고" class="logo-img" src="../images/logo.png"/>
+</div>
+<div class="topbar-right">
+<div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
+<div class="icon-btn"><img alt="설정" src="../images/settings.png"/></div>
+<button class="logout-btn" onclick="hanmaumLogout()" type="button">로그아웃</button>
+<div class="user-area">
+<div class="user-badge">사회복지사</div>
+<p class="date-text" id="todayText"></p>
+</div>
+</div>
+</div>
+<div class="main-layout">
+<aside class="sidebar">
+<div class="menu-title">메뉴</div>
+<nav class="menu-list"><details class="menu-group" open=""><summary class="menu-parent active">보관함</summary><div class="submenu"><a class="submenu-item active" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details><a class="menu-item" href="./timely-notice.html">적기통보</a>
 
-    <div class="topbar-right">
-      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
-      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
 
-      <button type="button" class="logout-btn" onclick="hanmaumLogout()">로그아웃</button>
 
-      <div class="user-area">
-        <div class="user-badge">사회복지사</div>
-        <p class="date-text" id="todayText"></p>
-      </div>
-    </div>
-  </div>
 
-  <div class="main-layout">
-    <aside class="sidebar">
-      <div class="menu-title">메뉴</div>
-      <nav class="menu-list">
-        <a href="./care-plan-library.html" class="menu-item active">요양급여제공계획서 보관함</a>
-        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
-        <a href="./monthly-fee-library.html" class="menu-item">수가 보관함</a>
-        <a href="./attendance.html" class="menu-item">출석 보관함</a>
-
-        <details class="menu-group">
-          <summary class="menu-parent">요양기록지</summary>
-          <div class="submenu">
-            <a href="./meal-check.html" class="submenu-item">식사 제공 확인</a>
-            <a href="./bath-check.html" class="submenu-item">목욕 제공 확인</a>
-            <a href="./toilet-check.html" class="submenu-item">화장실 제공 확인</a>
-            <a href="./meal-bath-check.html" class="submenu-item">정량/목욕의자</a>
-          </div>
-        </details>
-
-        <details class="menu-group">
-          <summary class="menu-parent">물리치료 기록지</summary>
-          <div class="submenu">
-            <a href="./therapy-check.html" class="submenu-item">물리치료 제공 확인</a>
-          </div>
-        </details>
-
-        <details class="menu-group">
-          <summary class="menu-parent">간호 기록지</summary>
-          <div class="submenu">
-            <a href="./nursing-vital-check.html" class="submenu-item">간호제공 확인</a>
-            <a href="./medication-check.html" class="submenu-item">투약 확인</a>
-          </div>
-        </details>
-
-        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
-        <a href="./special-notes-check.html" class="menu-item">특이사항 검증</a>
-      </nav>
-    </aside>
-
-    <main class="content-area">
-      <div class="content-box">
-        <div class="page-header">
-          <h2>요양급여제공계획서 보관함</h2>
-          <p>수급자별 급여제공계획서를 작성일자 기준으로 보관합니다.</p>
-        </div>
-
-        <div class="page-actions">
-          <div class="date-group">
-            <label for="planFile">계획서 파일</label>
-            <input type="file" id="planFile" accept=".xlsx,.xls" />
-          </div>
-
-          <div class="date-group">
-            <label for="planWrittenDate">급여제공계획서 작성일자</label>
-            <input
-              type="date"
-              id="planWrittenDate"
-              max="9999-12-31"
-            />
-          </div>
-
-          <div class="action-buttons">
-            <button type="button" class="primary-btn" id="uploadPlanBtn">
+<details class="menu-group">
+<summary class="menu-parent">요양기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./meal-check.html">식사 제공 확인</a>
+<a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a>
+<a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a>
+<a class="submenu-item" href="./meal-bath-check.html">정량/목욕의자</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">물리치료 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./therapy-check.html">물리치료 제공 확인</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">간호 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a>
+<a class="submenu-item" href="./medication-check.html">투약 확인</a>
+</div>
+</details>
+<a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a>
+<a class="menu-item" href="./special-notes-check.html">특이사항 검증</a>
+</nav>
+</aside>
+<main class="content-area">
+<div class="content-box">
+<div class="page-header">
+<h2>요양급여제공계획서 보관함</h2>
+<p>수급자별 급여제공계획서를 작성일자 기준으로 보관합니다.</p>
+</div>
+<div class="page-actions">
+<div class="date-group">
+<label for="planFile">계획서 파일</label>
+<input accept=".xlsx,.xls" id="planFile" type="file"/>
+</div>
+<div class="date-group">
+<label for="planWrittenDate">급여제공계획서 작성일자</label>
+<input id="planWrittenDate" max="9999-12-31" type="date"/>
+</div>
+<div class="action-buttons">
+<button class="primary-btn" id="uploadPlanBtn" type="button">
               계획서 등록
             </button>
-            <button type="button" class="danger-btn" id="deleteSelectedPlanBtn">
+<button class="danger-btn" id="deleteSelectedPlanBtn" type="button">
               선택 삭제
             </button>
-          </div>
-        </div>
-
-        <div class="unified-notice-box">
-          <h5 class="unified-notice-title">
+</div>
+</div>
+<div class="unified-notice-box">
+<h5 class="unified-notice-title">
             💡 계획서 파일 등록 기준 안내
           </h5>
-          <ul class="unified-notice-list">
-            <li><b style="color: #1e293b;">파일명 규격 예시:</b> <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong></li>
-            <li><b style="color: #1e293b;">데이터 자동 파싱:</b> 시스템이 파일명에서 장기요양번호(인정번호)와 수급자명을 자동으로 판독하여 분리 저장합니다.</li>
-            <li><b style="color: #1e293b;">마스터 매칭 데이터:</b> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</li>
-          </ul>
-        </div>
-
-
-        <div class="unified-notice-box" style="border-color:#bfdbfe;background:#eff6ff;">
-          <h5 class="unified-notice-title">🔄 기존 Google Sheets DB → Firebase 1회 이전</h5>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-            <input type="file" id="legacyDbFile" accept=".xlsx,.xls" />
-            <button type="button" class="primary-btn" id="migratePlanBtn">계획서만 Firebase로 이전</button>
-            <button type="button" class="primary-btn" id="migrateAllDataBtn">계획서·상담일지·출석 전체 이전</button>
-            <span id="migrationStatus" style="font-size:13px;color:#334155;">같은 계획서·상담일지·출석관리 데이터를 Firebase로 이전합니다.</span>
-          </div>
-        </div>
-
-        <div class="table-wrap">
-          <table class="info-table" style="border-collapse: collapse; width: 100%;">
-            <thead>
-              <tr>
-                <th class="checkbox-col" style="border: 1px solid #e2e8f0; width: 40px;">
-                  <input type="checkbox" id="selectAllPlanCheckbox" />
-                </th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">장기요양번호</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">작성일자</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">파일명</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">급여 항목 수</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드일시</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드자</th>
-              </tr>
-            </thead>
-
-            <tbody id="planLibraryTableBody">
-              <tr class="empty-row">
-                <td colspan="8" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">
+<ul class="unified-notice-list">
+<li><b style="color: #1e293b;">파일명 규격 예시:</b> <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong></li>
+<li><b style="color: #1e293b;">데이터 자동 파싱:</b> 시스템이 파일명에서 장기요양번호(인정번호)와 수급자명을 자동으로 판독하여 분리 저장합니다.</li>
+<li><b style="color: #1e293b;">마스터 매칭 데이터:</b> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</li>
+</ul>
+</div>
+<div class="unified-notice-box" style="border-color:#bfdbfe;background:#eff6ff;">
+<h5 class="unified-notice-title">🔄 기존 Google Sheets DB → Firebase 1회 이전</h5>
+<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+<input accept=".xlsx,.xls" id="legacyDbFile" type="file"/>
+<button class="primary-btn" id="migratePlanBtn" type="button">계획서만 Firebase로 이전</button>
+<button class="primary-btn" id="migrateAllDataBtn" type="button">계획서·상담일지·출석 전체 이전</button>
+<span id="migrationStatus" style="font-size:13px;color:#334155;">같은 계획서·상담일지·출석관리 데이터를 Firebase로 이전합니다.</span>
+</div>
+</div>
+<div class="table-wrap">
+<table class="info-table" style="border-collapse: collapse; width: 100%;">
+<thead>
+<tr>
+<th class="checkbox-col" style="border: 1px solid #e2e8f0; width: 40px;">
+<input id="selectAllPlanCheckbox" type="checkbox"/>
+</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">장기요양번호</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">작성일자</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">파일명</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">급여 항목 수</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드일시</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드자</th>
+</tr>
+</thead>
+<tbody id="planLibraryTableBody">
+<tr class="empty-row">
+<td colspan="8" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">
                   등록된 급여제공계획서가 없습니다.
                 </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <script type="module" src="../js/firebase-auth-guard.js"></script>
-  <script src="../js/main.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script type="module" src="../js/care-plan-library.js"></script>
-  <script type="module" src="../js/firebase-migrate-all.js"></script>
-
-  <script>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</main>
+</div>
+<script src="../js/firebase-auth-guard.js" type="module"></script>
+<script src="../js/main.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="../js/care-plan-library.js" type="module"></script>
+<script src="../js/firebase-migrate-all.js" type="module"></script>
+<script>
     const planWrittenDateInput = document.getElementById("planWrittenDate");
 
     planWrittenDateInput.addEventListener("input", () => {

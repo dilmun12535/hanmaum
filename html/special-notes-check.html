@@ -1,17 +1,16 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="../images/logo.png" />
-  <title>급여제공기록지 특이사항 검증</title>
-
-  <link rel="stylesheet" href="../css/common.css" />
-  <link rel="stylesheet" href="../css/dashboard.css" />
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script defer src="../js/special-notes-check.js"></script>
-
-  <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="../images/logo.png" rel="icon" type="image/png"/>
+<title>급여제공기록지 특이사항 검증</title>
+<link href="../css/common.css" rel="stylesheet"/>
+<link href="../css/dashboard.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script defer="" src="../js/special-notes-check.js"></script>
+<style>
     *{box-sizing:border-box}
     body{margin:0;background:#f6f7fb;color:#101828;font-family:Arial,'Noto Sans KR',sans-serif}
     .topbar{height:76px;background:#fff;border-bottom:1px solid #e5e7eb;display:flex;align-items:center;justify-content:space-between;padding:0 24px}
@@ -147,173 +146,154 @@
     @media(max-width:620px){.topbar-right{display:none}.page-wrap{padding:18px 14px 34px}.upload-grid,.summary-grid{grid-template-columns:1fr}.card{padding:16px}.menu-list{grid-template-columns:1fr}.btn{flex:1}}
   </style>
 </head>
-
 <body>
-  <header class="topbar">
-    <div class="logo-area">
-      <img src="../images/logo.png" alt="한마음주간보호센터" class="logo-img" />
-    </div>
-    <div class="topbar-right">
-      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
-      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
-      <button type="button" class="logout-btn" onclick="hanmaumLogout()">로그아웃</button>
+<header class="topbar">
+<div class="logo-area">
+<img alt="한마음주간보호센터" class="logo-img" src="../images/logo.png"/>
+</div>
+<div class="topbar-right">
+<div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
+<div class="icon-btn"><img alt="설정" src="../images/settings.png"/></div>
+<button class="logout-btn" onclick="hanmaumLogout()" type="button">로그아웃</button>
+<div class="user-area">
+<div class="user-badge">사회복지사</div>
+<p class="date-text" id="todayText"></p>
+</div>
+</div>
+</header>
+<div class="main-layout">
+<aside class="sidebar">
+<p class="menu-title">메뉴</p>
+<nav class="menu-list"><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details><a class="menu-item" href="./timely-notice.html">적기통보</a>
 
-      <div class="user-area">
-        <div class="user-badge">사회복지사</div>
-        <p class="date-text" id="todayText"></p>
-      </div>
-    </div>
-  </header>
 
-  <div class="main-layout">
-    <aside class="sidebar">
-      <p class="menu-title">메뉴</p>
-      <nav class="menu-list">
-        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
-        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
-        <a href="./monthly-fee-library.html" class="menu-item">수가 보관함</a>
-        <a href="./attendance.html" class="menu-item">출석 보관함</a>
 
-        <details class="menu-group">
-          <summary class="menu-parent">요양기록지</summary>
-          <div class="submenu">
-            <a href="./meal-check.html" class="submenu-item">식사 제공 확인</a>
-            <a href="./bath-check.html" class="submenu-item">목욕 제공 확인</a>
-            <a href="./toilet-check.html" class="submenu-item">화장실 제공 확인</a>
-            <a href="./meal-bath-check.html" class="submenu-item">정량/목욕의자</a>
-          </div>
-        </details>
 
-        <details class="menu-group">
-          <summary class="menu-parent">물리치료 기록지</summary>
-          <div class="submenu">
-            <a href="./therapy-check.html" class="submenu-item">물리치료 제공 확인</a>
-          </div>
-        </details>
-
-        <details class="menu-group">
-          <summary class="menu-parent">간호 기록지</summary>
-          <div class="submenu">
-            <a href="./nursing-vital-check.html" class="submenu-item">간호제공 확인</a>
-            <a href="./medication-check.html" class="submenu-item">투약 확인</a>
-          </div>
-        </details>
-
-        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
-        <a href="./special-notes-check.html" class="menu-item active">특이사항 검증</a>
-      </nav>
-    </aside>
-
-    <main class="content-area">
-      <div class="page-wrap">
-        <div class="page-head">
-          <div class="page-title">
-            <h1>급여제공기록지 특이사항 검증</h1>
-            <p>제공기록지 엑셀 하나를 업로드하면 특이사항 누락 여부를 확인합니다. 날짜는 제공기록지의 날짜 행만 읽습니다.</p>
-          </div>
-          <div class="btn-row">
-            <button type="button" class="btn btn-ghost" id="reloadBtn">상담/출석 다시 불러오기</button>
-            <button type="button" class="btn btn-secondary" id="downloadBtn">결과 엑셀 다운로드</button>
-          </div>
-        </div>
-
-        <section class="card">
-          <div class="upload-grid">
-            <div class="upload-box main">
-              <strong>① 장기요양급여 제공기록지 업로드</strong>
-              <input type="file" id="recordFile" accept=".xlsx,.xls" />
-              <div class="upload-help" id="recordFileStatus">제공기록지 엑셀 파일 하나만 업로드하세요.</div>
-            </div>
-
-            <div class="upload-box">
-              <strong>② 상담일지 보관함</strong>
-              <div class="upload-help" id="counselLibraryStatus">상담일지 보관함에서 자동으로 불러옵니다.</div>
-            </div>
-
-            <div class="upload-box">
-              <strong>③ 출석관리 보관함</strong>
-              <div class="upload-help" id="attendanceLibraryStatus">출석관리 보관함에서 자동으로 불러옵니다.</div>
-            </div>
-
-            <div class="upload-box">
-              <strong>④ 수가/계획서 보관함</strong>
-              <div class="upload-help" id="feeLibraryStatus">계획서/수가 보관함에서 자동으로 불러옵니다.</div>
-            </div>
-          </div>
-        </section>
-
-        <section class="card">
-          <div class="simple-control-row">
-            <div class="auto-info-box">
-              <span>업로드 기록 범위</span>
-              <b id="detectedMonthText">업로드 파일 자동 인식</b>
-            </div>
-
-            <div class="field result-filter-field">
-              <label for="statusFilter">결과 필터</label>
-              <select id="statusFilter">
-                <option value="all">전체</option>
-                <option value="miss">누락</option>
-                <option value="ok">정상</option>
-                <option value="warn">확인필요</option>
-              </select>
-            </div>
-
-            <div class="btn-row action-buttons">
-              <button type="button" class="btn btn-primary" id="checkBtn">검증하기</button>
-              <button type="button" class="btn btn-ghost" id="resetBtn">초기화</button>
-            </div>
-          </div>
-
-          <div class="guide-text">
+<details class="menu-group">
+<summary class="menu-parent">요양기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./meal-check.html">식사 제공 확인</a>
+<a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a>
+<a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a>
+<a class="submenu-item" href="./meal-bath-check.html">정량/목욕의자</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">물리치료 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./therapy-check.html">물리치료 제공 확인</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">간호 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a>
+<a class="submenu-item" href="./medication-check.html">투약 확인</a>
+</div>
+</details>
+<a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a>
+<a class="menu-item active" href="./special-notes-check.html">특이사항 검증</a>
+</nav>
+</aside>
+<main class="content-area">
+<div class="page-wrap">
+<div class="page-head">
+<div class="page-title">
+<h1>급여제공기록지 특이사항 검증</h1>
+<p>제공기록지 엑셀 하나를 업로드하면 특이사항 누락 여부를 확인합니다. 날짜는 제공기록지의 날짜 행만 읽습니다.</p>
+</div>
+<div class="btn-row">
+<button class="btn btn-ghost" id="reloadBtn" type="button">상담/출석 다시 불러오기</button>
+<button class="btn btn-secondary" id="downloadBtn" type="button">결과 엑셀 다운로드</button>
+</div>
+</div>
+<section class="card">
+<div class="upload-grid">
+<div class="upload-box main">
+<strong>① 장기요양급여 제공기록지 업로드</strong>
+<input accept=".xlsx,.xls" id="recordFile" type="file"/>
+<div class="upload-help" id="recordFileStatus">제공기록지 엑셀 파일 하나만 업로드하세요.</div>
+</div>
+<div class="upload-box">
+<strong>② 상담일지 보관함</strong>
+<div class="upload-help" id="counselLibraryStatus">상담일지 보관함에서 자동으로 불러옵니다.</div>
+</div>
+<div class="upload-box">
+<strong>③ 출석관리 보관함</strong>
+<div class="upload-help" id="attendanceLibraryStatus">출석관리 보관함에서 자동으로 불러옵니다.</div>
+</div>
+<div class="upload-box">
+<strong>④ 수가/계획서 보관함</strong>
+<div class="upload-help" id="feeLibraryStatus">계획서/수가 보관함에서 자동으로 불러옵니다.</div>
+</div>
+</div>
+</section>
+<section class="card">
+<div class="simple-control-row">
+<div class="auto-info-box">
+<span>업로드 기록 범위</span>
+<b id="detectedMonthText">업로드 파일 자동 인식</b>
+</div>
+<div class="field result-filter-field">
+<label for="statusFilter">결과 필터</label>
+<select id="statusFilter">
+<option value="all">전체</option>
+<option value="miss">누락</option>
+<option value="ok">정상</option>
+<option value="warn">확인필요</option>
+</select>
+</div>
+<div class="btn-row action-buttons">
+<button class="btn btn-primary" id="checkBtn" type="button">검증하기</button>
+<button class="btn btn-ghost" id="resetBtn" type="button">초기화</button>
+</div>
+</div>
+<div class="guide-text">
             ※ 월 선택은 사용하지 않습니다. 날짜는 제공기록지 상단의 “06/01(월)” 같은 날짜 행만 인식합니다.
           </div>
-        </section>
-
-        <section class="summary-grid">
-          <div class="summary-card"><span>전체 필요 항목</span><b id="totalCount">0</b></div>
-          <div class="summary-card"><span>정상</span><b class="status-ok" id="okCount">0</b></div>
-          <div class="summary-card"><span>누락</span><b class="status-miss" id="missCount">0</b></div>
-          <div class="summary-card"><span>확인필요</span><b class="status-warn" id="warnCount">0</b></div>
-          <div class="summary-card"><span>업로드 특이사항</span><b class="status-info" id="uploadedCount">0</b></div>
-        </section>
-
-        <section class="card">
-          <div class="pill-filter" id="typeTabs">
-            <button type="button" class="active" data-type="all">전체</button>
-            <button type="button" data-type="상담일지">상담일지</button>
-            <button type="button" data-type="식사">식사</button>
-            <button type="button" data-type="조기하원">조기하원</button>
-            <button type="button" data-type="이용시간">이용시간</button>
-            <button type="button" data-type="목욕">목욕</button>
-            <button type="button" data-type="투약">투약</button>
-          </div>
-
-          <div class="table-wrap">
-            <table class="result-table">
-              <thead>
-                <tr>
-                  <th>결과</th>
-                  <th>어르신</th>
-                  <th>일자</th>
-                  <th>구분</th>
-                  <th>필요 특이사항</th>
-                  <th>업로드 특이사항</th>
-                  <th>판정 사유</th>
-                  <th>추천 문구</th>
-                </tr>
-              </thead>
-              <tbody id="resultBody">
-                <tr>
-                  <td colspan="8" class="empty">제공기록지 엑셀을 업로드한 뒤 검증하기를 눌러주세요.</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-      </div>
-    </main>
-  </div>
-  <script type="module" src="../js/firebase-auth-guard.js"></script>
+</section>
+<section class="summary-grid">
+<div class="summary-card"><span>전체 필요 항목</span><b id="totalCount">0</b></div>
+<div class="summary-card"><span>정상</span><b class="status-ok" id="okCount">0</b></div>
+<div class="summary-card"><span>누락</span><b class="status-miss" id="missCount">0</b></div>
+<div class="summary-card"><span>확인필요</span><b class="status-warn" id="warnCount">0</b></div>
+<div class="summary-card"><span>업로드 특이사항</span><b class="status-info" id="uploadedCount">0</b></div>
+</section>
+<section class="card">
+<div class="pill-filter" id="typeTabs">
+<button class="active" data-type="all" type="button">전체</button>
+<button data-type="상담일지" type="button">상담일지</button>
+<button data-type="식사" type="button">식사</button>
+<button data-type="조기하원" type="button">조기하원</button>
+<button data-type="이용시간" type="button">이용시간</button>
+<button data-type="목욕" type="button">목욕</button>
+<button data-type="투약" type="button">투약</button>
+</div>
+<div class="table-wrap">
+<table class="result-table">
+<thead>
+<tr>
+<th>결과</th>
+<th>어르신</th>
+<th>일자</th>
+<th>구분</th>
+<th>필요 특이사항</th>
+<th>업로드 특이사항</th>
+<th>판정 사유</th>
+<th>추천 문구</th>
+</tr>
+</thead>
+<tbody id="resultBody">
+<tr>
+<td class="empty" colspan="8">제공기록지 엑셀을 업로드한 뒤 검증하기를 눌러주세요.</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+</div>
+</main>
+</div>
+<script src="../js/firebase-auth-guard.js" type="module"></script>
 </body>
 </html>

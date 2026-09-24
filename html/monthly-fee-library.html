@@ -1,18 +1,16 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="../images/logo.png" />
-  <title>수가 보관함</title>
-
-  <link rel="stylesheet" href="../css/common.css" />
-  <link rel="stylesheet" href="../css/dashboard.css" />
-
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <script defer src="../js/monthly-fee-library.js"></script>
-
-  <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="../images/logo.png" rel="icon" type="image/png"/>
+<title>수가 보관함</title>
+<link href="../css/common.css" rel="stylesheet"/>
+<link href="../css/dashboard.css" rel="stylesheet"/>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script defer="" src="../js/monthly-fee-library.js"></script>
+<style>
     .fee-wrap{padding:24px;max-width:1440px;margin:0 auto}
     .page-head{display:flex;justify-content:space-between;gap:16px;align-items:flex-end;margin-bottom:18px}
     .page-title h1{margin:0 0 6px;font-size:26px}
@@ -67,114 +65,101 @@
     }
   </style>
 </head>
-
 <body>
-  <div class="topbar">
-    <div class="logo-area"><img src="../images/logo.png" alt="로고" class="logo-img" /></div>
-    <div class="topbar-right">
-      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
-      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
-      <button type="button" class="logout-btn" onclick="hanmaumLogout()">로그아웃</button>
+<div class="topbar">
+<div class="logo-area"><img alt="로고" class="logo-img" src="../images/logo.png"/></div>
+<div class="topbar-right">
+<div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
+<div class="icon-btn"><img alt="설정" src="../images/settings.png"/></div>
+<button class="logout-btn" onclick="hanmaumLogout()" type="button">로그아웃</button>
+<div class="user-area"><div class="user-badge">사회복지사</div><p class="date-text" id="todayText"></p></div>
+</div>
+</div>
+<div class="main-layout">
+<aside class="sidebar">
+<div class="menu-title">메뉴</div>
+<nav class="menu-list"><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details><a class="menu-item" href="./timely-notice.html">적기통보</a>
 
-      <div class="user-area"><div class="user-badge">사회복지사</div><p class="date-text" id="todayText"></p></div>
-    </div>
-  </div>
 
-  <div class="main-layout">
-    <aside class="sidebar">
-      <div class="menu-title">메뉴</div>
-      <nav class="menu-list">
-        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
-        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
-        <a href="./monthly-fee-library.html" class="menu-item active">수가 보관함</a>
-        <a href="./attendance.html" class="menu-item">출석 보관함</a>
 
-        <details class="menu-group">
-          <summary class="menu-parent">요양기록지</summary>
-          <div class="submenu">
-            <a href="./meal-check.html" class="submenu-item">식사 제공 확인</a>
-            <a href="./bath-check.html" class="submenu-item">목욕 제공 확인</a>
-            <a href="./toilet-check.html" class="submenu-item">화장실 제공 확인</a>
-            <a href="./meal-bath-check.html" class="submenu-item">정량/목욕의자</a>
-          </div>
-        </details>
 
-        <details class="menu-group">
-          <summary class="menu-parent">물리치료 기록지</summary>
-          <div class="submenu">
-            <a href="./therapy-check.html" class="submenu-item">물리치료 제공 확인</a>
-          </div>
-        </details>
-
-        <details class="menu-group">
-          <summary class="menu-parent">간호 기록지</summary>
-          <div class="submenu">
-            <a href="./nursing-vital-check.html" class="submenu-item">간호제공 확인</a>
-            <a href="./medication-check.html" class="submenu-item">투약 확인</a>
-          </div>
-        </details>
-
-        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
-        <a href="./special-notes-check.html" class="menu-item">특이사항 검증</a>
-      </nav>
-    </aside>
-
-    <main class="content fee-wrap">
-      <div class="page-head">
-        <div class="page-title">
-          <h1>월별 어르신 수가 보관함</h1>
-          <p>월별 수가 파일을 업로드하면 구글시트 <b>월별어르신수가</b>에 저장되고 다른 확인 페이지에서 불러올 수 있습니다.</p>
-        </div>
-        <div class="head-actions">
-          <button class="btn btn-outline" id="viewSavedBtn" type="button">저장 자료 보기</button>
-          <button class="btn btn-soft" id="reloadBtn" type="button">새로고침</button>
-        </div>
-      </div>
-
-      <section class="upload-card">
-        <div class="control-row">
-          <input type="text" id="monthInput" class="month-input" readonly placeholder="예: 2026-05" />
-
-          <label class="file-label">
-            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
-            <span>파일 선택</span><span class="file-name" id="fileName">선택된 파일 없음</span>
-          </label>
-
-          <label class="check"><input type="checkbox" id="replaceMonth" checked /> 같은 월 기존 자료 삭제 후 저장</label>
-          <button class="btn btn-primary" id="uploadBtn" type="button" disabled>업로드 저장</button>
-          <button class="btn btn-soft" id="viewSavedBtnMobile" type="button">저장 자료 보기</button>
-          <button class="btn btn-danger" id="deleteMonthBtn" type="button">선택 월 삭제</button>
-        </div>
-        <div class="notice" id="noticeBox"></div>
-      </section>
-
-      <section class="summary-card">
-        <div class="summary-grid">
-          <div class="summary-box"><span>조회 월</span><b id="summaryMonth">-</b></div>
-          <div class="summary-box"><span>어르신 수</span><b id="summaryRecipients">0명</b></div>
-          <div class="summary-box"><span>수가 행 수</span><b id="summaryRows">0건</b></div>
-          <div class="summary-box"><span>총 금액</span><b id="summaryAmount">0원</b></div>
-        </div>
-      </section>
-
-      <section class="table-card">
-        <div class="table-tools">
-          <div class="status" id="statusText">자료를 불러오세요.</div>
-          <input type="search" id="searchInput" class="search-input" placeholder="이름, 인정번호, 수가명 검색" />
-        </div>
-        <div class="table-scroll">
-          <table class="fee-table">
-            <thead>
-              <tr>
-                <th>월</th><th>수급자명</th><th>인정번호</th><th>생년월일</th><th>서비스구분</th><th>수가코드</th><th>수가명</th><th>수가</th><th>일수</th><th>금액</th>
-              </tr>
-            </thead>
-            <tbody id="tableBody"><tr><td colspan="10" class="empty">저장된 자료가 없습니다.</td></tr></tbody>
-          </table>
-        </div>
-      </section>
-    </main>
-  </div>
-  <script type="module" src="../js/firebase-auth-guard.js"></script>
+<details class="menu-group">
+<summary class="menu-parent">요양기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./meal-check.html">식사 제공 확인</a>
+<a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a>
+<a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a>
+<a class="submenu-item" href="./meal-bath-check.html">정량/목욕의자</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">물리치료 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./therapy-check.html">물리치료 제공 확인</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">간호 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a>
+<a class="submenu-item" href="./medication-check.html">투약 확인</a>
+</div>
+</details>
+<a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a>
+<a class="menu-item" href="./special-notes-check.html">특이사항 검증</a>
+</nav>
+</aside>
+<main class="content fee-wrap">
+<div class="page-head">
+<div class="page-title">
+<h1>월별 어르신 수가 보관함</h1>
+<p>월별 수가 파일을 업로드하면 구글시트 <b>월별어르신수가</b>에 저장되고 다른 확인 페이지에서 불러올 수 있습니다.</p>
+</div>
+<div class="head-actions">
+<button class="btn btn-outline" id="viewSavedBtn" type="button">저장 자료 보기</button>
+<button class="btn btn-soft" id="reloadBtn" type="button">새로고침</button>
+</div>
+</div>
+<section class="upload-card">
+<div class="control-row">
+<input class="month-input" id="monthInput" placeholder="예: 2026-05" readonly="" type="text"/>
+<label class="file-label">
+<input accept=".xlsx,.xls,.csv" id="fileInput" type="file"/>
+<span>파일 선택</span><span class="file-name" id="fileName">선택된 파일 없음</span>
+</label>
+<label class="check"><input checked="" id="replaceMonth" type="checkbox"/> 같은 월 기존 자료 삭제 후 저장</label>
+<button class="btn btn-primary" disabled="" id="uploadBtn" type="button">업로드 저장</button>
+<button class="btn btn-soft" id="viewSavedBtnMobile" type="button">저장 자료 보기</button>
+<button class="btn btn-danger" id="deleteMonthBtn" type="button">선택 월 삭제</button>
+</div>
+<div class="notice" id="noticeBox"></div>
+</section>
+<section class="summary-card">
+<div class="summary-grid">
+<div class="summary-box"><span>조회 월</span><b id="summaryMonth">-</b></div>
+<div class="summary-box"><span>어르신 수</span><b id="summaryRecipients">0명</b></div>
+<div class="summary-box"><span>수가 행 수</span><b id="summaryRows">0건</b></div>
+<div class="summary-box"><span>총 금액</span><b id="summaryAmount">0원</b></div>
+</div>
+</section>
+<section class="table-card">
+<div class="table-tools">
+<div class="status" id="statusText">자료를 불러오세요.</div>
+<input class="search-input" id="searchInput" placeholder="이름, 인정번호, 수가명 검색" type="search"/>
+</div>
+<div class="table-scroll">
+<table class="fee-table">
+<thead>
+<tr>
+<th>월</th><th>수급자명</th><th>인정번호</th><th>생년월일</th><th>서비스구분</th><th>수가코드</th><th>수가명</th><th>수가</th><th>일수</th><th>금액</th>
+</tr>
+</thead>
+<tbody id="tableBody"><tr><td class="empty" colspan="10">저장된 자료가 없습니다.</td></tr></tbody>
+</table>
+</div>
+</section>
+</main>
+</div>
+<script src="../js/firebase-auth-guard.js" type="module"></script>
 </body>
 </html>

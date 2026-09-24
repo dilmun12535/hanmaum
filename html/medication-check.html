@@ -1,16 +1,16 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/png" href="../images/logo.png" />
-  <title>투약 확인</title>
-
-  <link rel="stylesheet" href="../css/common.css" />
-  <link rel="stylesheet" href="../css/dashboard.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" />
-  <style>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="../images/logo.png" rel="icon" type="image/png"/>
+<title>투약 확인</title>
+<link href="../css/common.css" rel="stylesheet"/>
+<link href="../css/dashboard.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" rel="stylesheet"/>
+<style>
     /* 테이블 격자 스타일이 깨지지 않고 부드럽게 연동되도록 스타일을 보완합니다 */
     .info-table th, .info-table td {
       border: 1px solid #e2e8f0 !important;
@@ -50,127 +50,112 @@
   </style>
 </head>
 <body>
-  <div class="topbar">
-    <div class="logo-area">
-      <img src="../images/logo.png" alt="로고" class="logo-img" />
-    </div>
+<div class="topbar">
+<div class="logo-area">
+<img alt="로고" class="logo-img" src="../images/logo.png"/>
+</div>
+<div class="topbar-right">
+<div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
+<div class="icon-btn"><img alt="설정" src="../images/settings.png"/></div>
+<button class="logout-btn" onclick="hanmaumLogout()" type="button">로그아웃</button>
+<div class="user-area">
+<div class="user-badge">사회복지사</div>
+<p class="date-text" id="todayText"></p>
+</div>
+</div>
+</div>
+<div class="main-layout">
+<aside class="sidebar">
+<div class="menu-title">메뉴</div>
+<nav class="menu-list"><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details><a class="menu-item" href="./timely-notice.html">적기통보</a>
 
-    <div class="topbar-right">
-      <div class="icon-btn"><img src="../images/bell.png" alt="알림" /></div>
-      <div class="icon-btn"><img src="../images/settings.png" alt="설정" /></div>
 
-      <button type="button" class="logout-btn" onclick="hanmaumLogout()">로그아웃</button>
 
-      <div class="user-area">
-        <div class="user-badge">사회복지사</div>
-        <p class="date-text" id="todayText"></p>
-      </div>
-    </div>
-  </div>
 
-  <div class="main-layout">
-    <aside class="sidebar">
-      <div class="menu-title">메뉴</div>
-      <nav class="menu-list">
-        <a href="./care-plan-library.html" class="menu-item">요양급여제공계획서 보관함</a>
-        <a href="./counsel-library.html" class="menu-item">상담일지 보관함</a>
-        <a href="./monthly-fee-library.html" class="menu-item">수가 보관함</a>
-        <a href="./attendance.html" class="menu-item">출석 보관함</a>
-
-        <details class="menu-group">
-          <summary class="menu-parent">요양기록지</summary>
-          <div class="submenu">
-            <a href="./meal-check.html" class="submenu-item">식사 제공 확인</a>
-            <a href="./bath-check.html" class="submenu-item">목욕 제공 확인</a>
-            <a href="./toilet-check.html" class="submenu-item">화장실 제공 확인</a>
-            <a href="./meal-bath-check.html" class="submenu-item">정량/목욕의자</a>
-          </div>
-        </details>
-
-        <details class="menu-group">
-          <summary class="menu-parent">물리치료 기록지</summary>
-          <div class="submenu">
-            <a href="./therapy-check.html" class="submenu-item">물리치료 제공 확인</a>
-          </div>
-        </details>
-
-        <details class="menu-group" open>
-          <summary class="menu-parent active">간호 기록지</summary>
-          <div class="submenu">
-            <a href="./nursing-vital-check.html" class="submenu-item">간호제공 확인</a>
-            <a href="./medication-check.html" class="submenu-item active">투약 확인</a>
-          </div>
-        </details>
-
-        <a href="./cognitive-check.html" class="menu-item">인지활동 제공 확인</a>
-        <a href="./special-notes-check.html" class="menu-item">특이사항 검증</a>
-      </nav>
-    </aside>
-
-    <main class="content-area">
-      <div class="content-box">
-        <div class="page-header">
-          <h2>투약 확인</h2>
-          <p>출석일 기준으로 정확한 복약도움 급여 횟수와 실제 투약 시간을 확인합니다.</p>
-        </div>
-
-        <div class="page-actions">
-          <div class="date-group">
-            <label for="checkMonth">확인 월</label>
-            <input type="text" id="checkMonth" placeholder="예: 2026-05" autocomplete="off" />
-          </div>
-
-          <div class="date-group">
-            <label for="medicationFile">4-5. 투약제공 리포트 출력</label>
-            <input type="file" id="medicationFile" accept=".xlsx,.xls" />
-          </div>
-
-          <div class="action-buttons">
-            <button type="button" class="primary-btn" id="checkMedicationBtn">투약 확인</button>
-            <button type="button" class="danger-btn" id="clearMedicationBtn">초기화</button>
-          </div>
-        </div>
-
-        <div class="unified-notice-box">
-          <h5 class="unified-notice-title">
+<details class="menu-group">
+<summary class="menu-parent">요양기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./meal-check.html">식사 제공 확인</a>
+<a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a>
+<a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a>
+<a class="submenu-item" href="./meal-bath-check.html">정량/목욕의자</a>
+</div>
+</details>
+<details class="menu-group">
+<summary class="menu-parent">물리치료 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./therapy-check.html">물리치료 제공 확인</a>
+</div>
+</details>
+<details class="menu-group" open="">
+<summary class="menu-parent active">간호 기록지</summary>
+<div class="submenu">
+<a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a>
+<a class="submenu-item active" href="./medication-check.html">투약 확인</a>
+</div>
+</details>
+<a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a>
+<a class="menu-item" href="./special-notes-check.html">특이사항 검증</a>
+</nav>
+</aside>
+<main class="content-area">
+<div class="content-box">
+<div class="page-header">
+<h2>투약 확인</h2>
+<p>출석일 기준으로 정확한 복약도움 급여 횟수와 실제 투약 시간을 확인합니다.</p>
+</div>
+<div class="page-actions">
+<div class="date-group">
+<label for="checkMonth">확인 월</label>
+<input autocomplete="off" id="checkMonth" placeholder="예: 2026-05" type="text"/>
+</div>
+<div class="date-group">
+<label for="medicationFile">4-5. 투약제공 리포트 출력</label>
+<input accept=".xlsx,.xls" id="medicationFile" type="file"/>
+</div>
+<div class="action-buttons">
+<button class="primary-btn" id="checkMedicationBtn" type="button">투약 확인</button>
+<button class="danger-btn" id="clearMedicationBtn" type="button">초기화</button>
+</div>
+</div>
+<div class="unified-notice-box">
+<h5 class="unified-notice-title">
             💡 투약 확인 기준 안내
           </h5>
-          <ul class="unified-notice-list">
-            <li><b style="color: #1e293b;">대상자 기준:</b> 급여 계약 및 계획서상에 <b style="color: #1e293b;">정확한 복약도움</b> 서비스가 잡혀있는 수급자 어르신만 투약 기록이 매칭되어야 합니다.</li>
-            <li><b style="color: #1e293b;">급여 횟수 판정:</b> 약의 개수가 아닌, 하루 중 <b style="color: #1e293b;">아침·점심·저녁 투약 횟수</b>를 실질적인 점검 기준으로 삼습니다.</li>
-            <li><b style="color: #1e293b;">연산 방식:</b> 투약 파일 내의 시간①~시간⑧ 영역에 기입된 <b>서로 다른 투약 시간의 개수</b>를 대조하여 연산합니다.</li>
-            <li><b style="color: #1e293b;">결석일 처리:</b> 등원하지 않으신 결석일은 시스템상에 <span style="color: #64748b; font-weight: 600;">결석</span>으로 우대 처리되어 오류(미제공)로 판단하지 않습니다.</li>
-          </ul>
-        </div>
-
-        <div class="table-wrap">
-          <table class="info-table split-check-table" style="border-collapse: collapse; width: 100%;">
-            <thead id="medicationTableHead">
-              <tr>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
-                <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">기준</th>
-              </tr>
-            </thead>
-            <tbody id="medicationResultBody">
-              <tr class="empty-row">
-                <td colspan="4" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 파일을 선택해주세요.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </main>
-  </div>
-
-  <script type="module" src="../js/firebase-auth-guard.js"></script>
-  <script src="../js/main.js"></script>
-  <script src="../js/firestore-data.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
-  <script>
+<ul class="unified-notice-list">
+<li><b style="color: #1e293b;">대상자 기준:</b> 급여 계약 및 계획서상에 <b style="color: #1e293b;">정확한 복약도움</b> 서비스가 잡혀있는 수급자 어르신만 투약 기록이 매칭되어야 합니다.</li>
+<li><b style="color: #1e293b;">급여 횟수 판정:</b> 약의 개수가 아닌, 하루 중 <b style="color: #1e293b;">아침·점심·저녁 투약 횟수</b>를 실질적인 점검 기준으로 삼습니다.</li>
+<li><b style="color: #1e293b;">연산 방식:</b> 투약 파일 내의 시간①~시간⑧ 영역에 기입된 <b>서로 다른 투약 시간의 개수</b>를 대조하여 연산합니다.</li>
+<li><b style="color: #1e293b;">결석일 처리:</b> 등원하지 않으신 결석일은 시스템상에 <span style="color: #64748b; font-weight: 600;">결석</span>으로 우대 처리되어 오류(미제공)로 판단하지 않습니다.</li>
+</ul>
+</div>
+<div class="table-wrap">
+<table class="info-table split-check-table" style="border-collapse: collapse; width: 100%;">
+<thead id="medicationTableHead">
+<tr>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 작성일</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">기준</th>
+</tr>
+</thead>
+<tbody id="medicationResultBody">
+<tr class="empty-row">
+<td colspan="4" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">확인 월과 파일을 선택해주세요.</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</main>
+</div>
+<script src="../js/firebase-auth-guard.js" type="module"></script>
+<script src="../js/main.js"></script>
+<script src="../js/firestore-data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+<script>
     document.addEventListener("DOMContentLoaded", function () {
       if (document.getElementById("checkMonth") && typeof flatpickr !== "undefined") {
         flatpickr("#checkMonth", {
@@ -210,6 +195,6 @@
       }
     });
   </script>
-  <script src="../js/medication-check.js"></script>
+<script src="../js/medication-check.js"></script>
 </body>
 </html>
