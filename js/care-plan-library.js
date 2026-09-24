@@ -178,7 +178,7 @@ if (elMigrationBtn) elMigrationBtn.addEventListener("click", async () => {
   const file=elMigrationFile?.files?.[0];
   if (!file) return alert("기존 Google Sheets에서 내려받은 DB 엑셀 파일을 선택해주세요.");
   if (!currentUser) return alert("로그인 후 이용해주세요.");
-  if (!confirm("선택한 DB 엑셀의 '급여제공계획서' 시트를 Firebase로 이전합니다.\n계획서를 한 건씩 순서대로 저장하며, 같은 id는 덮어써서 중복 생성되지 않습니다. 계속할까요?")) return;
+  if (!confirm("선택한 DB 엑셀의 '급여제공계획서' 시트를 Firebase로 이전합니다.\n계획서를 한 건씩 순서대로 저장하며, 기존 시트의 id가 같아도 계획서별로 별도 저장됩니다. 계속할까요?")) return;
 
   elMigrationBtn.disabled=true;
   let done=0;
@@ -196,7 +196,16 @@ if (elMigrationBtn) elMigrationBtn.addEventListener("click", async () => {
 
     for (let i=0; i<valid.length; i++) {
       const r=valid[i];
-      const id=String(r.id).trim();
+      const sourceId=String(r.id || '').trim();
+      // 기존 시트에서 id가 중복되어도 서로 다른 계획서가 덮어써지지 않도록
+      // 장기요양번호 + 작성일자 + 원본 행번호를 포함한 고유 문서 ID를 사용합니다.
+      const uniqueKey = [
+        sourceId || 'legacy',
+        String(r.longTermNumber || '').trim(),
+        normalizeDateString(r.writtenDate) || 'nodate',
+        String(i + 2)
+      ].join('__').replace(/[^a-zA-Z0-9가-힣_-]/g, '_');
+      const id=uniqueKey;
       try {
         const parsedRows=safeRows(r.rowsJson);
         // rowsJson 문자열과 rows 배열을 동시에 저장하면 같은 데이터가 두 번 들어가
@@ -212,7 +221,8 @@ if (elMigrationBtn) elMigrationBtn.addEventListener("click", async () => {
           uploadedBy:String(r.uploadedBy||""),
           ownerUid:currentUser.uid,
           rows:parsedRows,
-          migratedFrom:"googleSheets"
+          migratedFrom:"googleSheets",
+          sourceId
         },{merge:true});
         done++;
       } catch (itemError) {
