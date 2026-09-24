@@ -245,12 +245,12 @@ function exportPlansToExcel() {
     "적용 시작일": normalizeDateString(plan.applicationStartDate || plan.writtenDate),
     "적용 종료일": normalizeDateString(plan.applicationEndDate),
     "작성일": normalizeDateString(plan.writtenDate),
-    "계획서 수가": plan.planFee || "",
     "계획서 주 횟수": plan.planWeeklyCount || "",
-    "평일 수가": plan.weekdayFee || "",
+    "계획서 수가": plan.planFee || "",
     "평일 주 횟수": plan.weekdayWeeklyCount || "",
-    "주말 수가": plan.weekendFee || "",
+    "평일 수가": plan.weekdayFee || "",
     "주말 주 횟수": plan.weekendWeeklyCount || "",
+    "주말 수가": plan.weekendFee || "",
     "종합의견": plan.summaryOpinion || "",
     "파일명": plan.fileName || "",
     "급여 항목 수": Number(plan.itemCount || (plan.rows || []).length || 0),
@@ -358,7 +358,7 @@ function renderLibrary() {
     const row=document.createElement("tr");
     const version=getPlanVersion(plan);
     const versionLabel=version === "legacy" ? "구버전" : "신버전";
-    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${escapeHtml(plan.firestoreId || plan.id)}" ${plan.checked?"checked":""}/></td><td><span class="version-badge ${version}">${versionLabel}</span></td><td>${escapeHtml(plan.longTermNumber||"-")}</td><td>${escapeHtml(plan.recipientName||"-")}</td><td>${escapeHtml(plan.grade||"-")}</td><td>${escapeHtml(formatDateValue(plan.applicationStartDate || plan.writtenDate))}</td><td>${escapeHtml(formatDateValue(plan.applicationEndDate))}</td><td>${escapeHtml(plan.planFee||"-")}</td><td>${escapeHtml(plan.planWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekdayFee||"-")}</td><td>${escapeHtml(plan.weekdayWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekendFee||"-")}</td><td>${escapeHtml(plan.weekendWeeklyCount||"-")}</td><td style="text-align:left;">${escapeHtml(plan.fileName||"-")}</td><td>${Number(plan.itemCount||0)}개</td><td>${escapeHtml(plan.uploadedAt||"-")}</td><td>${escapeHtml(plan.uploadedBy||"알 수 없음")}</td>`;
+    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${escapeHtml(plan.firestoreId || plan.id)}" ${plan.checked?"checked":""}/></td><td><span class="version-badge ${version}">${versionLabel}</span></td><td>${escapeHtml(plan.longTermNumber||"-")}</td><td>${escapeHtml(plan.recipientName||"-")}</td><td>${escapeHtml(plan.grade||"-")}</td><td>${escapeHtml(formatDateValue(plan.applicationStartDate || plan.writtenDate))}</td><td>${escapeHtml(formatDateValue(plan.applicationEndDate))}</td><td>${escapeHtml(plan.planWeeklyCount||"-")}</td><td>${escapeHtml(plan.planFee||"-")}</td><td>${escapeHtml(plan.weekdayWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekdayFee||"-")}</td><td>${escapeHtml(plan.weekendWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekendFee||"-")}</td><td style="text-align:left;">${escapeHtml(plan.fileName||"-")}</td><td>${Number(plan.itemCount||0)}개</td><td>${escapeHtml(plan.uploadedAt||"-")}</td><td>${escapeHtml(plan.uploadedBy||"알 수 없음")}</td>`;
     elPlanTableBodyContainer.appendChild(row);
   }
   bindCheckboxEvents();
