@@ -116,6 +116,15 @@
           </ul>
         </div>
 
+        <div class="unified-notice-box" style="background:#eff6ff;border-color:#bfdbfe;">
+          <h5 class="unified-notice-title">🔄 기존 Google Sheets 상담일지 → Firebase 1회 이전</h5>
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <input type="file" id="legacyCounselDbFile" accept=".xlsx,.xls" />
+            <button type="button" class="primary-btn" id="migrateCounselBtn">기존 상담일지 Firebase로 이전</button>
+            <span id="counselMigrationStatus" style="font-size:13px;color:#334155;">기존 DB 엑셀의 ‘상담일지’ 시트를 그대로 이전합니다. 기존 Firebase 자료는 유지됩니다.</span>
+          </div>
+        </div>
+
         <div class="table-wrap">
           <table class="info-table" style="border-collapse: collapse; width: 100%;">
             <thead>
@@ -146,6 +155,6 @@
   <script type="module" src="../js/firebase-auth-guard.js"></script>
   <script src="../js/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="../js/counsel-library.js"></script>
+  <script type="module" src="../js/counsel-library.js"></script>
 </body>
 </html>

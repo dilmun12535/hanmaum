@@ -244,200 +244,183 @@ function parseCounselWorkbook(workbook, fileName) {
   return allParsed;
 }
 
-function makePayloadUrl(payload) {
-  return `${API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
+import { auth, db } from "./firebase-config.js";
+import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+const COUNSEL_COLLECTION = "counsels";
+
+function getLoginName() {
+  return sessionStorage.getItem("loginUserName") ||
+    localStorage.getItem("loginUserName") ||
+    sessionStorage.getItem("loginUser") ||
+    localStorage.getItem("loginUser") ||
+    auth.currentUser?.email || "알 수 없음";
+}
+
+function safeDocId(value) {
+  return String(value || "counsel")
+    .replace(/[^a-zA-Z0-9가-힣_-]/g, "_")
+    .slice(0, 1400);
+}
+
+function firestoreSafe(value) {
+  if (value === undefined) return null;
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) return value.map(firestoreSafe);
+  if (typeof value === "object") {
+    const out = {};
+    Object.entries(value).forEach(([k,v]) => out[k] = firestoreSafe(v));
+    return out;
+  }
+  return String(value);
 }
 
 async function loadCounselLibrary() {
   try {
-    const response = await fetch(makePayloadUrl({ action: "listCounsel" }), {
-      method: "GET",
-      redirect: "follow"
-    });
-
-    const text = await response.text();
-    counselLibrary = JSON.parse(text);
-
-    counselLibrary = counselLibrary.map((item) => ({
-      ...item,
-      consultDate: normalizeDateText(item.consultDate),
+    const snap = await getDocs(collection(db, COUNSEL_COLLECTION));
+    counselLibrary = snap.docs.map(d => ({
+      ...d.data(),
+      firestoreId: d.id,
+      id: d.data().id || d.id,
+      consultDate: normalizeDateText(d.data().consultDate || d.data().reflectionDate || d.data().counselDate || d.data().writtenDate),
       checked: false
     }));
-
     renderCounselLibrary();
   } catch (error) {
-    console.error("상담일지 불러오기 오류:", error);
-    alert("상담일지 데이터를 불러오지 못했습니다.");
+    console.error("상담일지 Firestore 불러오기 오류:", error);
+    alert("Firebase에서 상담일지 데이터를 불러오지 못했습니다. Firestore 규칙을 확인해주세요.");
   }
 }
 
-async function addCounselToSheet(items) {
-  const loginUser =
-    sessionStorage.getItem("loginUser") ||
-    localStorage.getItem("loginUser") ||
-    "알 수 없음";
-
-  await fetch(API_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      action: "addCounsel",
-      uploadedBy: loginUser,
-      loginUser,
-      items
-    })
-  });
+async function addCounselsToFirestore(items) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("로그인이 필요합니다.");
+  const uploadedBy = getLoginName();
+  for (let i = 0; i < items.length; i += 400) {
+    const batch = writeBatch(db);
+    items.slice(i, i + 400).forEach((raw, j) => {
+      const item = firestoreSafe({ ...raw, uploadedBy, ownerUid: user.uid, storage: "firestore" });
+      const unique = safeDocId(`${item.id || 'counsel'}__${item.recipientName || ''}__${item.consultDate || ''}__${item.sheetName || ''}__${i+j}`);
+      batch.set(doc(db, COUNSEL_COLLECTION, unique), item, { merge: true });
+    });
+    await batch.commit();
+  }
 }
 
-async function deleteCounselsFromSheet(ids) {
-  await fetch(API_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      action: "deleteCounsel",
-      ids
-    })
-  });
+async function deleteCounselsFromFirestore(items) {
+  for (let i = 0; i < items.length; i += 400) {
+    const batch = writeBatch(db);
+    items.slice(i, i + 400).forEach(item => {
+      batch.delete(doc(db, COUNSEL_COLLECTION, item.firestoreId || String(item.id)));
+    });
+    await batch.commit();
+  }
 }
 
 function renderCounselLibrary() {
   counselLibraryTableBody.innerHTML = "";
-
   if (counselLibrary.length === 0) {
-    counselLibraryTableBody.innerHTML = `
-      <tr class="empty-row">
-        <td colspan="10" style="text-align:center;">
-          등록된 급여제공반영 상담일지가 없습니다.
-        </td>
-      </tr>
-    `;
+    counselLibraryTableBody.innerHTML = `<tr class="empty-row"><td colspan="10" style="text-align:center;">등록된 급여제공반영 상담일지가 없습니다.</td></tr>`;
     selectAllCounselCheckbox.checked = false;
     return;
   }
-
-  const sortedList = [...counselLibrary].sort((a, b) => {
-    if (String(a.recipientName || "") === String(b.recipientName || "")) {
-      return String(b.consultDate || "").localeCompare(String(a.consultDate || ""));
-    }
-
-    return String(a.recipientName || "").localeCompare(String(b.recipientName || ""), "ko");
+  const sortedList = [...counselLibrary].sort((a,b) => {
+    if (String(a.recipientName||"") === String(b.recipientName||"")) return String(b.consultDate||"").localeCompare(String(a.consultDate||""));
+    return String(a.recipientName||"").localeCompare(String(b.recipientName||""), "ko");
   });
-
-  sortedList.forEach((item) => {
+  sortedList.forEach(item => {
     const row = document.createElement("tr");
-
-    // HTML 태그(<br />)가 깨지지 않고 줄바꿈으로 정상 반영되도록 innerHTML 핏을 최적화하여 렌더링합니다.
     row.innerHTML = `
-      <td class="checkbox-col">
-        <input type="checkbox" class="counsel-checkbox" data-id="${item.id}" ${item.checked ? "checked" : ""} />
-      </td>
-      <td style="vertical-align: middle;">${item.recipientName || "-"}</td>
-      <td style="vertical-align: middle;">${item.consultDate || "-"}</td>
-      <td style="vertical-align: middle;">${item.category || "-"}</td>
-      <td style="vertical-align: middle;">${item.changeType || "-"}</td>
-      <td style="text-align: left; padding: 10px; vertical-align: middle; line-height: 1.4;">${item.careContent || "-"}</td>
-      <td style="text-align: left; padding: 10px; vertical-align: middle;">${item.reason || "-"}</td>
-      <td style="vertical-align: middle;">${item.sheetName || "-"}</td>
-      <td style="vertical-align: middle;">${item.fileName || "-"}</td>
-      <td style="vertical-align: middle;">${item.uploadedAt || "-"}</td>
-    `;
-
+      <td class="checkbox-col"><input type="checkbox" class="counsel-checkbox" data-key="${item.firestoreId || item.id}" ${item.checked ? "checked" : ""} /></td>
+      <td>${item.recipientName || "-"}</td><td>${item.consultDate || "-"}</td><td>${item.category || "-"}</td><td>${item.changeType || "-"}</td>
+      <td style="text-align:left;padding:10px;line-height:1.4;">${item.careContent || "-"}</td>
+      <td style="text-align:left;padding:10px;">${item.reason || "-"}</td><td>${item.sheetName || "-"}</td><td>${item.fileName || "-"}</td><td>${item.uploadedAt || "-"}</td>`;
     counselLibraryTableBody.appendChild(row);
   });
-
-  bindCounselCheckboxEvents();
-}
-
-function bindCounselCheckboxEvents() {
-  document.querySelectorAll(".counsel-checkbox").forEach((checkbox) => {
-    checkbox.addEventListener("change", (event) => {
-      const id = String(event.target.dataset.id);
-
-      counselLibrary = counselLibrary.map((item) =>
-        String(item.id) === id
-          ? { ...item, checked: event.target.checked }
-          : item
-      );
-    });
-  });
+  document.querySelectorAll(".counsel-checkbox").forEach(cb => cb.addEventListener("change", e => {
+    const key = String(e.target.dataset.key);
+    counselLibrary = counselLibrary.map(x => String(x.firestoreId || x.id) === key ? {...x, checked:e.target.checked} : x);
+  }));
 }
 
 uploadCounselBtn.addEventListener("click", () => {
   const file = counselFileInput.files[0];
-
-  if (!file) {
-    alert("상담일지 파일을 선택해주세요.");
-    return;
-  }
-
+  if (!file) return alert("상담일지 파일을 선택해주세요.");
   const reader = new FileReader();
-
-  reader.onload = async (event) => {
+  reader.onload = async event => {
     try {
-      const data = new Uint8Array(event.target.result);
-      const workbook = XLSX.read(data, { type: "array" });
-
+      uploadCounselBtn.disabled = true;
+      const workbook = XLSX.read(new Uint8Array(event.target.result), { type:"array" });
       const parsed = parseCounselWorkbook(workbook, file.name);
-
-      if (parsed.length === 0) {
-        alert("모든 시트를 확인했지만 급여제공반영 정보를 찾지 못했습니다.");
-        return;
-      }
-
-      await addCounselToSheet(parsed);
-
+      if (!parsed.length) return alert("모든 시트를 확인했지만 급여제공반영 정보를 찾지 못했습니다.");
+      await addCounselsToFirestore(parsed);
       counselFileInput.value = "";
-
-      alert(`${parsed.length}건의 급여제공반영 정보가 구글시트에 등록되었습니다.`);
-
-      setTimeout(() => {
-        loadCounselLibrary();
-      }, 1500);
+      alert(`${parsed.length}건의 급여제공반영 정보가 Firebase에 등록되었습니다.`);
+      await loadCounselLibrary();
     } catch (error) {
-      console.error("상담일지 등록 오류:", error);
-      alert("상담일지 등록 중 오류가 발생했습니다.");
-    }
+      console.error(error); alert("상담일지 Firebase 등록 중 오류가 발생했습니다.\n" + (error.message || error));
+    } finally { uploadCounselBtn.disabled = false; }
   };
-
   reader.readAsArrayBuffer(file);
 });
 
-selectAllCounselCheckbox.addEventListener("change", (event) => {
-  counselLibrary = counselLibrary.map((item) => ({
-    ...item,
-    checked: event.target.checked
-  }));
-
-  renderCounselLibrary();
+selectAllCounselCheckbox.addEventListener("change", e => {
+  counselLibrary = counselLibrary.map(x => ({...x, checked:e.target.checked})); renderCounselLibrary();
 });
 
 deleteSelectedCounselBtn.addEventListener("click", async () => {
-  const selectedItems = counselLibrary.filter((item) => item.checked);
+  const selected = counselLibrary.filter(x => x.checked);
+  if (!selected.length) return alert("삭제할 상담일지를 선택해주세요.");
+  if (!confirm(`선택한 ${selected.length}개의 상담일지를 Firebase에서 삭제하시겠습니까?`)) return;
+  try { await deleteCounselsFromFirestore(selected); alert("삭제되었습니다."); await loadCounselLibrary(); }
+  catch(e){ console.error(e); alert("삭제 중 오류가 발생했습니다.\n"+(e.message||e)); }
+});
 
-  if (selectedItems.length === 0) {
-    alert("삭제할 상담일지를 선택해주세요.");
-    return;
-  }
+// 기존 Google Sheets DB 엑셀의 '상담일지' 시트를 Firebase로 1회 이전
+const legacyFile = document.getElementById("legacyCounselDbFile");
+const migrateBtn = document.getElementById("migrateCounselBtn");
+const migrateStatus = document.getElementById("counselMigrationStatus");
+function migrationStatus(t, err=false){ if(migrateStatus){ migrateStatus.textContent=t; migrateStatus.style.color=err?"#b91c1c":"#334155"; } }
+function parseMaybeJson(v){ if(Array.isArray(v)||(v&&typeof v==='object')) return v; if(typeof v!=="string"||!v.trim()) return v; try{return JSON.parse(v)}catch{return v} }
 
-  const ok = confirm(`선택한 ${selectedItems.length}개의 상담일지를 삭제하시겠습니까?`);
-
-  if (!ok) return;
-
-  const ids = selectedItems.map((item) => item.id);
-
-  await deleteCounselsFromSheet(ids);
-
-  alert("삭제되었습니다.");
-
-  setTimeout(() => {
-    loadCounselLibrary();
-  }, 1500);
+migrateBtn?.addEventListener("click", async () => {
+  const file = legacyFile?.files?.[0];
+  const user = auth.currentUser;
+  if (!file) return alert("기존 Google Sheets DB 엑셀 파일을 선택해주세요.");
+  if (!user) return alert("로그인 후 이용해주세요.");
+  if (!confirm("기존 DB 엑셀의 상담일지 시트를 Firebase로 이전할까요? 기존 Firebase 자료는 삭제하지 않습니다.")) return;
+  migrateBtn.disabled = true;
+  try {
+    migrationStatus("상담일지 시트를 읽는 중...");
+    const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), {type:"array", cellDates:true});
+    const ws = wb.Sheets["상담일지"];
+    if (!ws) throw new Error("엑셀에서 '상담일지' 시트를 찾지 못했습니다.");
+    const rows = XLSX.utils.sheet_to_json(ws, {defval:"", raw:false});
+    let saved = 0;
+    for (let start=0; start<rows.length; start+=400) {
+      const batch = writeBatch(db);
+      rows.slice(start,start+400).forEach((raw, idx) => {
+        if (!Object.values(raw).some(v => String(v ?? "").trim())) return;
+        const data = {};
+        Object.entries(raw).forEach(([k,v]) => data[k] = ["row","rows","rowsJson"].includes(k) ? parseMaybeJson(v) : v);
+        data.recipientName = data.recipientName || data.name || data["수급자명"] || data["수급자"] || "";
+        data.consultDate = normalizeDateText(data.consultDate || data.reflectionDate || data.counselDate || data.writtenDate || data["상담일자"] || data["반영일"] || "");
+        data.reflectionDate = normalizeDateText(data.reflectionDate || data.consultDate || data["반영일"] || "");
+        data.ownerUid = user.uid; data.migratedFrom = "googleSheets"; data.storage = "firestore";
+        const rowNo = start + idx + 2;
+        // 행번호까지 포함해 같은 사람의 여러 상담일지가 서로 덮어쓰이지 않게 저장
+        const fid = safeDocId(`${data.id || 'counsel'}__${data.longTermNumber || data.certNumber || ''}__${data.consultDate || data.reflectionDate || ''}__row${rowNo}`);
+        batch.set(doc(db, COUNSEL_COLLECTION, fid), firestoreSafe(data), {merge:true}); saved++;
+      });
+      await batch.commit();
+      migrationStatus(`Firebase 이전 중... ${Math.min(start+400,rows.length)}/${rows.length}`);
+    }
+    migrationStatus(`이전 완료 · 상담일지 ${saved}건`);
+    alert(`상담일지 ${saved}건을 Firebase로 이전했습니다.`);
+    await loadCounselLibrary();
+  } catch(e) {
+    console.error(e); migrationStatus("이전 실패: "+(e.message||e), true); alert("상담일지 이전 중 오류가 발생했습니다.\n"+(e.message||e));
+  } finally { migrateBtn.disabled = false; }
 });
 
 loadCounselLibrary();

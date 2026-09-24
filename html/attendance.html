@@ -118,6 +118,15 @@
           </ul>
         </div>
 
+        <div class="unified-notice-box" style="background:#eff6ff;border-color:#bfdbfe;">
+          <h5 class="unified-notice-title">🔄 기존 Google Sheets 출석 보관함 → Firebase 1회 이전</h5>
+          <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+            <input type="file" id="legacyAttendanceDbFile" accept=".xlsx,.xls" />
+            <button type="button" class="primary-btn" id="migrateAttendanceBtn">기존 출석 Firebase로 이전</button>
+            <span id="attendanceMigrationStatus" style="font-size:13px;color:#475569;">기존 DB 엑셀의 ‘출석관리’ 시트를 그대로 이전합니다.</span>
+          </div>
+        </div>
+
         <div class="table-wrap">
           <table class="info-table attendance-table" style="border-collapse: collapse; width: 100%;">
             <thead id="attendanceTableHead">
@@ -187,5 +196,6 @@
     });
   </script>
   <script src="../js/attendance.js"></script>
+  <script type="module" src="../js/firebase-migrate-attendance.js"></script>
 </body>
 </html>

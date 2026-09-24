@@ -389,103 +389,92 @@ function parseAttendanceWorkbook(workbook, monthValue) {
   return results.sort((a, b) => a.name.localeCompare(b.name, "ko"));
 }
 
-function makePayloadUrl(payload) {
-  return `${API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
+// Firestore 출석 보관함 저장/조회/삭제
+async function getFirestoreModules() {
+  const [{ auth, db }, fs] = await Promise.all([
+    import('./firebase-config.js'),
+    import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js')
+  ]);
+  return { auth, db, fs };
+}
+
+function safeFirestoreId(value) {
+  return String(value || '')
+    .replace(/[^a-zA-Z0-9가-힣_-]/g, '_')
+    .slice(0, 1400);
 }
 
 async function saveAttendanceMonth(monthValue, items, fileName) {
+  const { auth, db, fs } = await getFirestoreModules();
+  const user = auth.currentUser;
+  if (!user) throw new Error('로그인 정보가 없습니다. 다시 로그인해주세요.');
+
+  // 같은 월은 기존 자료를 먼저 삭제한 뒤 새 파일 기준으로 저장합니다.
+  await deleteAttendanceMonth(monthValue);
+
   const loginUser =
-    sessionStorage.getItem("loginUser") ||
-    localStorage.getItem("loginUser") ||
-    "알 수 없음";
+    sessionStorage.getItem('loginUser') ||
+    localStorage.getItem('loginUser') ||
+    user.email ||
+    '알 수 없음';
 
-  await fetch(API_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      action: "addAttendance",
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    const id = safeFirestoreId([
+      'attendance', monthValue,
+      item.longTermNumber || item.name || 'recipient',
+      i + 1
+    ].join('__'));
+
+    await fs.setDoc(fs.doc(db, 'attendance', id), {
+      id,
       month: monthValue,
-      replaceMonth: true,
-      fileName,
-      uploadedAt: new Date().toLocaleString("ko-KR"),
+      recipientName: item.name || '',
+      name: item.name || '',
+      longTermNumber: item.longTermNumber || '',
+      certNumber: item.longTermNumber || '',
+      grade: item.grade || '',
+      serviceStartDate: item.startDate || '',
+      attendanceDates: item.dates || [],
+      dates: item.dates || [],
+      attendanceCount: Number(item.count || 0),
+      leaveTimes: item.leaveTimes || {},
+      attendanceTimeRows: item.attendanceTimeRows || {},
+      fileName: fileName || '',
+      uploadedAt: new Date().toISOString(),
       uploadedBy: loginUser,
-      loginUser,
-      items: items.map((item) => ({
-        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        month: monthValue,
-        recipientName: item.name,
-        longTermNumber: item.longTermNumber,
-        certNumber: item.longTermNumber,
-        grade: item.grade,
-        serviceStartDate: item.startDate,
-        attendanceDates: item.dates,
-        attendanceCount: item.count,
-        leaveTimes: item.leaveTimes || {},
-        leaveTimesJson: JSON.stringify(item.leaveTimes || {}),
-        attendanceTimeRows: item.attendanceTimeRows || {},
-        fileName
-      }))
-    })
-  });
-}
-
-async function loadAttendanceMonth(monthValue) {
-  const response = await fetch(
-    makePayloadUrl({
-      action: "listAttendance",
-      month: monthValue
-    }),
-    {
-      method: "GET",
-      redirect: "follow"
-    }
-  );
-
-  const text = await response.text();
-
-  try {
-    const data = JSON.parse(text);
-
-    if (!Array.isArray(data)) {
-      console.error("출석 조회 응답:", data);
-      alert("출석 데이터 형식이 올바르지 않습니다.");
-      return [];
-    }
-
-    return data
-      .map((item) => ({
-        name: item.recipientName || "",
-        longTermNumber: item.longTermNumber || item.certNumber || "",
-        grade: item.grade || "",
-        startDate: item.serviceStartDate || "",
-        month: item.month || monthValue,
-        dates: Array.isArray(item.attendanceDates) ? item.attendanceDates : [],
-        count: Number(item.attendanceCount || 0),
-        leaveTimes: item.leaveTimes || {},
-        attendanceTimeRows: item.attendanceTimeRows || {}
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name, "ko"));
-  } catch (error) {
-    console.error("출석 조회 JSON 오류:", error);
-    return [];
+      ownerUid: user.uid,
+      source: 'attendance-library'
+    }, { merge: true });
   }
 }
 
+async function loadAttendanceMonth(monthValue) {
+  const { db, fs } = await getFirestoreModules();
+  const snap = await fs.getDocs(fs.collection(db, 'attendance'));
+
+  return snap.docs
+    .map((d) => ({ firestoreId: d.id, ...d.data() }))
+    .filter((item) => String(item.month || item.attendanceMonth || '').slice(0, 7) === String(monthValue).slice(0, 7))
+    .map((item) => ({
+      name: item.recipientName || item.name || '',
+      longTermNumber: item.longTermNumber || item.certNumber || '',
+      grade: item.grade || '',
+      startDate: item.serviceStartDate || item.startDate || '',
+      month: item.month || monthValue,
+      dates: Array.isArray(item.attendanceDates) ? item.attendanceDates : (Array.isArray(item.dates) ? item.dates : []),
+      count: Number(item.attendanceCount || (Array.isArray(item.attendanceDates) ? item.attendanceDates.length : 0)),
+      leaveTimes: item.leaveTimes || {},
+      attendanceTimeRows: item.attendanceTimeRows || {}
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+}
+
 async function deleteAttendanceMonth(monthValue) {
-  await fetch(API_URL, {
-    method: "POST",
-    mode: "no-cors",
-    headers: {
-      "Content-Type": "text/plain;charset=utf-8"
-    },
-    body: JSON.stringify({
-      action: "deleteAttendance",
-      month: monthValue
-    })
-  });
+  const { db, fs } = await getFirestoreModules();
+  const snap = await fs.getDocs(fs.collection(db, 'attendance'));
+  const targets = snap.docs.filter((d) => String(d.data().month || d.data().attendanceMonth || '').slice(0, 7) === String(monthValue).slice(0, 7));
+  for (const d of targets) await fs.deleteDoc(fs.doc(db, 'attendance', d.id));
 }
 
 function getDaysInMonth(monthValue) {
@@ -805,7 +794,7 @@ registerAttendanceBtn.addEventListener("click", () => {
         return;
       }
 
-      updateAttendanceUploadStatus("구글시트에 저장 중입니다...<br>데이터가 많으면 10~60초 정도 걸릴 수 있습니다.");
+      updateAttendanceUploadStatus("Firebase에 저장 중입니다...<br>데이터가 많으면 잠시 시간이 걸릴 수 있습니다.");
 
       await saveAttendanceMonth(monthValue, items, file.name);
 
@@ -816,7 +805,7 @@ registerAttendanceBtn.addEventListener("click", () => {
       attendanceFileInput.value = "";
       hideAttendanceUploadStatus();
 
-      alert("출석 내역이 구글시트에 업데이트 및 저장되었습니다.");
+      alert("출석 내역이 Firebase에 업데이트 및 저장되었습니다.");
     } catch (error) {
       hideAttendanceUploadStatus();
       console.error("출석 등록 오류:", error);
