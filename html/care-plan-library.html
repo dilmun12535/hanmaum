@@ -102,7 +102,8 @@
 <div class="page-actions">
 <div class="date-group">
 <label for="planFile">계획서 파일</label>
-<input accept=".xlsx,.xls" id="planFile" type="file"/>
+<input accept=".xlsx,.xls" id="planFile" type="file" multiple/>
+<small id="planFileCount" style="display:block;margin-top:7px;color:#64748b;">여러 파일을 한 번에 선택할 수 있습니다.</small>
 </div>
 
 <div class="action-buttons">
@@ -114,13 +115,14 @@
             </button>
 </div>
 </div>
+<div id="planUploadProgress" style="display:none;margin:12px 0;padding:12px 14px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;color:#1e3a8a;font-weight:600;"></div>
 <div class="unified-notice-box">
 <h5 class="unified-notice-title">
             💡 계획서 파일 등록 기준 안내
           </h5>
 <ul class="unified-notice-list">
 <li><b style="color: #1e293b;">파일명 규격 예시:</b> <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong></li>
-<li><b style="color: #1e293b;">데이터 자동 파싱:</b> 파일 내부에서 성명, 장기요양인정번호, 등급, 적용기간, 작성일, 종합의견과 수가 문구를 자동으로 읽습니다.</li><li><b style="color: #1e293b;">기존 급여목록 유지:</b> 장기요양 필요영역·세부목표·필요내용·세부 제공내용·횟수·시간·작성자 등 기존 제공확인에 필요한 급여목록도 함께 저장합니다.</li>
+<li><b style="color: #1e293b;">데이터 자동 파싱:</b> 여러 계획서 파일을 한 번에 선택할 수 있으며, 각 파일에서 성명, 장기요양인정번호, 등급, 적용기간, 작성일, 종합의견과 수가 문구를 자동으로 읽습니다.</li><li><b style="color: #1e293b;">기존 급여목록 유지:</b> 장기요양 필요영역·세부목표·필요내용·세부 제공내용·횟수·시간·작성자 등 기존 제공확인에 필요한 급여목록도 함께 저장합니다.</li>
 <li><b style="color: #1e293b;">마스터 매칭 데이터:</b> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</li>
 </ul>
 </div>
@@ -144,7 +146,7 @@
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px; width:76px;">구분</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">장기요양번호</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
-<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">등급</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">적용 시작일</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">적용 종료일</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 수가</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">평일 수가</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">주말 수가</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">등급</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">적용 시작일</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">적용 종료일</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 횟수</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">계획서 수가</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">평일 횟수</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">평일 수가</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">주말 횟수</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">주말 수가</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">파일명</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">급여 항목 수</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드일시</th>

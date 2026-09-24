@@ -7,6 +7,8 @@ import {
 const elPlanFileSelector = document.getElementById("planFile");
 const elPlanDateSelector = document.getElementById("planWrittenDate");
 const elPlanUploadTrigger = document.getElementById("uploadPlanBtn");
+const elPlanFileCount = document.getElementById("planFileCount");
+const elPlanUploadProgress = document.getElementById("planUploadProgress");
 const elPlanDeleteTrigger = document.getElementById("deleteSelectedPlanBtn");
 const elPlanSelectAllTrigger = document.getElementById("selectAllPlanCheckbox");
 const elPlanTableBodyContainer = document.getElementById("planLibraryTableBody");
@@ -73,35 +75,85 @@ function findValueNearLabel(rows, label) {
   }
   return "";
 }
-const FEE_RANGE_RE = /(3\s*시간\s*미만|3\s*시간\s*이상\s*6\s*시간\s*미만|6\s*시간\s*이상\s*8\s*시간\s*미만|8\s*시간\s*이상\s*10\s*시간\s*미만|10\s*시간\s*이상\s*13\s*시간\s*미만|13\s*시간\s*이상)/g;
+const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
 function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
+function cleanWeeklyCount(value) {
+  const n=String(value ?? "").match(/\d+/)?.[0];
+  return n ? `주 ${n}회` : "";
+}
+function normalizeOpinionText(value) {
+  return cellText(value)
+    .replace(/[\r\n\t]+/g, " ")
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function extractWeeklyFeePairs(value) {
+  const text=normalizeOpinionText(value);
+  const feeRe=new RegExp(FEE_RANGE_PATTERN, "g");
+  const pairs=[];
+  let m;
+  while ((m=feeRe.exec(text)) !== null) {
+    const fee=cleanFeeRange(m[1]);
+    // 해당 수가 바로 앞의 '주 N회'를 찾습니다. 문장 중간에 다른 수가가 끼어 있으면 그 앞 횟수는 사용하지 않습니다.
+    const left=text.slice(Math.max(0, m.index-140), m.index);
+    const countMatches=[...left.matchAll(/주\s*(\d+)\s*회/g)];
+    let count="";
+    if (countMatches.length) {
+      const last=countMatches[countMatches.length-1];
+      const afterCount=left.slice((last.index || 0) + last[0].length);
+      const anotherFee=new RegExp(FEE_RANGE_PATTERN).test(afterCount);
+      if (!anotherFee) count=cleanWeeklyCount(last[1]);
+    }
+    pairs.push({ count, fee, index:m.index });
+  }
+  return pairs;
+}
 function extractFeeInfo(opinion) {
-  const text=cellText(opinion).replace(/\r/g, " ").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
-  const result={ planFee:"", weekdayFee:"", weekendFee:"", feeText:"" };
-  // 종합의견 영역에 실제로 "수가"라는 글자가 전혀 없는 경우에만 수가를 비웁니다.
+  const text=normalizeOpinionText(opinion);
+  const result={
+    planFee:"", planWeeklyCount:"",
+    weekdayFee:"", weekdayWeeklyCount:"",
+    weekendFee:"", weekendWeeklyCount:"",
+    feeText:""
+  };
   if (!text || !text.includes("수가")) return result;
 
-  // 1) 개인별장기요양이용계획서에 '명시'된 원래 수가
-  const planPart=(text.match(/개인별\s*장기요양이용계획서[\s\S]{0,180}?(?:명시|계획)/) || [""])[0];
-  const planRanges=planPart.match(FEE_RANGE_RE) || [];
-  if (planRanges.length) result.planFee=cleanFeeRange(planRanges[0]);
+  // '명시되어 있으나/계획되어 있으나'를 기준으로 원 계획 수가와 실제 이용 수가를 나눕니다.
+  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\s*있으나|(?:명시|계획)[^,.]{0,40}?(?:수급자|보호자|욕구)/);
+  const splitIndex=splitMatch ? splitMatch.index + splitMatch[0].length : -1;
+  const beforeText=splitIndex >= 0 ? text.slice(0, splitIndex) : text;
+  const afterText=splitIndex >= 0 ? text.slice(splitIndex) : text;
 
-  // 2) 실제 이용 수가: 주 5회는 평일, 주 1회는 주말로 분리
-  const weekdayMatch=text.match(/주\s*5\s*회[\s\S]{0,80}?(3\s*시간\s*미만|3\s*시간\s*이상\s*6\s*시간\s*미만|6\s*시간\s*이상\s*8\s*시간\s*미만|8\s*시간\s*이상\s*10\s*시간\s*미만|10\s*시간\s*이상\s*13\s*시간\s*미만|13\s*시간\s*이상)/);
-  const weekendMatch=text.match(/주\s*1\s*회[\s\S]{0,80}?(3\s*시간\s*미만|3\s*시간\s*이상\s*6\s*시간\s*미만|6\s*시간\s*이상\s*8\s*시간\s*미만|8\s*시간\s*이상\s*10\s*시간\s*미만|10\s*시간\s*이상\s*13\s*시간\s*미만|13\s*시간\s*이상)/);
-  if (weekdayMatch) result.weekdayFee=cleanFeeRange(weekdayMatch[1]);
-  if (weekendMatch) result.weekendFee=cleanFeeRange(weekendMatch[1]);
+  const planPairs=extractWeeklyFeePairs(beforeText);
+  if (planPairs.length) {
+    const p=planPairs[planPairs.length-1];
+    result.planFee=p.fee;
+    result.planWeeklyCount=p.count;
+  } else {
+    const ranges=beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
+    if (ranges.length) result.planFee=cleanFeeRange(ranges[ranges.length-1]);
+  }
 
-  // 원래 수가를 주 5회 문구에서 잘못 잡은 경우, '명시' 이전의 첫 구간을 우선
-  const beforeDescribed=text.split(/명시/)[0];
-  const beforeRanges=beforeDescribed.match(FEE_RANGE_RE) || [];
-  if (beforeRanges.length) result.planFee=cleanFeeRange(beforeRanges[beforeRanges.length-1]);
+  let actualPairs=extractWeeklyFeePairs(afterText);
+  if (splitIndex < 0) {
+    const allPairs=extractWeeklyFeePairs(text);
+    actualPairs=planPairs.length ? allPairs.slice(planPairs.length) : allPairs.slice(1);
+  }
+  if (actualPairs[0]) {
+    result.weekdayFee=actualPairs[0].fee;
+    result.weekdayWeeklyCount=actualPairs[0].count;
+  }
+  if (actualPairs[1]) {
+    result.weekendFee=actualPairs[1].fee;
+    result.weekendWeeklyCount=actualPairs[1].count;
+  }
 
   result.feeText=[
-    result.planFee ? `계획서 수가: ${result.planFee}` : "",
-    result.weekdayFee ? `평일 수가: ${result.weekdayFee}` : "",
-    result.weekendFee ? `주말 수가: ${result.weekendFee}` : ""
-  ].filter(Boolean).join("\n");
+    result.planFee ? `계획서 수가: ${result.planFee}${result.planWeeklyCount ? ` (${result.planWeeklyCount})` : ""}` : "",
+    result.weekdayFee ? `평일 수가: ${result.weekdayFee}${result.weekdayWeeklyCount ? ` (${result.weekdayWeeklyCount})` : ""}` : "",
+    result.weekendFee ? `주말 수가: ${result.weekendFee}${result.weekendWeeklyCount ? ` (${result.weekendWeeklyCount})` : ""}` : ""
+  ].filter(Boolean).join("\\n");
   return result;
 }
 function parseNewCarePlanSheet(ws, fileName) {
@@ -210,8 +262,11 @@ function exportPlansToExcel() {
     "적용 시작일": normalizeDateString(plan.applicationStartDate || plan.writtenDate),
     "적용 종료일": normalizeDateString(plan.applicationEndDate),
     "작성일": normalizeDateString(plan.writtenDate),
+    "계획서 주 횟수": plan.planWeeklyCount || "",
     "계획서 수가": plan.planFee || "",
+    "평일 주 횟수": plan.weekdayWeeklyCount || "",
     "평일 수가": plan.weekdayFee || "",
+    "주말 주 횟수": plan.weekendWeeklyCount || "",
     "주말 수가": plan.weekendFee || "",
     "종합의견": plan.summaryOpinion || "",
     "파일명": plan.fileName || "",
@@ -278,8 +333,11 @@ async function addPlanToFirestore(plan) {
     summaryOpinion: plan.summaryOpinion || "",
     feeText: plan.feeText || "",
     planFee: plan.planFee || "",
+    planWeeklyCount: plan.planWeeklyCount || "",
     weekdayFee: plan.weekdayFee || "",
+    weekdayWeeklyCount: plan.weekdayWeeklyCount || "",
     weekendFee: plan.weekendFee || "",
+    weekendWeeklyCount: plan.weekendWeeklyCount || "",
     writtenDate: normalizeDateString(plan.writtenDate),
     fileName: plan.fileName || "",
     itemCount: Number(plan.itemCount || 0),
@@ -304,7 +362,7 @@ function renderLibrary() {
   updateCountText();
   const visiblePlans = getVisiblePlans();
   if (visiblePlans.length === 0) {
-    elPlanTableBodyContainer.innerHTML = `<tr class="empty-row"><td colspan="14" style="text-align:center;padding:25px 0;">해당 구분에 등록된 급여제공계획서가 없습니다.</td></tr>`;
+    elPlanTableBodyContainer.innerHTML = `<tr class="empty-row"><td colspan="17" style="text-align:center;padding:25px 0;">해당 구분에 등록된 급여제공계획서가 없습니다.</td></tr>`;
     if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
     return;
   }
@@ -317,7 +375,7 @@ function renderLibrary() {
     const row=document.createElement("tr");
     const version=getPlanVersion(plan);
     const versionLabel=version === "legacy" ? "구버전" : "신버전";
-    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${escapeHtml(plan.firestoreId || plan.id)}" ${plan.checked?"checked":""}/></td><td><span class="version-badge ${version}">${versionLabel}</span></td><td>${escapeHtml(plan.longTermNumber||"-")}</td><td>${escapeHtml(plan.recipientName||"-")}</td><td>${escapeHtml(plan.grade||"-")}</td><td>${escapeHtml(formatDateValue(plan.applicationStartDate || plan.writtenDate))}</td><td>${escapeHtml(formatDateValue(plan.applicationEndDate))}</td><td>${escapeHtml(plan.planFee||"-")}</td><td>${escapeHtml(plan.weekdayFee||"-")}</td><td>${escapeHtml(plan.weekendFee||"-")}</td><td style="text-align:left;">${escapeHtml(plan.fileName||"-")}</td><td>${Number(plan.itemCount||0)}개</td><td>${escapeHtml(plan.uploadedAt||"-")}</td><td>${escapeHtml(plan.uploadedBy||"알 수 없음")}</td>`;
+    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${escapeHtml(plan.firestoreId || plan.id)}" ${plan.checked?"checked":""}/></td><td><span class="version-badge ${version}">${versionLabel}</span></td><td>${escapeHtml(plan.longTermNumber||"-")}</td><td>${escapeHtml(plan.recipientName||"-")}</td><td>${escapeHtml(plan.grade||"-")}</td><td>${escapeHtml(formatDateValue(plan.applicationStartDate || plan.writtenDate))}</td><td>${escapeHtml(formatDateValue(plan.applicationEndDate))}</td><td>${escapeHtml(plan.planWeeklyCount||"-")}</td><td>${escapeHtml(plan.planFee||"-")}</td><td>${escapeHtml(plan.weekdayWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekdayFee||"-")}</td><td>${escapeHtml(plan.weekendWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekendFee||"-")}</td><td style="text-align:left;">${escapeHtml(plan.fileName||"-")}</td><td>${Number(plan.itemCount||0)}개</td><td>${escapeHtml(plan.uploadedAt||"-")}</td><td>${escapeHtml(plan.uploadedBy||"알 수 없음")}</td>`;
     elPlanTableBodyContainer.appendChild(row);
   }
   bindCheckboxEvents();
@@ -330,29 +388,70 @@ function bindCheckboxEvents() {
   }));
 }
 
-if (elPlanUploadTrigger) elPlanUploadTrigger.addEventListener("click", () => {
+if (elPlanFileSelector) elPlanFileSelector.addEventListener("change", () => {
+  const count = elPlanFileSelector.files?.length || 0;
+  if (elPlanFileCount) elPlanFileCount.textContent = count ? `${count}개 파일 선택됨` : "여러 파일을 한 번에 선택할 수 있습니다.";
+});
+
+function readWorkbookFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = event => {
+      try { resolve(XLSX.read(new Uint8Array(event.target.result), {type:"array", cellDates:true})); }
+      catch (e) { reject(e); }
+    };
+    reader.onerror = () => reject(reader.error || new Error("파일을 읽지 못했습니다."));
+    reader.readAsArrayBuffer(file);
+  });
+}
+function isDuplicatePlan(parsed) {
+  const no=String(parsed.longTermNumber||"").trim();
+  const start=normalizeDateString(parsed.applicationStartDate);
+  return carePlanLibrary.some(p => String(p.longTermNumber||"").trim()===no && normalizeDateString(p.applicationStartDate || p.writtenDate)===start);
+}
+
+if (elPlanUploadTrigger) elPlanUploadTrigger.addEventListener("click", async () => {
   if (!elPlanFileSelector) return;
-  const file=elPlanFileSelector.files[0];
-  if (!file) return alert("급여제공계획서 파일을 선택해주세요.");
-  const reader=new FileReader();
-  reader.onload=async event => {
-    try {
-      const workbook=XLSX.read(new Uint8Array(event.target.result),{type:"array",cellDates:true});
-      const worksheet=workbook.Sheets[workbook.SheetNames[0]];
-      const parsed=parseNewCarePlanSheet(worksheet,file.name);
-      if (!parsed.longTermNumber || !parsed.recipientName) throw new Error("파일 안에서 수급자 성명 또는 장기요양인정번호를 찾지 못했습니다.");
-      if (!parsed.applicationStartDate) throw new Error("파일 안에서 장기요양급여 제공계획서 적용기간 시작일을 찾지 못했습니다.");
-      if (!parsed.rows.length) throw new Error("파일 안에서 급여 제공계획 목록을 찾지 못했습니다.");
-      const newPlan={id:String(Date.now()),...parsed,fileName:file.name,uploadedAt:new Date().toLocaleString("ko-KR"),uploadedBy:getLoginName(),itemCount:getCareItemCount(parsed.rows),checked:false};
-      elPlanUploadTrigger.disabled=true; elPlanUploadTrigger.textContent="등록 중...";
-      await addPlanToFirestore(newPlan);
-      elPlanFileSelector.value="";
-      await loadLibrary();
-      alert(`급여제공계획서가 Firebase에 등록되었습니다.\n\n${parsed.recipientName} / ${parsed.grade||"등급 미확인"}\n적용기간: ${parsed.applicationStartDate} ~ ${parsed.applicationEndDate||""}\n급여항목: ${parsed.rows.length}개${parsed.feeText ? `\n${parsed.feeText}` : ""}`);
-    } catch(error) { console.error(error); alert(`등록 중 오류가 발생했습니다.\n${error.message||error}`); }
-    finally { elPlanUploadTrigger.disabled=false; elPlanUploadTrigger.textContent="계획서 등록"; }
-  };
-  reader.readAsArrayBuffer(file);
+  const files=[...(elPlanFileSelector.files || [])];
+  if (!files.length) return alert("급여제공계획서 파일을 선택해주세요.");
+
+  elPlanUploadTrigger.disabled=true;
+  const originalText=elPlanUploadTrigger.textContent;
+  if (elPlanUploadProgress) { elPlanUploadProgress.style.display="block"; elPlanUploadProgress.textContent=`총 ${files.length}개 파일 등록을 시작합니다...`; }
+  let success=0, skipped=0;
+  const failed=[];
+  try {
+    for (let i=0;i<files.length;i++) {
+      const file=files[i];
+      elPlanUploadTrigger.textContent=`등록 중 ${i+1}/${files.length}`;
+      if (elPlanUploadProgress) elPlanUploadProgress.textContent=`총 ${files.length}개 중 ${i+1}개 처리 중 · ${file.name}`;
+      try {
+        const workbook=await readWorkbookFile(file);
+        const worksheet=workbook.Sheets[workbook.SheetNames[0]];
+        const parsed=parseNewCarePlanSheet(worksheet,file.name);
+        if (!parsed.longTermNumber || !parsed.recipientName) throw new Error("수급자 성명 또는 장기요양인정번호를 찾지 못했습니다.");
+        if (!parsed.applicationStartDate) throw new Error("적용기간 시작일을 찾지 못했습니다.");
+        if (!parsed.rows.length) throw new Error("급여 제공계획 목록을 찾지 못했습니다.");
+        if (isDuplicatePlan(parsed)) { skipped++; continue; }
+        const newPlan={id:`${Date.now()}_${i}_${Math.random().toString(36).slice(2,8)}`,...parsed,fileName:file.name,uploadedAt:new Date().toLocaleString("ko-KR"),uploadedBy:getLoginName(),itemCount:getCareItemCount(parsed.rows),checked:false};
+        await addPlanToFirestore(newPlan);
+        carePlanLibrary.push({...newPlan, firestoreId:newPlan.id});
+        success++;
+      } catch(error) {
+        console.error(file.name,error);
+        failed.push(`${file.name} : ${error.message||error}`);
+      }
+    }
+    elPlanFileSelector.value="";
+    if (elPlanFileCount) elPlanFileCount.textContent="여러 파일을 한 번에 선택할 수 있습니다.";
+    await loadLibrary();
+    const summary=`일괄 등록 완료\n\n성공 ${success}건 / 중복 건너뜀 ${skipped}건 / 실패 ${failed.length}건` + (failed.length ? `\n\n실패 파일\n${failed.join("\n")}` : "");
+    if (elPlanUploadProgress) elPlanUploadProgress.textContent=`완료 · 성공 ${success}건 / 중복 ${skipped}건 / 실패 ${failed.length}건`;
+    alert(summary);
+  } finally {
+    elPlanUploadTrigger.disabled=false;
+    elPlanUploadTrigger.textContent=originalText || "계획서 등록";
+  }
 });
 
 if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.addEventListener("change", e => { carePlanLibrary=carePlanLibrary.map(p => (currentFilter === "all" || getPlanVersion(p) === currentFilter) ? {...p,checked:e.target.checked} : p); renderLibrary(); });
