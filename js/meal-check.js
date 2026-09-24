@@ -1,5 +1,3 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_AkgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
-
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 let attendanceLibraryCache = [];
@@ -28,11 +26,7 @@ function parseApiJson(text, fallbackValue, label) {
   }
 }
 
-function makePayloadUrl(payload) {
-  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
-}
-
-async function syncCarePlanLibraryFromGoogleSheet() {
+async function loadCarePlanLibraryFromFirestore() {
   try {
     carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
     return carePlanLibraryCache;
@@ -44,7 +38,7 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 }
 
 
-async function syncCounselLibraryFromGoogleSheet() {
+async function loadCounselLibraryFromFirestore() {
   try {
     counselLibraryCache = await window.HanmaumFirestore.counsels();
     return counselLibraryCache;
@@ -56,7 +50,7 @@ async function syncCounselLibraryFromGoogleSheet() {
 }
 
 
-async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+async function loadAttendanceMonthFromFirestore(monthValue) {
   try {
     attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
     return attendanceLibraryCache;
@@ -1088,10 +1082,10 @@ checkMealBtn.addEventListener("click", async () => {
   if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
   if (!file) { alert("식사/화장실 기록 파일을 업로드해주세요."); return; }
 
-  console.log("계획서, 상담일지, 출석 데이터를 동기화합니다.");
-  await syncCarePlanLibraryFromGoogleSheet();
-  await syncCounselLibraryFromGoogleSheet();
-  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+  console.log("Firebase에서 계획서, 상담일지, 출석 데이터를 불러옵니다.");
+  await loadCarePlanLibraryFromFirestore();
+  await loadCounselLibraryFromFirestore();
+  await loadAttendanceMonthFromFirestore(checkMonth);
   applyMealStyle();
 
   const reader = new FileReader();

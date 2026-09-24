@@ -1,14 +1,8 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_AkgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
-
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 let attendanceLibraryCache = [];
 
-function makePayloadUrl(payload) {
-  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
-}
-
-async function syncCarePlanLibraryFromGoogleSheet() {
+async function loadCarePlanLibraryFromFirestore() {
   try {
     carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
     return carePlanLibraryCache;
@@ -20,7 +14,7 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 }
 
 
-async function syncCounselLibraryFromGoogleSheet() {
+async function loadCounselLibraryFromFirestore() {
   try {
     counselLibraryCache = await window.HanmaumFirestore.counsels();
     return counselLibraryCache;
@@ -32,7 +26,7 @@ async function syncCounselLibraryFromGoogleSheet() {
 }
 
 
-async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+async function loadAttendanceMonthFromFirestore(monthValue) {
   try {
     attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
     return attendanceLibraryCache;
@@ -1085,11 +1079,9 @@ checkBathBtn.addEventListener("click", async () => {
     alert("목욕 리포트 파일을 업로드해주세요.");
     return;
   }
-
-  alert("구글 시트에서 계획서, 상담일지, 출석 데이터를 동기화 중입니다...");
-  await syncCarePlanLibraryFromGoogleSheet();
-  await syncCounselLibraryFromGoogleSheet();
-  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+  await loadCarePlanLibraryFromFirestore();
+  await loadCounselLibraryFromFirestore();
+  await loadAttendanceMonthFromFirestore(checkMonth);
 
   const reader = new FileReader();
   reader.onload = (event) => {
@@ -1113,5 +1105,5 @@ clearBathBtn.addEventListener("click", () => {
 localStorage.removeItem("counselLibrary");
 localStorage.removeItem("carePlanLibrary");
 
-syncCarePlanLibraryFromGoogleSheet();
-syncCounselLibraryFromGoogleSheet();
+loadCarePlanLibraryFromFirestore();
+loadCounselLibraryFromFirestore();

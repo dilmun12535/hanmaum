@@ -1,13 +1,7 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_AkgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
-
 let carePlanLibraryCache = [];
 let attendanceLibraryCache = [];
 
-function makePayloadUrl(payload) {
-  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
-}
-
-async function syncCarePlanLibraryFromGoogleSheet() {
+async function loadCarePlanLibraryFromFirestore() {
   try {
     carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
     return carePlanLibraryCache;
@@ -19,7 +13,7 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 }
 
 
-async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+async function loadAttendanceMonthFromFirestore(monthValue) {
   try {
     attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
     return attendanceLibraryCache;
@@ -373,10 +367,8 @@ checkCognitiveBtn.addEventListener("click", async () => {
 
   if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
   if (!file) { alert("프로그램 참여 기록 파일을 업로드해주세요."); return; }
-
-  alert("구글 시트에서 계획서 및 월 출석 데이터 보관함을 동기화 중입니다...");
-  await syncCarePlanLibraryFromGoogleSheet();
-  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+  await loadCarePlanLibraryFromFirestore();
+  await loadAttendanceMonthFromFirestore(checkMonth);
   applyCognitiveStyle();
 
   const reader = new FileReader();

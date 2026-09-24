@@ -1,14 +1,8 @@
-const CARE_PLAN_API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_AkgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
-
 let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 let attendanceLibraryCache = [];
 
-function makePayloadUrl(payload) {
-  return `${CARE_PLAN_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
-}
-
-async function syncCarePlanLibraryFromGoogleSheet() {
+async function loadCarePlanLibraryFromFirestore() {
   try {
     carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
     return carePlanLibraryCache;
@@ -20,7 +14,7 @@ async function syncCarePlanLibraryFromGoogleSheet() {
 }
 
 
-async function syncCounselLibraryFromGoogleSheet() {
+async function loadCounselLibraryFromFirestore() {
   try {
     counselLibraryCache = await window.HanmaumFirestore.counsels();
     return counselLibraryCache;
@@ -32,7 +26,7 @@ async function syncCounselLibraryFromGoogleSheet() {
 }
 
 
-async function syncAttendanceMonthFromGoogleSheet(monthValue) {
+async function loadAttendanceMonthFromFirestore(monthValue) {
   try {
     attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
     return attendanceLibraryCache;
@@ -44,9 +38,9 @@ async function syncAttendanceMonthFromGoogleSheet(monthValue) {
 }
 
 
-// 초기 기본 동기화 가동
-syncCarePlanLibraryFromGoogleSheet();
-syncCounselLibraryFromGoogleSheet();
+// 초기 Firebase 데이터 불러오기 가동
+loadCarePlanLibraryFromFirestore();
+loadCounselLibraryFromFirestore();
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
@@ -627,11 +621,9 @@ checkNursingVitalBtn.addEventListener("click", async () => {
 
   if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
   if (!nursingFile) { alert("간호제공 현황 파일을 업로드해주세요."); return; }
-
-  alert("구글 시트에서 계획서, 상담일지 및 출석 데이터 보관함을 동기화 중입니다...");
-  await syncCarePlanLibraryFromGoogleSheet();
-  await syncCounselLibraryFromGoogleSheet(); 
-  await syncAttendanceMonthFromGoogleSheet(checkMonth);
+  await loadCarePlanLibraryFromFirestore();
+  await loadCounselLibraryFromFirestore(); 
+  await loadAttendanceMonthFromFirestore(checkMonth);
   applySplitCheckStyle();
 
   const attendanceRows = getAttendanceMonth(checkMonth);

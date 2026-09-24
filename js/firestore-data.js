@@ -4,8 +4,9 @@
   function modules() {
     if (!modulesPromise) modulesPromise = Promise.all([
       import('./firebase-config.js'),
-      import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js')
-    ]).then(([cfg, fs]) => ({ db: cfg.db, fs }));
+      import('https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js'),
+      import('https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js')
+    ]).then(([cfg, fs, authSdk]) => ({ db: cfg.db, auth: cfg.auth, fs, authSdk }));
     return modulesPromise;
   }
   function parseMaybeJson(v) {
@@ -22,7 +23,19 @@
     if (!Array.isArray(out.dates) && Array.isArray(out.attendanceDates)) out.dates = out.attendanceDates;
     return out;
   }
+  async function waitForSignedIn() {
+    const { auth, authSdk } = await modules();
+    if (auth.currentUser) return auth.currentUser;
+    return new Promise((resolve, reject) => {
+      const unsubscribe = authSdk.onAuthStateChanged(auth, user => {
+        unsubscribe();
+        if (user) resolve(user);
+        else reject(new Error('로그인이 필요합니다.'));
+      }, reject);
+    });
+  }
   async function all(collectionName) {
+    await waitForSignedIn();
     const { db, fs } = await modules();
     const snap = await fs.getDocs(fs.collection(db, collectionName));
     return snap.docs.map(d => hydrate(d.data(), d.id));
