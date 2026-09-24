@@ -73,35 +73,70 @@ function findValueNearLabel(rows, label) {
   }
   return "";
 }
-const FEE_RANGE_RE = /(3\s*시간\s*미만|3\s*시간\s*이상\s*6\s*시간\s*미만|6\s*시간\s*이상\s*8\s*시간\s*미만|8\s*시간\s*이상\s*10\s*시간\s*미만|10\s*시간\s*이상\s*13\s*시간\s*미만|13\s*시간\s*이상)/g;
-function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
+const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
+const FEE_RANGE_RE = new RegExp(FEE_RANGE_PATTERN, "g");
+function cleanFeeRange(value) { return cellText(value).replace(/\\s+/g, " ").trim(); }
+function cleanWeeklyCount(value) {
+  const n=String(value ?? "").match(/\\d+/)?.[0];
+  return n ? `주 ${n}회` : "";
+}
+function extractWeeklyFeePairs(text) {
+  const re=new RegExp(`주\\s*(\\d+)\\s*회[\\s\\S]{0,90}?${FEE_RANGE_PATTERN}`, "g");
+  const pairs=[];
+  let m;
+  while ((m=re.exec(text)) !== null) {
+    pairs.push({ count: cleanWeeklyCount(m[1]), fee: cleanFeeRange(m[2]), index: m.index });
+  }
+  return pairs;
+}
 function extractFeeInfo(opinion) {
-  const text=cellText(opinion).replace(/\r/g, " ").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
-  const result={ planFee:"", weekdayFee:"", weekendFee:"", feeText:"" };
-  // 종합의견 영역에 실제로 "수가"라는 글자가 전혀 없는 경우에만 수가를 비웁니다.
+  const text=cellText(opinion).replace(/\\r/g, " ").replace(/\\n/g, " ").replace(/\\s+/g, " ").trim();
+  const result={
+    planFee:"", planWeeklyCount:"",
+    weekdayFee:"", weekdayWeeklyCount:"",
+    weekendFee:"", weekendWeeklyCount:"",
+    feeText:""
+  };
+  // 종합의견 영역에 실제로 "수가"라는 글자가 전혀 없는 경우에만 수가/횟수를 모두 비웁니다.
   if (!text || !text.includes("수가")) return result;
 
-  // 1) 개인별장기요양이용계획서에 '명시'된 원래 수가
-  const planPart=(text.match(/개인별\s*장기요양이용계획서[\s\S]{0,180}?(?:명시|계획)/) || [""])[0];
-  const planRanges=planPart.match(FEE_RANGE_RE) || [];
-  if (planRanges.length) result.planFee=cleanFeeRange(planRanges[0]);
+  // '명시되어 있으나/계획되어 있으나' 앞은 개인별장기요양이용계획서상의 원래 수가입니다.
+  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\\s*있으나|(?:명시|계획)[^,.]{0,30}?(?:수급자|보호자|욕구)/);
+  const splitIndex=splitMatch ? splitMatch.index + splitMatch[0].length : -1;
+  const beforeText=splitIndex >= 0 ? text.slice(0, splitIndex) : text;
+  const afterText=splitIndex >= 0 ? text.slice(splitIndex) : text;
 
-  // 2) 실제 이용 수가: 주 5회는 평일, 주 1회는 주말로 분리
-  const weekdayMatch=text.match(/주\s*5\s*회[\s\S]{0,80}?(3\s*시간\s*미만|3\s*시간\s*이상\s*6\s*시간\s*미만|6\s*시간\s*이상\s*8\s*시간\s*미만|8\s*시간\s*이상\s*10\s*시간\s*미만|10\s*시간\s*이상\s*13\s*시간\s*미만|13\s*시간\s*이상)/);
-  const weekendMatch=text.match(/주\s*1\s*회[\s\S]{0,80}?(3\s*시간\s*미만|3\s*시간\s*이상\s*6\s*시간\s*미만|6\s*시간\s*이상\s*8\s*시간\s*미만|8\s*시간\s*이상\s*10\s*시간\s*미만|10\s*시간\s*이상\s*13\s*시간\s*미만|13\s*시간\s*이상)/);
-  if (weekdayMatch) result.weekdayFee=cleanFeeRange(weekdayMatch[1]);
-  if (weekendMatch) result.weekendFee=cleanFeeRange(weekendMatch[1]);
+  const planPairs=extractWeeklyFeePairs(beforeText);
+  const planRanges=beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
+  if (planPairs.length) {
+    const p=planPairs[planPairs.length-1];
+    result.planFee=p.fee;
+    result.planWeeklyCount=p.count;
+  } else if (planRanges.length) {
+    result.planFee=cleanFeeRange(planRanges[planRanges.length-1]);
+  }
 
-  // 원래 수가를 주 5회 문구에서 잘못 잡은 경우, '명시' 이전의 첫 구간을 우선
-  const beforeDescribed=text.split(/명시/)[0];
-  const beforeRanges=beforeDescribed.match(FEE_RANGE_RE) || [];
-  if (beforeRanges.length) result.planFee=cleanFeeRange(beforeRanges[beforeRanges.length-1]);
+  // 실제 이용 수가는 원래 계획서 문구 뒤에 등장하는 순서대로 평일, 주말로 저장합니다.
+  // 주 5회/주 1회로 고정하지 않아 주 3회, 주 2회 등도 그대로 추출합니다.
+  let actualPairs=extractWeeklyFeePairs(afterText);
+  if (!actualPairs.length && splitIndex < 0) {
+    const allPairs=extractWeeklyFeePairs(text);
+    actualPairs=planPairs.length ? allPairs.slice(planPairs.length) : allPairs;
+  }
+  if (actualPairs[0]) {
+    result.weekdayFee=actualPairs[0].fee;
+    result.weekdayWeeklyCount=actualPairs[0].count;
+  }
+  if (actualPairs[1]) {
+    result.weekendFee=actualPairs[1].fee;
+    result.weekendWeeklyCount=actualPairs[1].count;
+  }
 
   result.feeText=[
-    result.planFee ? `계획서 수가: ${result.planFee}` : "",
-    result.weekdayFee ? `평일 수가: ${result.weekdayFee}` : "",
-    result.weekendFee ? `주말 수가: ${result.weekendFee}` : ""
-  ].filter(Boolean).join("\n");
+    result.planFee ? `계획서 수가: ${result.planFee}${result.planWeeklyCount ? ` (${result.planWeeklyCount})` : ""}` : "",
+    result.weekdayFee ? `평일 수가: ${result.weekdayFee}${result.weekdayWeeklyCount ? ` (${result.weekdayWeeklyCount})` : ""}` : "",
+    result.weekendFee ? `주말 수가: ${result.weekendFee}${result.weekendWeeklyCount ? ` (${result.weekendWeeklyCount})` : ""}` : ""
+  ].filter(Boolean).join("\\n");
   return result;
 }
 function parseNewCarePlanSheet(ws, fileName) {
@@ -211,8 +246,11 @@ function exportPlansToExcel() {
     "적용 종료일": normalizeDateString(plan.applicationEndDate),
     "작성일": normalizeDateString(plan.writtenDate),
     "계획서 수가": plan.planFee || "",
+    "계획서 주 횟수": plan.planWeeklyCount || "",
     "평일 수가": plan.weekdayFee || "",
+    "평일 주 횟수": plan.weekdayWeeklyCount || "",
     "주말 수가": plan.weekendFee || "",
+    "주말 주 횟수": plan.weekendWeeklyCount || "",
     "종합의견": plan.summaryOpinion || "",
     "파일명": plan.fileName || "",
     "급여 항목 수": Number(plan.itemCount || (plan.rows || []).length || 0),
@@ -278,8 +316,11 @@ async function addPlanToFirestore(plan) {
     summaryOpinion: plan.summaryOpinion || "",
     feeText: plan.feeText || "",
     planFee: plan.planFee || "",
+    planWeeklyCount: plan.planWeeklyCount || "",
     weekdayFee: plan.weekdayFee || "",
+    weekdayWeeklyCount: plan.weekdayWeeklyCount || "",
     weekendFee: plan.weekendFee || "",
+    weekendWeeklyCount: plan.weekendWeeklyCount || "",
     writtenDate: normalizeDateString(plan.writtenDate),
     fileName: plan.fileName || "",
     itemCount: Number(plan.itemCount || 0),
@@ -304,7 +345,7 @@ function renderLibrary() {
   updateCountText();
   const visiblePlans = getVisiblePlans();
   if (visiblePlans.length === 0) {
-    elPlanTableBodyContainer.innerHTML = `<tr class="empty-row"><td colspan="14" style="text-align:center;padding:25px 0;">해당 구분에 등록된 급여제공계획서가 없습니다.</td></tr>`;
+    elPlanTableBodyContainer.innerHTML = `<tr class="empty-row"><td colspan="17" style="text-align:center;padding:25px 0;">해당 구분에 등록된 급여제공계획서가 없습니다.</td></tr>`;
     if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
     return;
   }
@@ -317,7 +358,7 @@ function renderLibrary() {
     const row=document.createElement("tr");
     const version=getPlanVersion(plan);
     const versionLabel=version === "legacy" ? "구버전" : "신버전";
-    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${escapeHtml(plan.firestoreId || plan.id)}" ${plan.checked?"checked":""}/></td><td><span class="version-badge ${version}">${versionLabel}</span></td><td>${escapeHtml(plan.longTermNumber||"-")}</td><td>${escapeHtml(plan.recipientName||"-")}</td><td>${escapeHtml(plan.grade||"-")}</td><td>${escapeHtml(formatDateValue(plan.applicationStartDate || plan.writtenDate))}</td><td>${escapeHtml(formatDateValue(plan.applicationEndDate))}</td><td>${escapeHtml(plan.planFee||"-")}</td><td>${escapeHtml(plan.weekdayFee||"-")}</td><td>${escapeHtml(plan.weekendFee||"-")}</td><td style="text-align:left;">${escapeHtml(plan.fileName||"-")}</td><td>${Number(plan.itemCount||0)}개</td><td>${escapeHtml(plan.uploadedAt||"-")}</td><td>${escapeHtml(plan.uploadedBy||"알 수 없음")}</td>`;
+    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${escapeHtml(plan.firestoreId || plan.id)}" ${plan.checked?"checked":""}/></td><td><span class="version-badge ${version}">${versionLabel}</span></td><td>${escapeHtml(plan.longTermNumber||"-")}</td><td>${escapeHtml(plan.recipientName||"-")}</td><td>${escapeHtml(plan.grade||"-")}</td><td>${escapeHtml(formatDateValue(plan.applicationStartDate || plan.writtenDate))}</td><td>${escapeHtml(formatDateValue(plan.applicationEndDate))}</td><td>${escapeHtml(plan.planFee||"-")}</td><td>${escapeHtml(plan.planWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekdayFee||"-")}</td><td>${escapeHtml(plan.weekdayWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekendFee||"-")}</td><td>${escapeHtml(plan.weekendWeeklyCount||"-")}</td><td style="text-align:left;">${escapeHtml(plan.fileName||"-")}</td><td>${Number(plan.itemCount||0)}개</td><td>${escapeHtml(plan.uploadedAt||"-")}</td><td>${escapeHtml(plan.uploadedBy||"알 수 없음")}</td>`;
     elPlanTableBodyContainer.appendChild(row);
   }
   bindCheckboxEvents();
