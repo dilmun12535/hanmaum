@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {
-  collection, getDocs, doc, setDoc, deleteDoc, writeBatch
+  collection, getDocs, doc, setDoc, deleteDoc
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const elPlanFileSelector = document.getElementById("planFile");
@@ -100,8 +100,7 @@ async function addPlanToFirestore(plan) {
     uploadedAt: plan.uploadedAt || new Date().toLocaleString("ko-KR"),
     uploadedBy: plan.uploadedBy || getLoginName(),
     ownerUid: currentUser.uid,
-    rows,
-    rowsJson: JSON.stringify(rows)
+    rows
   });
 }
 
@@ -179,25 +178,30 @@ if (elMigrationBtn) elMigrationBtn.addEventListener("click", async () => {
   const file=elMigrationFile?.files?.[0];
   if (!file) return alert("기존 Google Sheets에서 내려받은 DB 엑셀 파일을 선택해주세요.");
   if (!currentUser) return alert("로그인 후 이용해주세요.");
-  if (!confirm("선택한 DB 엑셀의 '급여제공계획서' 시트를 Firebase로 이전합니다.\n같은 id는 덮어써서 중복 생성되지 않습니다. 계속할까요?")) return;
+  if (!confirm("선택한 DB 엑셀의 '급여제공계획서' 시트를 Firebase로 이전합니다.\n계획서를 한 건씩 순서대로 저장하며, 같은 id는 덮어써서 중복 생성되지 않습니다. 계속할까요?")) return;
+
   elMigrationBtn.disabled=true;
+  let done=0;
+  let failed=[];
   try {
     setMigrationStatus("엑셀 파일을 읽는 중...");
     const buf=await file.arrayBuffer();
     const wb=XLSX.read(new Uint8Array(buf),{type:"array",cellDates:true});
     const ws=wb.Sheets["급여제공계획서"];
     if (!ws) throw new Error("'급여제공계획서' 시트를 찾을 수 없습니다.");
+
     const rows=XLSX.utils.sheet_to_json(ws,{defval:"",raw:false});
     const valid=rows.filter(r=>r.id && (r.longTermNumber || r.recipientName));
     if (!valid.length) throw new Error("이전할 계획서 데이터가 없습니다.");
-    let done=0;
-    for (let start=0; start<valid.length; start+=400) {
-      const chunk=valid.slice(start,start+400);
-      const batch=writeBatch(db);
-      for (const r of chunk) {
-        const id=String(r.id).trim();
+
+    for (let i=0; i<valid.length; i++) {
+      const r=valid[i];
+      const id=String(r.id).trim();
+      try {
         const parsedRows=safeRows(r.rowsJson);
-        batch.set(doc(db,"carePlans",id),{
+        // rowsJson 문자열과 rows 배열을 동시에 저장하면 같은 데이터가 두 번 들어가
+        // 문서 크기가 커지므로 Firestore에는 rows 배열만 저장합니다.
+        await setDoc(doc(db,"carePlans",id),{
           id,
           longTermNumber:String(r.longTermNumber||"").trim(),
           recipientName:String(r.recipientName||"").trim(),
@@ -208,22 +212,32 @@ if (elMigrationBtn) elMigrationBtn.addEventListener("click", async () => {
           uploadedBy:String(r.uploadedBy||""),
           ownerUid:currentUser.uid,
           rows:parsedRows,
-          rowsJson:String(r.rowsJson||JSON.stringify(parsedRows)),
           migratedFrom:"googleSheets"
         },{merge:true});
+        done++;
+      } catch (itemError) {
+        console.error(`계획서 이전 실패 (${id})`, itemError);
+        failed.push({id, name:String(r.recipientName||""), error:itemError?.message||String(itemError)});
       }
-      await batch.commit();
-      done+=chunk.length;
-      setMigrationStatus(`Firebase 이전 중... ${done} / ${valid.length}건`);
+      setMigrationStatus(`Firebase 이전 중... ${i+1} / ${valid.length}건 · 성공 ${done}건${failed.length ? ` · 실패 ${failed.length}건` : ""}`);
     }
-    setMigrationStatus(`이전 완료: ${done}건. Firestore 목록을 다시 불러왔습니다.`);
+
     await loadLibrary();
-    alert(`급여제공계획서 ${done}건을 Firebase로 이전했습니다.`);
+    if (failed.length) {
+      const preview=failed.slice(0,5).map(x=>`${x.name||x.id}: ${x.error}`).join("\n");
+      setMigrationStatus(`이전 완료: 성공 ${done}건 / 실패 ${failed.length}건. 실패 건은 다시 확인해주세요.`,true);
+      alert(`이전 작업이 끝났습니다.\n성공: ${done}건\n실패: ${failed.length}건\n\n${preview}${failed.length>5?"\n외 실패 건이 더 있습니다.":""}`);
+    } else {
+      setMigrationStatus(`이전 완료: ${done}건. Firestore 목록을 다시 불러왔습니다.`);
+      alert(`급여제공계획서 ${done}건을 Firebase로 이전했습니다.`);
+    }
   } catch(error) {
     console.error("이전 오류:",error);
     setMigrationStatus(`이전 실패: ${error.message || error}`,true);
-    alert("이전 중 오류가 발생했습니다. 화면의 상태 메시지와 Firestore 규칙을 확인해주세요.");
-  } finally { elMigrationBtn.disabled=false; }
+    alert("이전 중 오류가 발생했습니다. 화면의 상태 메시지를 확인해주세요.");
+  } finally {
+    elMigrationBtn.disabled=false;
+  }
 });
 
 onAuthStateChanged(auth, user => {

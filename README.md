@@ -1,5 +1,7 @@
-hanmaum
+# 한마음 업무포탈 - Firestore 계획서 이전 수정본
 
-## Firebase 직원명 표시
-- Firestore `users/{Firebase UID}` 문서의 `name`, `position`을 읽어 상단에 `직함 이름 님`으로 표시합니다.
-- 해당 users 문서가 없는 계정은 이메일/직원으로 대체 표시됩니다.
+- 기존 DB 엑셀의 `급여제공계획서` 시트를 Firestore로 **1건씩 순차 이전**합니다.
+- 진행상황을 `현재 / 전체`, 성공/실패 건수로 표시합니다.
+- 같은 `id`는 덮어써 중복 생성되지 않습니다.
+- 대용량 오류를 줄이기 위해 `rowsJson`과 `rows`를 중복 저장하지 않고 Firestore에는 `rows`만 저장합니다.
+- 신규 계획서 등록도 동일하게 `rows`만 저장합니다.
