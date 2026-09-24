@@ -7,6 +7,13 @@ const status = document.getElementById('attendanceMigrationStatus');
 
 function setStatus(t, error=false){ if(status){ status.textContent=t; status.style.color=error?'#b91c1c':'#334155'; } }
 function parse(v){ if(Array.isArray(v)||(v&&typeof v==='object')) return v; if(typeof v!=='string'||!v.trim()) return v; try{return JSON.parse(v)}catch{return v} }
+function parseDateList(v){
+  if(Array.isArray(v)) return v.map(x=>String(x||'').trim()).filter(Boolean);
+  if(v==null || String(v).trim()==='') return [];
+  const parsed=parse(v);
+  if(Array.isArray(parsed)) return parsed.map(x=>String(x||'').trim()).filter(Boolean);
+  return String(v).split(/[,\n;]+/).map(x=>x.trim()).filter(Boolean);
+}
 function safeId(parts){ return parts.join('__').replace(/[^a-zA-Z0-9가-힣_-]/g,'_').slice(0,1400); }
 
 btn?.addEventListener('click', async () => {
@@ -24,16 +31,17 @@ btn?.addEventListener('click', async () => {
     let count=0;
     for(let i=0;i<rows.length;i++){
       const r=rows[i]; if(!Object.values(r).some(v=>String(v??'').trim())) continue;
-      const dates=parse(r.attendanceDates || r.dates || []);
+      const dates=parseDateList(r.attendanceDates || r.dates || []);
       const leaveTimes=parse(r.leaveTimes || r.leaveTimesJson || {});
       const attendanceTimeRows=parse(r.attendanceTimeRows || {});
+      const absentDates=parseDateList(r.absentDates || []);
       const id=safeId([r.id||'attendance',r.month||r.attendanceMonth||'',r.longTermNumber||r.certNumber||'',r.recipientName||r.name||'',i+2]);
       await setDoc(doc(db,'attendance',id),{
         ...r, firestoreId:id,
-        attendanceDates:Array.isArray(dates)?dates:[], dates:Array.isArray(dates)?dates:[],
+        attendanceDates:dates, dates:dates, absentDates:absentDates,
         leaveTimes:(leaveTimes&&typeof leaveTimes==='object')?leaveTimes:{},
         attendanceTimeRows:(attendanceTimeRows&&typeof attendanceTimeRows==='object')?attendanceTimeRows:{},
-        attendanceCount:Number(r.attendanceCount || (Array.isArray(dates)?dates.length:0)),
+        attendanceCount:dates.length,
         ownerUid:user.uid, migratedFrom:'googleSheets', migratedAt:new Date().toISOString()
       },{merge:true});
       count++;
