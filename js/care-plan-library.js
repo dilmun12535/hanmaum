@@ -78,7 +78,8 @@ function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim
 function extractFeeInfo(opinion) {
   const text=cellText(opinion).replace(/\r/g, " ").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   const result={ planFee:"", weekdayFee:"", weekendFee:"", feeText:"" };
-  if (!text) return result;
+  // 종합의견 영역에 실제로 "수가"라는 글자가 전혀 없는 경우에만 수가를 비웁니다.
+  if (!text || !text.includes("수가")) return result;
 
   // 1) 개인별장기요양이용계획서에 '명시'된 원래 수가
   const planPart=(text.match(/개인별\s*장기요양이용계획서[\s\S]{0,180}?(?:명시|계획)/) || [""])[0];
@@ -115,7 +116,21 @@ function parseNewCarePlanSheet(ws, fileName) {
       if (t.includes("장기요양인정번호") && !longTermNumber) longTermNumber=firstNonEmpty(row,c+1);
       if (t.includes("장기요양급여제공계획서적용기간") && !applicationPeriod) applicationPeriod=firstNonEmpty(a[r+1]||[],c);
       if (t==="작성일" && !writtenDate) writtenDate=firstNonEmpty(a[r+1]||[],c);
-      if (t==="종합의견" && !summaryOpinion) summaryOpinion=firstNonEmpty(row,c+1);
+      if (t==="종합의견" && !summaryOpinion) {
+        // 종합의견은 한 셀에만 있지 않고 아래 행/병합셀에 이어지는 양식이 있습니다.
+        // "종합의견" 위치부터 "종합확인자"/서명 영역 직전까지의 모든 텍스트를 모읍니다.
+        const opinionParts=[];
+        for (let rr=r; rr<a.length; rr++) {
+          const opinionRow=a[rr] || [];
+          const rowText=opinionRow.map(cellText).filter(Boolean).join(" ");
+          if (rr>r && /종합\s*확인자|확인자\s*서명/.test(rowText)) break;
+          for (let cc=(rr===r ? c+1 : 0); cc<opinionRow.length; cc++) {
+            const value=cellText(opinionRow[cc]);
+            if (value && normalizeText(value)!=="종합의견") opinionParts.push(value);
+          }
+        }
+        summaryOpinion=[...new Set(opinionParts)].join("\n").trim();
+      }
     }
   }
   const fileInfo=extractInfoFromFileName(fileName);
