@@ -28,6 +28,7 @@ onAuthStateChanged(auth, (user) => {
 });
 
 window.hanmaumLogout = async function () {
+  if (!window.confirm("로그아웃하시겠습니까?")) return;
   try {
     await signOut(auth);
   } finally {
