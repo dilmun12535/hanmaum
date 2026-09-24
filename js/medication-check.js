@@ -11,46 +11,39 @@ function makePayloadUrl(payload) {
 // 💡 [영구 조치]: 브라우저 저장 용량을 터트리던 localStorage 구문을 완전히 삭제하고 안전한 메모리 변수 수신 방식으로 리모델링했습니다.
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(CARE_PLAN_API_URL, { method: "GET", redirect: "follow" });
-    const text = await response.text();
-    carePlanLibraryCache = JSON.parse(text);
+    carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
     return carePlanLibraryCache;
   } catch (error) {
-    console.error("급여제공계획서 동기화 오류:", error);
+    console.error("Firebase 급여제공계획서 조회 오류:", error);
+    carePlanLibraryCache = [];
     return [];
   }
 }
+
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(`${CARE_PLAN_API_URL}?action=listCounsel`, { method: "GET", redirect: "follow" });
-    const text = await response.text();
-    counselLibraryCache = JSON.parse(text);
+    counselLibraryCache = await window.HanmaumFirestore.counsels();
     return counselLibraryCache;
   } catch (error) {
-    console.error("상담일지 동기화 오류:", error);
+    console.error("Firebase 상담일지 조회 오류:", error);
+    counselLibraryCache = [];
     return [];
   }
 }
 
+
 async function syncAttendanceMonthFromGoogleSheet(monthValue) {
   try {
-    const response = await fetch(
-      makePayloadUrl({
-        action: "listAttendance",
-        month: monthValue
-      }),
-      { method: "GET", redirect: "follow" }
-    );
-    const text = await response.text();
-    const attendance = JSON.parse(text);
-    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+    attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
     return attendanceLibraryCache;
   } catch (error) {
-    console.error("출석관리 동기화 오류:", error);
-    return attendanceLibraryCache;
+    console.error("Firebase 출석관리 조회 오류:", error);
+    attendanceLibraryCache = [];
+    return [];
   }
 }
+
 
 // 초기 기본 동기화 가동
 syncCarePlanLibraryFromGoogleSheet();

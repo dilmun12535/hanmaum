@@ -10,56 +10,39 @@ function makePayloadUrl(payload) {
 
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(CARE_PLAN_API_URL, {
-      method: "GET",
-      redirect: "follow"
-    });
-    const text = await response.text();
-    carePlanLibraryCache = JSON.parse(text);
+    carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
     return carePlanLibraryCache;
   } catch (error) {
-    console.error("급여제공계획서 동기화 오류:", error);
-    return carePlanLibraryCache;
+    console.error("Firebase 급여제공계획서 조회 오류:", error);
+    carePlanLibraryCache = [];
+    return [];
   }
 }
+
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(makePayloadUrl({ action: "listCounsel" }), {
-      method: "GET",
-      redirect: "follow"
-    });
-    const text = await response.text();
-    const counsels = JSON.parse(text);
-    counselLibraryCache = Array.isArray(counsels) ? counsels : [];
+    counselLibraryCache = await window.HanmaumFirestore.counsels();
     return counselLibraryCache;
   } catch (error) {
-    console.error("상담일지 동기화 오류:", error);
-    return counselLibraryCache;
+    console.error("Firebase 상담일지 조회 오류:", error);
+    counselLibraryCache = [];
+    return [];
   }
 }
 
+
 async function syncAttendanceMonthFromGoogleSheet(monthValue) {
   try {
-    const response = await fetch(
-      makePayloadUrl({
-        action: "listAttendance",
-        month: monthValue
-      }),
-      {
-        method: "GET",
-        redirect: "follow"
-      }
-    );
-    const text = await response.text();
-    const attendance = JSON.parse(text);
-    attendanceLibraryCache = Array.isArray(attendance) ? attendance : [];
+    attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
     return attendanceLibraryCache;
   } catch (error) {
-    console.error("출석관리 동기화 오류:", error);
-    return attendanceLibraryCache;
+    console.error("Firebase 출석관리 조회 오류:", error);
+    attendanceLibraryCache = [];
+    return [];
   }
 }
+
 
 const checkMonthInput = document.getElementById("checkMonth");
 const bathFileInput = document.getElementById("bathFile");

@@ -34,66 +34,39 @@ function makePayloadUrl(payload) {
 
 async function syncCarePlanLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(CARE_PLAN_API_URL, {
-      method: "GET",
-      redirect: "follow"
-    });
-    const text = await response.text();
-    const parsed = parseApiJson(text, [], "급여계획서 동기화");
-    carePlanLibraryCache = Array.isArray(parsed)
-      ? parsed.map((item) => attachCareGrade(item))
-      : [];
+    carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
     return carePlanLibraryCache;
   } catch (error) {
-    console.error("급여계획서 동기화 오류:", error);
-    return carePlanLibraryCache || [];
+    console.error("Firebase 급여제공계획서 조회 오류:", error);
+    carePlanLibraryCache = [];
+    return [];
   }
 }
+
 
 async function syncCounselLibraryFromGoogleSheet() {
   try {
-    const response = await fetch(
-      makePayloadUrl({ action: "listCounsel" }),
-      {
-        method: "GET",
-        redirect: "follow"
-      }
-    );
-    const text = await response.text();
-    const parsed = parseApiJson(text, [], "상담일지 동기화");
-    counselLibraryCache = Array.isArray(parsed)
-      ? parsed.map((item) => attachCareGrade(item))
-      : [];
+    counselLibraryCache = await window.HanmaumFirestore.counsels();
     return counselLibraryCache;
   } catch (error) {
-    console.error("상담일지 동기화 오류:", error);
-    return counselLibraryCache || [];
+    console.error("Firebase 상담일지 조회 오류:", error);
+    counselLibraryCache = [];
+    return [];
   }
 }
 
+
 async function syncAttendanceMonthFromGoogleSheet(monthValue) {
   try {
-    const response = await fetch(
-      makePayloadUrl({
-        action: "listAttendance",
-        month: monthValue
-      }),
-      {
-        method: "GET",
-        redirect: "follow"
-      }
-    );
-    const text = await response.text();
-    const attendance = parseApiJson(text, [], "출석관리 동기화");
-    attendanceLibraryCache = Array.isArray(attendance)
-      ? attendance.map((item) => attachCareGrade(item))
-      : [];
+    attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
     return attendanceLibraryCache;
   } catch (error) {
-    console.error("출석관리 동기화 오류:", error);
-    return attendanceLibraryCache || [];
+    console.error("Firebase 출석관리 조회 오류:", error);
+    attendanceLibraryCache = [];
+    return [];
   }
 }
+
 
 // 원격 동기화는 "식사 확인" 버튼을 눌렀을 때만 실행합니다.
 

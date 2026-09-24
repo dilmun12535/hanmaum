@@ -129,11 +129,12 @@
 
 
         <div class="unified-notice-box" style="border-color:#bfdbfe;background:#eff6ff;">
-          <h5 class="unified-notice-title">🔄 기존 Google Sheets 계획서 → Firebase 1회 이전</h5>
+          <h5 class="unified-notice-title">🔄 기존 Google Sheets DB → Firebase 1회 이전</h5>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
             <input type="file" id="legacyDbFile" accept=".xlsx,.xls" />
-            <button type="button" class="primary-btn" id="migratePlanBtn">기존 계획서 Firebase로 이전</button>
-            <span id="migrationStatus" style="font-size:13px;color:#334155;">같은 id는 중복 생성되지 않고 덮어씁니다.</span>
+            <button type="button" class="primary-btn" id="migratePlanBtn">계획서만 Firebase로 이전</button>
+            <button type="button" class="primary-btn" id="migrateAllDataBtn">계획서·상담일지·출석 전체 이전</button>
+            <span id="migrationStatus" style="font-size:13px;color:#334155;">같은 계획서·상담일지·출석관리 데이터를 Firebase로 이전합니다.</span>
           </div>
         </div>
 
@@ -171,6 +172,7 @@
   <script src="../js/main.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
   <script type="module" src="../js/care-plan-library.js"></script>
+  <script type="module" src="../js/firebase-migrate-all.js"></script>
 
   <script>
     const planWrittenDateInput = document.getElementById("planWrittenDate");
