@@ -1,56 +1,72 @@
+import { auth } from "./firebase-config.js";
+import {
+  onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
+  signInWithEmailAndPassword
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+
 const loginForm = document.getElementById("loginForm");
 const loginIdInput = document.getElementById("loginId");
 const loginPasswordInput = document.getElementById("loginPassword");
 const loginMessage = document.getElementById("loginMessage");
 const togglePassword = document.getElementById("togglePassword");
-
-const USERS = {
-  admin: "1234",
-  김성욱: "1124",
-  김정환: "9155",
-  강민지: "0528",
-  고나예: "0910",
-  천지연: "1116",
-  강민주: "0307",
-  박지영: "0322",
-  주신일: "0903"
-};
+const loginButton = loginForm?.querySelector('button[type="submit"]');
 
 if (togglePassword) {
   togglePassword.addEventListener("click", () => {
-    if (loginPasswordInput.type === "password") {
-      loginPasswordInput.type = "text";
-      togglePassword.textContent = "숨김";
-    } else {
-      loginPasswordInput.type = "password";
-      togglePassword.textContent = "보기";
-    }
+    const show = loginPasswordInput.type === "password";
+    loginPasswordInput.type = show ? "text" : "password";
+    togglePassword.textContent = show ? "숨김" : "보기";
   });
 }
 
-loginForm.addEventListener("submit", (event) => {
+function showMessage(message, type = "error") {
+  if (!loginMessage) return;
+  loginMessage.textContent = message;
+  loginMessage.className = `login-message ${type}`;
+}
+
+function saveLoginUser(user) {
+  const name = user.displayName || user.email || "직원";
+  sessionStorage.setItem("isLoggedIn", "true");
+  sessionStorage.setItem("loginUser", name);
+  localStorage.setItem("isLoggedIn", "true");
+  localStorage.setItem("loginUser", name);
+}
+
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    saveLoginUser(user);
+    window.location.replace("html/care-plan-library.html");
+  }
+});
+
+loginForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
 
-  const id = loginIdInput.value.trim();
-  const password = loginPasswordInput.value.trim();
+  const email = loginIdInput.value.trim();
+  const password = loginPasswordInput.value;
 
-  if (!id || !password) {
-    loginMessage.textContent = "아이디와 비밀번호를 모두 입력해주세요.";
-    loginMessage.className = "login-message error";
+  if (!email || !password) {
+    showMessage("이메일과 비밀번호를 모두 입력해주세요.");
     return;
   }
 
-  if (USERS[id] === password) {
-    sessionStorage.setItem("isLoggedIn", "true");
-    sessionStorage.setItem("loginUser", id);
+  loginButton.disabled = true;
+  loginButton.textContent = "로그인 중...";
+  showMessage("");
 
-    localStorage.setItem("isLoggedIn", "true");
-    localStorage.setItem("loginUser", id);
-
-    window.location.href = "html/care-plan-library.html";
-    return;
+  try {
+    await setPersistence(auth, browserLocalPersistence);
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    saveLoginUser(credential.user);
+    window.location.replace("html/care-plan-library.html");
+  } catch (error) {
+    console.error("Firebase login error:", error);
+    showMessage("이메일 또는 비밀번호가 맞지 않습니다.");
+  } finally {
+    loginButton.disabled = false;
+    loginButton.textContent = "로그인";
   }
-
-  loginMessage.textContent = "아이디 또는 비밀번호가 맞지 않습니다.";
-  loginMessage.className = "login-message error";
 });
