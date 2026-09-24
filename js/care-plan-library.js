@@ -10,12 +10,16 @@ const elPlanUploadTrigger = document.getElementById("uploadPlanBtn");
 const elPlanDeleteTrigger = document.getElementById("deleteSelectedPlanBtn");
 const elPlanSelectAllTrigger = document.getElementById("selectAllPlanCheckbox");
 const elPlanTableBodyContainer = document.getElementById("planLibraryTableBody");
+const elPlanExportTrigger = document.getElementById("exportPlanExcelBtn");
+const elPlanCountText = document.getElementById("planCountText");
+const elPlanFilterButtons = [...document.querySelectorAll(".filter-btn[data-filter]")];
 const elMigrationFile = document.getElementById("legacyDbFile");
 const elMigrationBtn = document.getElementById("migratePlanBtn");
 const elMigrationStatus = document.getElementById("migrationStatus");
 
 let carePlanLibrary = [];
 let currentUser = null;
+let currentFilter = "all";
 
 if (elPlanDateSelector) {
   elPlanDateSelector.setAttribute("max", "9999-12-31");
@@ -137,6 +141,62 @@ function setMigrationStatus(text, isError=false) {
   elMigrationStatus.style.color = isError ? "#b91c1c" : "#334155";
 }
 
+function getPlanVersion(plan) {
+  if (plan.sourceType === "new" || plan.schemaVersion === "new-2026") return "new";
+  if (plan.sourceType === "legacy" || plan.migratedFrom === "googleSheets") return "legacy";
+  // 기존 이전 자료에는 새 양식의 적용기간/등급/수가 필드가 없었습니다.
+  if (!plan.applicationStartDate && !plan.applicationEndDate && !plan.grade && !plan.feeText) return "legacy";
+  return "new";
+}
+function getVisiblePlans() {
+  return carePlanLibrary.filter(plan => currentFilter === "all" || getPlanVersion(plan) === currentFilter);
+}
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function updateCountText() {
+  if (!elPlanCountText) return;
+  const legacy = carePlanLibrary.filter(p => getPlanVersion(p) === "legacy").length;
+  const newer = carePlanLibrary.filter(p => getPlanVersion(p) === "new").length;
+  elPlanCountText.textContent = `전체 ${carePlanLibrary.length}건 · 구버전 ${legacy}건 · 신버전 ${newer}건`;
+}
+function exportPlansToExcel() {
+  const plans = getVisiblePlans();
+  if (!plans.length) return alert("엑셀로 받을 계획서가 없습니다.");
+  const summary = plans.map(plan => ({
+    "구분": getPlanVersion(plan) === "legacy" ? "구버전" : "신버전",
+    "장기요양번호": plan.longTermNumber || "",
+    "수급자명": plan.recipientName || "",
+    "등급": plan.grade || "",
+    "적용 시작일": normalizeDateString(plan.applicationStartDate || plan.writtenDate),
+    "적용 종료일": normalizeDateString(plan.applicationEndDate),
+    "작성일": normalizeDateString(plan.writtenDate),
+    "수가": plan.feeText || "",
+    "종합의견": plan.summaryOpinion || "",
+    "파일명": plan.fileName || "",
+    "급여 항목 수": Number(plan.itemCount || (plan.rows || []).length || 0),
+    "업로드일시": plan.uploadedAt || "",
+    "업로드자": plan.uploadedBy || ""
+  }));
+  const details = [];
+  plans.forEach(plan => (plan.rows || []).forEach((row, index) => {
+    details.push({
+      "구분": getPlanVersion(plan) === "legacy" ? "구버전" : "신버전",
+      "장기요양번호": plan.longTermNumber || "",
+      "수급자명": plan.recipientName || "",
+      "적용 시작일": normalizeDateString(plan.applicationStartDate || plan.writtenDate),
+      "급여항목 순번": index + 1,
+      ...row
+    });
+  }));
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.json_to_sheet(summary);
+  XLSX.utils.book_append_sheet(wb, ws1, "계획서목록");
+  if (details.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(details), "급여목록상세");
+  const label = currentFilter === "legacy" ? "구버전" : currentFilter === "new" ? "신버전" : "전체";
+  XLSX.writeFile(wb, `요양급여제공계획서_${label}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
 async function loadLibrary() {
   try {
     if (!currentUser) return;
@@ -182,6 +242,8 @@ async function addPlanToFirestore(plan) {
     uploadedAt: plan.uploadedAt || new Date().toLocaleString("ko-KR"),
     uploadedBy: plan.uploadedBy || getLoginName(),
     ownerUid: currentUser.uid,
+    sourceType: "new",
+    schemaVersion: "new-2026",
     rows
   });
 }
@@ -195,20 +257,24 @@ async function deleteSelectedFromFirestore(plans) {
 function renderLibrary() {
   if (!elPlanTableBodyContainer) return;
   elPlanTableBodyContainer.innerHTML = "";
-  if (carePlanLibrary.length === 0) {
-    elPlanTableBodyContainer.innerHTML = `<tr class="empty-row"><td></td><td colspan="10" style="text-align:center;padding:25px 0;">등록된 급여제공계획서가 없습니다.</td></tr>`;
+  updateCountText();
+  const visiblePlans = getVisiblePlans();
+  if (visiblePlans.length === 0) {
+    elPlanTableBodyContainer.innerHTML = `<tr class="empty-row"><td colspan="12" style="text-align:center;padding:25px 0;">해당 구분에 등록된 급여제공계획서가 없습니다.</td></tr>`;
     if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
     return;
   }
-  const sortedList = [...carePlanLibrary].sort((a,b) => {
+  const sortedList = [...visiblePlans].sort((a,b) => {
     const na=String(a.recipientName||""), nb=String(b.recipientName||"");
-    if (na===nb) return normalizeDateString(b.writtenDate).localeCompare(normalizeDateString(a.writtenDate));
+    if (na===nb) return normalizeDateString(b.applicationStartDate || b.writtenDate).localeCompare(normalizeDateString(a.applicationStartDate || a.writtenDate));
     return na.localeCompare(nb,"ko");
   });
   for (const plan of sortedList) {
     const row=document.createElement("tr");
-    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${plan.firestoreId || plan.id}" ${plan.checked?"checked":""}/></td><td>${plan.longTermNumber||"-"}</td><td>${plan.recipientName||"-"}</td><td>${plan.grade||"-"}</td><td>${formatDateValue(plan.applicationStartDate || plan.writtenDate)}</td><td>${formatDateValue(plan.applicationEndDate)}</td><td title="${String(plan.feeText||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;")}">${plan.feeText ? plan.feeText.replace(/
-/g,"<br>") : "-"}</td><td style="text-align:left;">${plan.fileName||"-"}</td><td>${plan.itemCount||0}개</td><td>${plan.uploadedAt||"-"}</td><td>${plan.uploadedBy||"알 수 없음"}</td>`;
+    const version=getPlanVersion(plan);
+    const versionLabel=version === "legacy" ? "구버전" : "신버전";
+    const fee=String(plan.feeText||"");
+    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${escapeHtml(plan.firestoreId || plan.id)}" ${plan.checked?"checked":""}/></td><td><span class="version-badge ${version}">${versionLabel}</span></td><td>${escapeHtml(plan.longTermNumber||"-")}</td><td>${escapeHtml(plan.recipientName||"-")}</td><td>${escapeHtml(plan.grade||"-")}</td><td>${escapeHtml(formatDateValue(plan.applicationStartDate || plan.writtenDate))}</td><td>${escapeHtml(formatDateValue(plan.applicationEndDate))}</td><td title="${escapeHtml(fee)}">${fee ? escapeHtml(fee).replace(/\n/g,"<br>") : "-"}</td><td style="text-align:left;">${escapeHtml(plan.fileName||"-")}</td><td>${Number(plan.itemCount||0)}개</td><td>${escapeHtml(plan.uploadedAt||"-")}</td><td>${escapeHtml(plan.uploadedBy||"알 수 없음")}</td>`;
     elPlanTableBodyContainer.appendChild(row);
   }
   bindCheckboxEvents();
@@ -246,7 +312,16 @@ if (elPlanUploadTrigger) elPlanUploadTrigger.addEventListener("click", () => {
   reader.readAsArrayBuffer(file);
 });
 
-if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.addEventListener("change", e => { carePlanLibrary=carePlanLibrary.map(p=>({...p,checked:e.target.checked})); renderLibrary(); });
+if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.addEventListener("change", e => { carePlanLibrary=carePlanLibrary.map(p => (currentFilter === "all" || getPlanVersion(p) === currentFilter) ? {...p,checked:e.target.checked} : p); renderLibrary(); });
+elPlanFilterButtons.forEach(btn => btn.addEventListener("click", () => {
+  currentFilter = btn.dataset.filter || "all";
+  elPlanFilterButtons.forEach(b => b.classList.toggle("active", b === btn));
+  if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
+  carePlanLibrary = carePlanLibrary.map(p => ({...p, checked:false}));
+  renderLibrary();
+}));
+if (elPlanExportTrigger) elPlanExportTrigger.addEventListener("click", exportPlansToExcel);
+
 if (elPlanDeleteTrigger) elPlanDeleteTrigger.addEventListener("click", async () => {
   const selected=carePlanLibrary.filter(p=>p.checked);
   if (!selected.length) return alert("삭제할 계획서를 선택해주세요.");

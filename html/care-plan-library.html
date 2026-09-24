@@ -43,6 +43,9 @@
     .unified-notice-list li {
       margin-bottom: 4px;
     }
+
+    .library-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 12px;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}
+    .filter-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.filter-btn{border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:8px;padding:8px 13px;cursor:pointer;font-weight:700}.filter-btn.active{background:#1e3a8a;color:#fff;border-color:#1e3a8a}.count-text{font-size:13px;color:#64748b;margin-left:4px}.excel-btn{border:1px solid #15803d;background:#16a34a;color:#fff;border-radius:8px;padding:9px 15px;cursor:pointer;font-weight:700}.version-badge{display:inline-block;min-width:54px;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700}.version-badge.legacy{background:#f1f5f9;color:#475569}.version-badge.new{background:#dbeafe;color:#1d4ed8}
   </style>
 </head>
 <body>
@@ -121,14 +124,15 @@
 <li><b style="color: #1e293b;">마스터 매칭 데이터:</b> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</li>
 </ul>
 </div>
-<div class="unified-notice-box" style="border-color:#bfdbfe;background:#eff6ff;">
-<h5 class="unified-notice-title">🔄 기존 Google Sheets DB → Firebase 1회 이전</h5>
-<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-<input accept=".xlsx,.xls" id="legacyDbFile" type="file"/>
-<button class="primary-btn" id="migratePlanBtn" type="button">계획서만 Firebase로 이전</button>
-<button class="primary-btn" id="migrateAllDataBtn" type="button">계획서·상담일지·출석 전체 이전</button>
-<span id="migrationStatus" style="font-size:13px;color:#334155;">같은 계획서·상담일지·출석관리 데이터를 Firebase로 이전합니다.</span>
+<div class="library-toolbar">
+<div class="filter-group">
+<strong>계획서 구분</strong>
+<button class="filter-btn active" data-filter="all" type="button">전체</button>
+<button class="filter-btn" data-filter="legacy" type="button">구버전</button>
+<button class="filter-btn" data-filter="new" type="button">신버전</button>
+<span class="count-text" id="planCountText"></span>
 </div>
+<button class="excel-btn" id="exportPlanExcelBtn" type="button">엑셀 다운로드</button>
 </div>
 <div class="table-wrap">
 <table class="info-table" style="border-collapse: collapse; width: 100%;">
@@ -137,6 +141,7 @@
 <th class="checkbox-col" style="border: 1px solid #e2e8f0; width: 40px;">
 <input id="selectAllPlanCheckbox" type="checkbox"/>
 </th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px; width:76px;">구분</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">장기요양번호</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">등급</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">적용 시작일</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">적용 종료일</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수가</th>
@@ -148,7 +153,7 @@
 </thead>
 <tbody id="planLibraryTableBody">
 <tr class="empty-row">
-<td colspan="11" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">
+<td colspan="12" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">
                   등록된 급여제공계획서가 없습니다.
                 </td>
 </tr>
@@ -162,7 +167,6 @@
 <script src="../js/main.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <script src="../js/care-plan-library.js" type="module"></script>
-<script src="../js/firebase-migrate-all.js" type="module"></script>
 
 </body>
 </html>
