@@ -94,17 +94,14 @@
 <div class="content-box">
 <div class="page-header">
 <h2>요양급여제공계획서 보관함</h2>
-<p>수급자별 급여제공계획서를 작성일자 기준으로 보관합니다.</p>
+<p>계획서 파일에서 수급자 정보, 적용기간, 급여목록과 수가를 자동으로 읽어 보관합니다.</p>
 </div>
 <div class="page-actions">
 <div class="date-group">
 <label for="planFile">계획서 파일</label>
 <input accept=".xlsx,.xls" id="planFile" type="file"/>
 </div>
-<div class="date-group">
-<label for="planWrittenDate">급여제공계획서 작성일자</label>
-<input id="planWrittenDate" max="9999-12-31" type="date"/>
-</div>
+
 <div class="action-buttons">
 <button class="primary-btn" id="uploadPlanBtn" type="button">
               계획서 등록
@@ -120,7 +117,7 @@
           </h5>
 <ul class="unified-notice-list">
 <li><b style="color: #1e293b;">파일명 규격 예시:</b> <strong>L2405183960 강소둘 수급자 급여제공계획.xlsx</strong></li>
-<li><b style="color: #1e293b;">데이터 자동 파싱:</b> 시스템이 파일명에서 장기요양번호(인정번호)와 수급자명을 자동으로 판독하여 분리 저장합니다.</li>
+<li><b style="color: #1e293b;">데이터 자동 파싱:</b> 파일 내부에서 성명, 장기요양인정번호, 등급, 적용기간, 작성일, 종합의견과 수가 문구를 자동으로 읽습니다.</li><li><b style="color: #1e293b;">기존 급여목록 유지:</b> 장기요양 필요영역·세부목표·필요내용·세부 제공내용·횟수·시간·작성자 등 기존 제공확인에 필요한 급여목록도 함께 저장합니다.</li>
 <li><b style="color: #1e293b;">마스터 매칭 데이터:</b> 등록 완료된 계획서는 다른 일자별 급여(목욕, 식사, 배설 등) 제공 확인창에서 기준 급여 정보를 판단하는 핵심 마스터 데이터로 연동됩니다.</li>
 </ul>
 </div>
@@ -142,7 +139,7 @@
 </th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">장기요양번호</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수급자명</th>
-<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">작성일자</th>
+<th style="border: 1px solid #e2e8f0; padding: 12px 6px;">등급</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">적용 시작일</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">적용 종료일</th><th style="border: 1px solid #e2e8f0; padding: 12px 6px;">수가</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">파일명</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">급여 항목 수</th>
 <th style="border: 1px solid #e2e8f0; padding: 12px 6px;">업로드일시</th>
@@ -151,7 +148,7 @@
 </thead>
 <tbody id="planLibraryTableBody">
 <tr class="empty-row">
-<td colspan="8" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">
+<td colspan="11" style="border: 1px solid #e2e8f0; padding: 20px; text-align: center;">
                   등록된 급여제공계획서가 없습니다.
                 </td>
 </tr>
@@ -166,16 +163,6 @@
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <script src="../js/care-plan-library.js" type="module"></script>
 <script src="../js/firebase-migrate-all.js" type="module"></script>
-<script>
-    const planWrittenDateInput = document.getElementById("planWrittenDate");
 
-    planWrittenDateInput.addEventListener("input", () => {
-      const value = planWrittenDateInput.value;
-
-      if (value.length > 10) {
-        planWrittenDateInput.value = value.slice(0, 10);
-      }
-    });
-  </script>
 </body>
 </html>

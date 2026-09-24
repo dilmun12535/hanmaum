@@ -48,6 +48,80 @@ function extractInfoFromFileName(fileName) {
 function getCareItemCount(rows) {
   return rows.filter(row => normalizeText(JSON.stringify(row)).length > 0).length;
 }
+
+function cellText(v) { return String(v ?? "").replace(/\r/g, "").trim(); }
+function sheetRows(ws) { return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false }); }
+function firstNonEmpty(row, start=0) {
+  for (let i=start;i<row.length;i++) if (cellText(row[i])) return cellText(row[i]);
+  return "";
+}
+function parseDateRange(text) {
+  const dates = cellText(text).match(/\d{4}[.\/-]\d{1,2}[.\/-]\d{1,2}/g) || [];
+  const norm = x => x ? x.replace(/[.\/]/g,"-").split("-").map((v,i)=>i?String(Number(v)).padStart(2,"0"):v).join("-") : "";
+  return { start: norm(dates[0]), end: norm(dates[1]) };
+}
+function findValueNearLabel(rows, label) {
+  const needle=normalizeText(label);
+  for (const row of rows) for (let c=0;c<row.length;c++) {
+    if (normalizeText(row[c]).includes(needle)) {
+      for (let k=c+1;k<Math.min(row.length,c+8);k++) if (cellText(row[k])) return cellText(row[k]);
+    }
+  }
+  return "";
+}
+function extractFeeText(opinion) {
+  const text=cellText(opinion);
+  if (!text) return "";
+  const lines=text.split(/\n+/).map(x=>x.trim()).filter(Boolean);
+  const hits=lines.filter(x=>/\d+\s*시간\s*(이상|초과)|수가/.test(x) && /(주\s*\d+\s*회|수가)/.test(x));
+  return hits.join("\n");
+}
+function parseNewCarePlanSheet(ws, fileName) {
+  const a=sheetRows(ws);
+  let recipientName="", longTermNumber="", grade="", applicationPeriod="", writtenDate="", summaryOpinion="";
+  for (let r=0;r<a.length;r++) {
+    const row=a[r]||[];
+    for (let c=0;c<row.length;c++) {
+      const t=normalizeText(row[c]);
+      if (t==="성명" && !recipientName) recipientName=firstNonEmpty(row,c+1);
+      if (t.includes("장기요양등급") && !grade) grade=firstNonEmpty(row,c+1);
+      if (t.includes("장기요양인정번호") && !longTermNumber) longTermNumber=firstNonEmpty(row,c+1);
+      if (t.includes("장기요양급여제공계획서적용기간") && !applicationPeriod) applicationPeriod=firstNonEmpty(a[r+1]||[],c);
+      if (t==="작성일" && !writtenDate) writtenDate=firstNonEmpty(a[r+1]||[],c);
+      if (t==="종합의견" && !summaryOpinion) summaryOpinion=firstNonEmpty(row,c+1);
+    }
+  }
+  const fileInfo=extractInfoFromFileName(fileName);
+  recipientName ||= fileInfo.recipientName;
+  longTermNumber ||= fileInfo.longTermNumber;
+  const period=parseDateRange(applicationPeriod);
+  writtenDate=normalizeDateString(writtenDate) || period.start;
+
+  // 기존 제공확인 페이지가 읽는 급여목록 구조를 유지합니다.
+  const careRows=[];
+  let currentArea="", currentGoal="";
+  for (let r=0;r<a.length;r++) {
+    const row=a[r]||[];
+    const need=cellText(row[7]);
+    const detail=cellText(row[9]);
+    if (!need || /장기요양.*필요내용/.test(need.replace(/\s/g,""))) continue;
+    const area=cellText(row[1]); if (area && !/장기요양.*필요영역/.test(area.replace(/\s/g,""))) currentArea=area;
+    const goal=cellText(row[2]); if (goal && goal!=="장기요양\n세부목표") currentGoal=goal;
+    careRows.push({
+      "장기요양필요영역": currentArea,
+      "장기요양세부목표": currentGoal,
+      "장기요양필요내용": need,
+      "필요내용": need,
+      "세부제공내용": detail,
+      "세부 제공내용": detail,
+      "횟수": cellText(row[13]),
+      "시간(분)": cellText(row[15]),
+      "작성자": cellText(row[17])
+    });
+  }
+  return { recipientName,longTermNumber,grade,writtenDate,applicationStartDate:period.start,applicationEndDate:period.end,applicationPeriod,summaryOpinion,feeText:extractFeeText(summaryOpinion),rows:careRows };
+}
+
 function getLoginName() {
   return sessionStorage.getItem("loginUser") || localStorage.getItem("loginUser") || currentUser?.email || "알 수 없음";
 }
@@ -74,6 +148,8 @@ async function loadLibrary() {
         firestoreId: s.id,
         id: data.id ?? s.id,
         writtenDate: normalizeDateString(data.writtenDate),
+        applicationStartDate: normalizeDateString(data.applicationStartDate),
+        applicationEndDate: normalizeDateString(data.applicationEndDate),
         rows: Array.isArray(data.rows) ? data.rows : safeRows(data.rowsJson),
         checked: false
       };
@@ -94,6 +170,12 @@ async function addPlanToFirestore(plan) {
     id,
     longTermNumber: plan.longTermNumber || "",
     recipientName: plan.recipientName || "",
+    grade: plan.grade || "",
+    applicationStartDate: normalizeDateString(plan.applicationStartDate),
+    applicationEndDate: normalizeDateString(plan.applicationEndDate),
+    applicationPeriod: plan.applicationPeriod || "",
+    summaryOpinion: plan.summaryOpinion || "",
+    feeText: plan.feeText || "",
     writtenDate: normalizeDateString(plan.writtenDate),
     fileName: plan.fileName || "",
     itemCount: Number(plan.itemCount || 0),
@@ -114,7 +196,7 @@ function renderLibrary() {
   if (!elPlanTableBodyContainer) return;
   elPlanTableBodyContainer.innerHTML = "";
   if (carePlanLibrary.length === 0) {
-    elPlanTableBodyContainer.innerHTML = `<tr class="empty-row"><td></td><td colspan="7" style="text-align:center;padding:25px 0;">등록된 급여제공계획서가 없습니다.</td></tr>`;
+    elPlanTableBodyContainer.innerHTML = `<tr class="empty-row"><td></td><td colspan="10" style="text-align:center;padding:25px 0;">등록된 급여제공계획서가 없습니다.</td></tr>`;
     if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
     return;
   }
@@ -125,7 +207,8 @@ function renderLibrary() {
   });
   for (const plan of sortedList) {
     const row=document.createElement("tr");
-    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${plan.firestoreId || plan.id}" ${plan.checked?"checked":""}/></td><td>${plan.longTermNumber||"-"}</td><td>${plan.recipientName||"-"}</td><td>${formatDateValue(plan.writtenDate)}</td><td style="text-align:left;">${plan.fileName||"-"}</td><td>${plan.itemCount||0}개</td><td>${plan.uploadedAt||"-"}</td><td>${plan.uploadedBy||"알 수 없음"}</td>`;
+    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${plan.firestoreId || plan.id}" ${plan.checked?"checked":""}/></td><td>${plan.longTermNumber||"-"}</td><td>${plan.recipientName||"-"}</td><td>${plan.grade||"-"}</td><td>${formatDateValue(plan.applicationStartDate || plan.writtenDate)}</td><td>${formatDateValue(plan.applicationEndDate)}</td><td title="${String(plan.feeText||"").replace(/&/g,"&amp;").replace(/"/g,"&quot;")}">${plan.feeText ? plan.feeText.replace(/
+/g,"<br>") : "-"}</td><td style="text-align:left;">${plan.fileName||"-"}</td><td>${plan.itemCount||0}개</td><td>${plan.uploadedAt||"-"}</td><td>${plan.uploadedBy||"알 수 없음"}</td>`;
     elPlanTableBodyContainer.appendChild(row);
   }
   bindCheckboxEvents();
@@ -139,26 +222,25 @@ function bindCheckboxEvents() {
 }
 
 if (elPlanUploadTrigger) elPlanUploadTrigger.addEventListener("click", () => {
-  if (!elPlanFileSelector || !elPlanDateSelector) return;
-  const file=elPlanFileSelector.files[0], writtenDate=normalizeDateString(elPlanDateSelector.value);
+  if (!elPlanFileSelector) return;
+  const file=elPlanFileSelector.files[0];
   if (!file) return alert("급여제공계획서 파일을 선택해주세요.");
-  if (!writtenDate) return alert("급여제공계획서 작성일자를 선택해주세요.");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(writtenDate)) return alert("작성일자는 YYYY-MM-DD 형식으로 입력해주세요.");
-  const fileInfo=extractInfoFromFileName(file.name);
-  if (!fileInfo.longTermNumber || !fileInfo.recipientName) return alert("파일명에서 장기요양번호와 수급자명을 확인하지 못했습니다. 파일명을 확인해주세요.");
   const reader=new FileReader();
   reader.onload=async event => {
     try {
-      const workbook=XLSX.read(new Uint8Array(event.target.result),{type:"array"});
+      const workbook=XLSX.read(new Uint8Array(event.target.result),{type:"array",cellDates:true});
       const worksheet=workbook.Sheets[workbook.SheetNames[0]];
-      const rows=XLSX.utils.sheet_to_json(worksheet,{defval:""});
-      const newPlan={id:String(Date.now()),longTermNumber:fileInfo.longTermNumber,recipientName:fileInfo.recipientName,writtenDate,fileName:file.name,uploadedAt:new Date().toLocaleString("ko-KR"),uploadedBy:getLoginName(),itemCount:getCareItemCount(rows),rows,checked:false};
+      const parsed=parseNewCarePlanSheet(worksheet,file.name);
+      if (!parsed.longTermNumber || !parsed.recipientName) throw new Error("파일 안에서 수급자 성명 또는 장기요양인정번호를 찾지 못했습니다.");
+      if (!parsed.applicationStartDate) throw new Error("파일 안에서 장기요양급여 제공계획서 적용기간 시작일을 찾지 못했습니다.");
+      if (!parsed.rows.length) throw new Error("파일 안에서 급여 제공계획 목록을 찾지 못했습니다.");
+      const newPlan={id:String(Date.now()),...parsed,fileName:file.name,uploadedAt:new Date().toLocaleString("ko-KR"),uploadedBy:getLoginName(),itemCount:getCareItemCount(parsed.rows),checked:false};
       elPlanUploadTrigger.disabled=true; elPlanUploadTrigger.textContent="등록 중...";
       await addPlanToFirestore(newPlan);
-      elPlanFileSelector.value=""; elPlanDateSelector.value="";
+      elPlanFileSelector.value="";
       await loadLibrary();
-      alert("급여제공계획서가 Firebase에 등록되었습니다.");
-    } catch(error) { console.error(error); alert("등록 중 오류가 발생했습니다. Firestore 권한을 확인해주세요."); }
+      alert(`급여제공계획서가 Firebase에 등록되었습니다.\n\n${parsed.recipientName} / ${parsed.grade||"등급 미확인"}\n적용기간: ${parsed.applicationStartDate} ~ ${parsed.applicationEndDate||""}\n급여항목: ${parsed.rows.length}개${parsed.feeText ? `\n수가: ${parsed.feeText}` : ""}`);
+    } catch(error) { console.error(error); alert(`등록 중 오류가 발생했습니다.\n${error.message||error}`); }
     finally { elPlanUploadTrigger.disabled=false; elPlanUploadTrigger.textContent="계획서 등록"; }
   };
   reader.readAsArrayBuffer(file);
