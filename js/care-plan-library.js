@@ -77,22 +77,23 @@ function findValueNearLabel(rows, label) {
 }
 const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
 const FEE_RANGE_RE = new RegExp(FEE_RANGE_PATTERN, "g");
-function cleanFeeRange(value) { return cellText(value).replace(/\\s+/g, " ").trim(); }
+function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
 function cleanWeeklyCount(value) {
-  const n=String(value ?? "").match(/\\d+/)?.[0];
+  const n=String(value ?? "").match(/\d+/)?.[0];
   return n ? `주 ${n}회` : "";
 }
 function extractWeeklyFeePairs(text) {
-  const re=new RegExp(`주\\s*(\\d+)\\s*회[\\s\\S]{0,90}?${FEE_RANGE_PATTERN}`, "g");
+  const source = cellText(text).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+  const re = new RegExp(`주\\s*(\\d+)\\s*회(?:(?!주\\s*\\d+\\s*회)[\\s\\S]){0,140}?${FEE_RANGE_PATTERN}`, "g");
   const pairs=[];
   let m;
-  while ((m=re.exec(text)) !== null) {
+  while ((m=re.exec(source)) !== null) {
     pairs.push({ count: cleanWeeklyCount(m[1]), fee: cleanFeeRange(m[2]), index: m.index });
   }
   return pairs;
 }
 function extractFeeInfo(opinion) {
-  const text=cellText(opinion).replace(/\\r/g, " ").replace(/\\n/g, " ").replace(/\\s+/g, " ").trim();
+  const text=cellText(opinion).replace(/\r/g, " ").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   const result={
     planFee:"", planWeeklyCount:"",
     weekdayFee:"", weekdayWeeklyCount:"",
