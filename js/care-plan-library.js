@@ -76,69 +76,54 @@ function findValueNearLabel(rows, label) {
   return "";
 }
 const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
-function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
+const FEE_RANGE_RE = new RegExp(FEE_RANGE_PATTERN, "g");
+function cleanFeeRange(value) { return cellText(value).replace(/\\s+/g, " ").trim(); }
 function cleanWeeklyCount(value) {
-  const n=String(value ?? "").match(/\d+/)?.[0];
+  const n=String(value ?? "").match(/\\d+/)?.[0];
   return n ? `주 ${n}회` : "";
 }
-function normalizeOpinionText(value) {
-  return cellText(value)
-    .replace(/[\r\n\t]+/g, " ")
-    .replace(/\u00a0/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-function extractWeeklyFeePairs(value) {
-  const text=normalizeOpinionText(value);
-  const feeRe=new RegExp(FEE_RANGE_PATTERN, "g");
+function extractWeeklyFeePairs(text) {
+  const re=new RegExp(`주\\s*(\\d+)\\s*회[\\s\\S]{0,90}?${FEE_RANGE_PATTERN}`, "g");
   const pairs=[];
   let m;
-  while ((m=feeRe.exec(text)) !== null) {
-    const fee=cleanFeeRange(m[1]);
-    // 해당 수가 바로 앞의 '주 N회'를 찾습니다. 문장 중간에 다른 수가가 끼어 있으면 그 앞 횟수는 사용하지 않습니다.
-    const left=text.slice(Math.max(0, m.index-140), m.index);
-    const countMatches=[...left.matchAll(/주\s*(\d+)\s*회/g)];
-    let count="";
-    if (countMatches.length) {
-      const last=countMatches[countMatches.length-1];
-      const afterCount=left.slice((last.index || 0) + last[0].length);
-      const anotherFee=new RegExp(FEE_RANGE_PATTERN).test(afterCount);
-      if (!anotherFee) count=cleanWeeklyCount(last[1]);
-    }
-    pairs.push({ count, fee, index:m.index });
+  while ((m=re.exec(text)) !== null) {
+    pairs.push({ count: cleanWeeklyCount(m[1]), fee: cleanFeeRange(m[2]), index: m.index });
   }
   return pairs;
 }
 function extractFeeInfo(opinion) {
-  const text=normalizeOpinionText(opinion);
+  const text=cellText(opinion).replace(/\\r/g, " ").replace(/\\n/g, " ").replace(/\\s+/g, " ").trim();
   const result={
     planFee:"", planWeeklyCount:"",
     weekdayFee:"", weekdayWeeklyCount:"",
     weekendFee:"", weekendWeeklyCount:"",
     feeText:""
   };
+  // 종합의견 영역에 실제로 "수가"라는 글자가 전혀 없는 경우에만 수가/횟수를 모두 비웁니다.
   if (!text || !text.includes("수가")) return result;
 
-  // '명시되어 있으나/계획되어 있으나'를 기준으로 원 계획 수가와 실제 이용 수가를 나눕니다.
-  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\s*있으나|(?:명시|계획)[^,.]{0,40}?(?:수급자|보호자|욕구)/);
+  // '명시되어 있으나/계획되어 있으나' 앞은 개인별장기요양이용계획서상의 원래 수가입니다.
+  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\\s*있으나|(?:명시|계획)[^,.]{0,30}?(?:수급자|보호자|욕구)/);
   const splitIndex=splitMatch ? splitMatch.index + splitMatch[0].length : -1;
   const beforeText=splitIndex >= 0 ? text.slice(0, splitIndex) : text;
   const afterText=splitIndex >= 0 ? text.slice(splitIndex) : text;
 
   const planPairs=extractWeeklyFeePairs(beforeText);
+  const planRanges=beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
   if (planPairs.length) {
     const p=planPairs[planPairs.length-1];
     result.planFee=p.fee;
     result.planWeeklyCount=p.count;
-  } else {
-    const ranges=beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
-    if (ranges.length) result.planFee=cleanFeeRange(ranges[ranges.length-1]);
+  } else if (planRanges.length) {
+    result.planFee=cleanFeeRange(planRanges[planRanges.length-1]);
   }
 
+  // 실제 이용 수가는 원래 계획서 문구 뒤에 등장하는 순서대로 평일, 주말로 저장합니다.
+  // 주 5회/주 1회로 고정하지 않아 주 3회, 주 2회 등도 그대로 추출합니다.
   let actualPairs=extractWeeklyFeePairs(afterText);
-  if (splitIndex < 0) {
+  if (!actualPairs.length && splitIndex < 0) {
     const allPairs=extractWeeklyFeePairs(text);
-    actualPairs=planPairs.length ? allPairs.slice(planPairs.length) : allPairs.slice(1);
+    actualPairs=planPairs.length ? allPairs.slice(planPairs.length) : allPairs;
   }
   if (actualPairs[0]) {
     result.weekdayFee=actualPairs[0].fee;

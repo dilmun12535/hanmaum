@@ -524,6 +524,8 @@ function getMealCountFromPlan(plan) {
     const text = objectToCleanText(obj);
     return (
       text.includes("균형잡힌식단관리") ||
+      text.includes("균형잡힌식사") ||
+      text.includes("영양상태유지") ||
       text.includes("식단관리") ||
       text.includes("식사도움") ||
       text.includes("식사제공") ||
