@@ -2,9 +2,9 @@ let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 let attendanceLibraryCache = [];
 
-async function loadCarePlanLibraryFromFirestore() {
+async function loadCarePlanLibraryFromFirestore(monthValue) {
   try {
-    carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
+    carePlanLibraryCache = await window.HanmaumFirestore.carePlans(monthValue);
     return carePlanLibraryCache;
   } catch (error) {
     console.error("Firebase 급여제공계획서 조회 오류:", error);
@@ -14,9 +14,9 @@ async function loadCarePlanLibraryFromFirestore() {
 }
 
 
-async function loadCounselLibraryFromFirestore() {
+async function loadCounselLibraryFromFirestore(monthValue) {
   try {
-    counselLibraryCache = await window.HanmaumFirestore.counsels();
+    counselLibraryCache = await window.HanmaumFirestore.counsels(monthValue);
     return counselLibraryCache;
   } catch (error) {
     console.error("Firebase 상담일지 조회 오류:", error);
@@ -39,8 +39,6 @@ async function loadAttendanceMonthFromFirestore(monthValue) {
 
 
 // 초기 Firebase 데이터 불러오기
-loadCarePlanLibraryFromFirestore();
-loadCounselLibraryFromFirestore();
 
 const checkMonthInput = document.getElementById("checkMonth");
 const therapyFileInput = document.getElementById("therapyFile");
@@ -764,8 +762,8 @@ checkTherapyBtn.addEventListener("click", async () => {
     return;
   }
 
-  await loadCarePlanLibraryFromFirestore();
-  await loadCounselLibraryFromFirestore();
+  await loadCarePlanLibraryFromFirestore(checkMonth);
+  await loadCounselLibraryFromFirestore(checkMonth);
   await loadAttendanceMonthFromFirestore(checkMonth);
   applyTherapyReadableStyle();
 

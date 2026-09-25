@@ -2,9 +2,9 @@ let carePlanLibraryCache = [];
 let counselLibraryCache = [];
 let attendanceLibraryCache = [];
 
-async function loadCarePlanLibraryFromFirestore() {
+async function loadCarePlanLibraryFromFirestore(monthValue) {
   try {
-    carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
+    carePlanLibraryCache = await window.HanmaumFirestore.carePlans(monthValue);
     return carePlanLibraryCache;
   } catch (error) {
     console.error("Firebase 급여제공계획서 조회 오류:", error);
@@ -14,9 +14,9 @@ async function loadCarePlanLibraryFromFirestore() {
 }
 
 
-async function loadCounselLibraryFromFirestore() {
+async function loadCounselLibraryFromFirestore(monthValue) {
   try {
-    counselLibraryCache = await window.HanmaumFirestore.counsels();
+    counselLibraryCache = await window.HanmaumFirestore.counsels(monthValue);
     return counselLibraryCache;
   } catch (error) {
     console.error("Firebase 상담일지 조회 오류:", error);
@@ -1079,8 +1079,8 @@ checkBathBtn.addEventListener("click", async () => {
     alert("목욕 리포트 파일을 업로드해주세요.");
     return;
   }
-  await loadCarePlanLibraryFromFirestore();
-  await loadCounselLibraryFromFirestore();
+  await loadCarePlanLibraryFromFirestore(checkMonth);
+  await loadCounselLibraryFromFirestore(checkMonth);
   await loadAttendanceMonthFromFirestore(checkMonth);
 
   const reader = new FileReader();
@@ -1105,5 +1105,3 @@ clearBathBtn.addEventListener("click", () => {
 localStorage.removeItem("counselLibrary");
 localStorage.removeItem("carePlanLibrary");
 
-loadCarePlanLibraryFromFirestore();
-loadCounselLibraryFromFirestore();

@@ -26,9 +26,9 @@ function parseApiJson(text, fallbackValue, label) {
   }
 }
 
-async function loadCarePlanLibraryFromFirestore() {
+async function loadCarePlanLibraryFromFirestore(monthValue) {
   try {
-    carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
+    carePlanLibraryCache = await window.HanmaumFirestore.carePlans(monthValue);
     return carePlanLibraryCache;
   } catch (error) {
     console.error("Firebase 급여제공계획서 조회 오류:", error);
@@ -38,9 +38,9 @@ async function loadCarePlanLibraryFromFirestore() {
 }
 
 
-async function loadCounselLibraryFromFirestore() {
+async function loadCounselLibraryFromFirestore(monthValue) {
   try {
-    counselLibraryCache = await window.HanmaumFirestore.counsels();
+    counselLibraryCache = await window.HanmaumFirestore.counsels(monthValue);
     return counselLibraryCache;
   } catch (error) {
     console.error("Firebase 상담일지 조회 오류:", error);
@@ -1085,8 +1085,8 @@ checkMealBtn.addEventListener("click", async () => {
   if (!file) { alert("식사/화장실 기록 파일을 업로드해주세요."); return; }
 
   console.log("Firebase에서 계획서, 상담일지, 출석 데이터를 불러옵니다.");
-  await loadCarePlanLibraryFromFirestore();
-  await loadCounselLibraryFromFirestore();
+  await loadCarePlanLibraryFromFirestore(checkMonth);
+  await loadCounselLibraryFromFirestore(checkMonth);
   await loadAttendanceMonthFromFirestore(checkMonth);
   applyMealStyle();
 

@@ -451,11 +451,12 @@ async function saveAttendanceMonth(monthValue, items, fileName) {
 
 async function loadAttendanceMonth(monthValue) {
   const { db, fs } = await getFirestoreModules();
-  const snap = await fs.getDocs(fs.collection(db, 'attendance'));
+  const month = String(monthValue || '').slice(0, 7);
+  const q = fs.query(fs.collection(db, 'attendance'), fs.where('month', '==', month));
+  const snap = await fs.getDocs(q);
 
   return snap.docs
     .map((d) => ({ firestoreId: d.id, ...d.data() }))
-    .filter((item) => String(item.month || item.attendanceMonth || '').slice(0, 7) === String(monthValue).slice(0, 7))
     .map((item) => ({
       name: item.recipientName || item.name || '',
       longTermNumber: item.longTermNumber || item.certNumber || '',
@@ -472,8 +473,10 @@ async function loadAttendanceMonth(monthValue) {
 
 async function deleteAttendanceMonth(monthValue) {
   const { db, fs } = await getFirestoreModules();
-  const snap = await fs.getDocs(fs.collection(db, 'attendance'));
-  const targets = snap.docs.filter((d) => String(d.data().month || d.data().attendanceMonth || '').slice(0, 7) === String(monthValue).slice(0, 7));
+  const month = String(monthValue || '').slice(0, 7);
+  const q = fs.query(fs.collection(db, 'attendance'), fs.where('month', '==', month));
+  const snap = await fs.getDocs(q);
+  const targets = snap.docs;
   for (const d of targets) await fs.deleteDoc(fs.doc(db, 'attendance', d.id));
 }
 

@@ -3,9 +3,9 @@ let counselLibraryCache = [];
 let attendanceLibraryCache = [];
 
 // 💡 [영구 조치]: 브라우저 저장 용량을 터트리던 localStorage 구문을 완전히 삭제하고 안전한 메모리 변수 수신 방식으로 리모델링했습니다.
-async function loadCarePlanLibraryFromFirestore() {
+async function loadCarePlanLibraryFromFirestore(monthValue) {
   try {
-    carePlanLibraryCache = await window.HanmaumFirestore.carePlans();
+    carePlanLibraryCache = await window.HanmaumFirestore.carePlans(monthValue);
     return carePlanLibraryCache;
   } catch (error) {
     console.error("Firebase 급여제공계획서 조회 오류:", error);
@@ -15,9 +15,9 @@ async function loadCarePlanLibraryFromFirestore() {
 }
 
 
-async function loadCounselLibraryFromFirestore() {
+async function loadCounselLibraryFromFirestore(monthValue) {
   try {
-    counselLibraryCache = await window.HanmaumFirestore.counsels();
+    counselLibraryCache = await window.HanmaumFirestore.counsels(monthValue);
     return counselLibraryCache;
   } catch (error) {
     console.error("Firebase 상담일지 조회 오류:", error);
@@ -40,8 +40,6 @@ async function loadAttendanceMonthFromFirestore(monthValue) {
 
 
 // 초기 Firebase 데이터 불러오기 가동
-loadCarePlanLibraryFromFirestore();
-loadCounselLibraryFromFirestore();
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
@@ -694,8 +692,8 @@ checkMedicationBtn.addEventListener("click", async () => {
 
   if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
   if (!medicationFile) { alert("투약 제공 현황 파일을 업로드해주세요."); return; }
-  await loadCarePlanLibraryFromFirestore();
-  await loadCounselLibraryFromFirestore(); 
+  await loadCarePlanLibraryFromFirestore(checkMonth);
+  await loadCounselLibraryFromFirestore(checkMonth); 
   await loadAttendanceMonthFromFirestore(checkMonth);
   applySplitCheckStyle();
 
