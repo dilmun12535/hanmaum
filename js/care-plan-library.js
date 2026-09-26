@@ -78,19 +78,17 @@ function findValueNearLabel(rows, label) {
 const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
 const FEE_RANGE_RE = new RegExp(FEE_RANGE_PATTERN, "g");
 function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
-function cleanWeeklyCount(value, unit="주") {
+function cleanFrequencyCount(unit, value) {
   const n=String(value ?? "").match(/\d+/)?.[0];
-  return n ? `${unit} ${n}회` : "";
+  return n ? `${unit === "월" ? "월" : "주"} ${n}회` : "";
 }
-function extractWeeklyFeePairs(text) {
-  // 실제 계획서에는 "주 5회", "주5회", "주 1회(토요일)", "월 25회" 등
-  // 여러 형태가 섞여 있으므로 횟수와 바로 뒤 시간구간을 한 묶음으로 읽습니다.
+function extractFrequencyFeePairs(text) {
   const source = cellText(text).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
   const re = new RegExp(`(주|월)\\s*(\\d+)\\s*회(?:(?!(?:주|월)\\s*\\d+\\s*회)[\\s\\S]){0,180}?${FEE_RANGE_PATTERN}`, "g");
   const pairs=[];
   let m;
   while ((m=re.exec(source)) !== null) {
-    pairs.push({ count: cleanWeeklyCount(m[2], m[1]), fee: cleanFeeRange(m[3]), index: m.index, unit:m[1] });
+    pairs.push({ count: cleanFrequencyCount(m[1], m[2]), fee: cleanFeeRange(m[3]), index: m.index });
   }
   return pairs;
 }
@@ -102,17 +100,17 @@ function extractFeeInfo(opinion) {
     weekendFee:"", weekendWeeklyCount:"",
     feeText:""
   };
-  // 종합의견 영역에 실제로 "수가"라는 글자가 전혀 없는 경우에만 비웁니다.
+  // 종합의견에 '수가'라는 글자가 전혀 없을 때만 수가/횟수를 비웁니다.
   if (!text || !text.includes("수가")) return result;
 
-  // "명시되어있으나/명시되어 있으나/계획되어 있으나"를 기준으로
-  // 앞쪽은 개인별장기요양이용계획서, 뒤쪽은 실제 이용 수가로 구분합니다.
-  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\s*있으나|(?:명시|계획)[^,.]{0,30}?(?:수급자|보호자|욕구)/);
+  // '명시되어 있으나/명시되어있으나/계획되어 있으나'를 실제 공백으로 인식합니다.
+  // 기존 코드의 정규식은 \\s가 들어가 일부 과거 양식에서 분리되지 않는 문제가 있었습니다.
+  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\s*있으나/);
   const splitIndex=splitMatch ? splitMatch.index + splitMatch[0].length : -1;
   const beforeText=splitIndex >= 0 ? text.slice(0, splitIndex) : text;
   const afterText=splitIndex >= 0 ? text.slice(splitIndex) : "";
 
-  const planPairs=extractWeeklyFeePairs(beforeText);
+  const planPairs=extractFrequencyFeePairs(beforeText);
   const planRanges=beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
   if (planPairs.length) {
     const p=planPairs[planPairs.length-1];
@@ -122,11 +120,8 @@ function extractFeeInfo(opinion) {
     result.planFee=cleanFeeRange(planRanges[planRanges.length-1]);
   }
 
-  let actualPairs=extractWeeklyFeePairs(afterText);
-  if (!actualPairs.length && splitIndex < 0) {
-    const allPairs=extractWeeklyFeePairs(text);
-    actualPairs=planPairs.length ? allPairs.slice(planPairs.length) : allPairs;
-  }
+  // '명시되어 있으나' 뒤쪽의 이용 수가를 순서대로 평일/주말로 저장합니다.
+  const actualPairs=extractFrequencyFeePairs(afterText);
   if (actualPairs[0]) {
     result.weekdayFee=actualPairs[0].fee;
     result.weekdayWeeklyCount=actualPairs[0].count;
@@ -280,6 +275,33 @@ function exportPlansToExcel() {
   XLSX.writeFile(wb, `요양급여제공계획서_${label}_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
+function fillMissingGradesFromSameRecipient(plans) {
+  // 일부 구형 계획서 원본은 '장기요양등급' 칸 자체가 공란입니다.
+  // 같은 인정번호의 다른 계획서에 등급이 있으면 가장 가까운 적용일의 등급을 화면 표시용으로 보완합니다.
+  const groups=new Map();
+  plans.forEach(p => {
+    const key=String(p.longTermNumber||"").trim();
+    if (!key) return;
+    if (!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(p);
+  });
+  for (const list of groups.values()) {
+    const graded=list.filter(p => String(p.grade||"").trim());
+    if (!graded.length) continue;
+    list.forEach(p => {
+      if (String(p.grade||"").trim()) return;
+      const target=new Date(normalizeDateString(p.applicationStartDate || p.writtenDate) || "1900-01-01").getTime();
+      const nearest=[...graded].sort((a,b) => {
+        const ad=Math.abs(new Date(normalizeDateString(a.applicationStartDate || a.writtenDate) || "1900-01-01").getTime()-target);
+        const bd=Math.abs(new Date(normalizeDateString(b.applicationStartDate || b.writtenDate) || "1900-01-01").getTime()-target);
+        return ad-bd;
+      })[0];
+      if (nearest?.grade) p.grade=nearest.grade;
+    });
+  }
+  return plans;
+}
+
 async function loadLibrary() {
   try {
     if (!currentUser) return;
@@ -297,6 +319,7 @@ async function loadLibrary() {
         checked: false
       };
     });
+    carePlanLibrary = fillMissingGradesFromSameRecipient(carePlanLibrary);
     if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
     renderLibrary();
   } catch (error) {
