@@ -76,14 +76,14 @@ function findValueNearLabel(rows, label) {
   return "";
 }
 const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
-function cleanFeeRange(value) { return cellText(value).replace(/\\s+/g, " ").trim(); }
+function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
 function cleanFrequencyCount(unit, value) {
-  const n=String(value ?? "").match(/\\d+/)?.[0];
+  const n=String(value ?? "").match(/\d+/)?.[0];
   return n ? `${unit === "월" ? "월" : "주"} ${n}회` : "";
 }
 function extractFrequencyFeePairs(text) {
-  const source = cellText(text).replace(/\\r?\\n/g, " ").replace(/\\s+/g, " ").trim();
-  const freqRe = /(주|월)\\s*(\\d+)\\s*회/g;
+  const source = cellText(text).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+  const freqRe = /(주|월)\s*(\d+)\s*회/g;
   const feeRe = new RegExp(FEE_RANGE_PATTERN, "g");
   const freqs=[], fees=[];
   let m;
@@ -102,7 +102,7 @@ function extractFrequencyFeePairs(text) {
   return pairs;
 }
 function extractFeeInfo(opinion) {
-  const text=cellText(opinion).replace(/\\r/g, " ").replace(/\\n/g, " ").replace(/\\s+/g, " ").trim();
+  const text=cellText(opinion).replace(/\r/g, " ").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
   const result={
     planFee:"", planWeeklyCount:"",
     weekdayFee:"", weekdayWeeklyCount:"",
@@ -112,7 +112,7 @@ function extractFeeInfo(opinion) {
   if (!text || !text.includes("수가")) return result;
 
   // 계획서 문장과 실제 이용 문장을 '명시/계획되어 있으나'를 기준으로 정확히 분리한다.
-  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\\s*있으나/);
+  const splitMatch=text.match(/(?:명시|계획)(?:\s*되어)?\s*있으나/);
   const splitIndex=splitMatch ? splitMatch.index + splitMatch[0].length : -1;
   const beforeText=splitIndex >= 0 ? text.slice(0, splitIndex) : text;
   const afterText=splitIndex >= 0 ? text.slice(splitIndex) : "";
