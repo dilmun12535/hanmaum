@@ -75,52 +75,56 @@ function findValueNearLabel(rows, label) {
   }
   return "";
 }
-const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
-const FEE_RANGE_RE = new RegExp(FEE_RANGE_PATTERN, "g");
-function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
+const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
+function cleanFeeRange(value) { return cellText(value).replace(/\\s+/g, " ").trim(); }
 function cleanFrequencyCount(unit, value) {
-  const n=String(value ?? "").match(/\d+/)?.[0];
+  const n=String(value ?? "").match(/\\d+/)?.[0];
   return n ? `${unit === "월" ? "월" : "주"} ${n}회` : "";
 }
 function extractFrequencyFeePairs(text) {
-  const source = cellText(text).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-  const re = new RegExp(`(주|월)\\s*(\\d+)\\s*회(?:(?!(?:주|월)\\s*\\d+\\s*회)[\\s\\S]){0,180}?${FEE_RANGE_PATTERN}`, "g");
-  const pairs=[];
+  const source = cellText(text).replace(/\\r?\\n/g, " ").replace(/\\s+/g, " ").trim();
+  const freqRe = /(주|월)\\s*(\\d+)\\s*회/g;
+  const feeRe = new RegExp(FEE_RANGE_PATTERN, "g");
+  const freqs=[], fees=[];
   let m;
-  while ((m=re.exec(source)) !== null) {
-    pairs.push({ count: cleanFrequencyCount(m[1], m[2]), fee: cleanFeeRange(m[3]), index: m.index });
+  while ((m=freqRe.exec(source)) !== null) freqs.push({count:cleanFrequencyCount(m[1],m[2]), index:m.index, end:freqRe.lastIndex});
+  while ((m=feeRe.exec(source)) !== null) fees.push({fee:cleanFeeRange(m[1]), index:m.index, end:feeRe.lastIndex});
+
+  // 횟수 바로 뒤에 실제로 적혀 있는 시간구간만 연결한다.
+  // 다음 횟수가 나오기 전의 첫 시간구간만 허용하여 다른 문장의 수가가 섞이지 않게 한다.
+  const pairs=[];
+  for (let i=0;i<freqs.length;i++) {
+    const f=freqs[i];
+    const nextFreqIndex = i+1 < freqs.length ? freqs[i+1].index : source.length;
+    const fee = fees.find(x => x.index >= f.end && x.index < nextFreqIndex && x.index-f.end <= 100);
+    if (fee) pairs.push({count:f.count, fee:fee.fee, index:f.index});
   }
   return pairs;
 }
 function extractFeeInfo(opinion) {
-  const text=cellText(opinion).replace(/\r/g, " ").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
+  const text=cellText(opinion).replace(/\\r/g, " ").replace(/\\n/g, " ").replace(/\\s+/g, " ").trim();
   const result={
     planFee:"", planWeeklyCount:"",
     weekdayFee:"", weekdayWeeklyCount:"",
     weekendFee:"", weekendWeeklyCount:"",
     feeText:""
   };
-  // 종합의견에 '수가'라는 글자가 전혀 없을 때만 수가/횟수를 비웁니다.
   if (!text || !text.includes("수가")) return result;
 
-  // '명시되어 있으나/명시되어있으나/계획되어 있으나'를 실제 공백으로 인식합니다.
-  // 기존 코드의 정규식은 \\s가 들어가 일부 과거 양식에서 분리되지 않는 문제가 있었습니다.
-  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\s*있으나/);
+  // 계획서 문장과 실제 이용 문장을 '명시/계획되어 있으나'를 기준으로 정확히 분리한다.
+  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\\s*있으나/);
   const splitIndex=splitMatch ? splitMatch.index + splitMatch[0].length : -1;
   const beforeText=splitIndex >= 0 ? text.slice(0, splitIndex) : text;
   const afterText=splitIndex >= 0 ? text.slice(splitIndex) : "";
 
   const planPairs=extractFrequencyFeePairs(beforeText);
-  const planRanges=beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
   if (planPairs.length) {
+    // '개인별장기요양이용계획서'에 가장 가까운 마지막 정상 묶음을 계획서 기준으로 사용
     const p=planPairs[planPairs.length-1];
     result.planFee=p.fee;
     result.planWeeklyCount=p.count;
-  } else if (planRanges.length) {
-    result.planFee=cleanFeeRange(planRanges[planRanges.length-1]);
   }
 
-  // '명시되어 있으나' 뒤쪽의 이용 수가를 순서대로 평일/주말로 저장합니다.
   const actualPairs=extractFrequencyFeePairs(afterText);
   if (actualPairs[0]) {
     result.weekdayFee=actualPairs[0].fee;
