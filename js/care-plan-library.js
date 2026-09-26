@@ -138,6 +138,24 @@ function extractFeeInfo(opinion) {
   ].filter(Boolean).join("\\n");
   return result;
 }
+function normalizeCareGrade(value) {
+  const text=cellText(value).replace(/\s+/g, "");
+  const match=text.match(/(인지지원등급|[1-5]등급)/);
+  return match ? match[1] : "";
+}
+function findGradeNearLabel(rows, r, c) {
+  // 병합셀/구양식 때문에 값이 바로 오른쪽이 아닐 수 있어 주변 셀에서 실제 등급 형식만 찾습니다.
+  const candidates=[];
+  for (let rr=Math.max(0,r-1); rr<=Math.min(rows.length-1,r+2); rr++) {
+    const row=rows[rr]||[];
+    for (let cc=Math.max(0,c); cc<=Math.min(row.length-1,c+5); cc++) candidates.push(row[cc]);
+  }
+  for (const value of candidates) {
+    const grade=normalizeCareGrade(value);
+    if (grade) return grade;
+  }
+  return "";
+}
 function parseNewCarePlanSheet(ws, fileName) {
   const a=sheetRows(ws);
   let recipientName="", longTermNumber="", grade="", applicationPeriod="", writtenDate="", summaryOpinion="";
@@ -146,7 +164,7 @@ function parseNewCarePlanSheet(ws, fileName) {
     for (let c=0;c<row.length;c++) {
       const t=normalizeText(row[c]);
       if (t==="성명" && !recipientName) recipientName=firstNonEmpty(row,c+1);
-      if (t.includes("장기요양등급") && !grade) grade=firstNonEmpty(row,c+1);
+      if (t.includes("장기요양등급") && !grade) grade=findGradeNearLabel(a,r,c);
       if (t.includes("장기요양인정번호") && !longTermNumber) longTermNumber=firstNonEmpty(row,c+1);
       if (t.includes("장기요양급여제공계획서적용기간") && !applicationPeriod) applicationPeriod=firstNonEmpty(a[r+1]||[],c);
       if (t==="작성일" && !writtenDate) writtenDate=firstNonEmpty(a[r+1]||[],c);
@@ -170,6 +188,7 @@ function parseNewCarePlanSheet(ws, fileName) {
   const fileInfo=extractInfoFromFileName(fileName);
   recipientName ||= fileInfo.recipientName;
   longTermNumber ||= fileInfo.longTermNumber;
+  grade=normalizeCareGrade(grade);
   const period=parseDateRange(applicationPeriod);
   writtenDate=normalizeDateString(writtenDate) || period.start;
 
@@ -286,17 +305,19 @@ function fillMissingGradesFromSameRecipient(plans) {
     groups.get(key).push(p);
   });
   for (const list of groups.values()) {
-    const graded=list.filter(p => String(p.grade||"").trim());
+    const graded=list.filter(p => normalizeCareGrade(p.grade));
     if (!graded.length) continue;
     list.forEach(p => {
-      if (String(p.grade||"").trim()) return;
+      const ownGrade=normalizeCareGrade(p.grade);
+      if (ownGrade) { p.grade=ownGrade; return; }
+      p.grade="";
       const target=new Date(normalizeDateString(p.applicationStartDate || p.writtenDate) || "1900-01-01").getTime();
       const nearest=[...graded].sort((a,b) => {
         const ad=Math.abs(new Date(normalizeDateString(a.applicationStartDate || a.writtenDate) || "1900-01-01").getTime()-target);
         const bd=Math.abs(new Date(normalizeDateString(b.applicationStartDate || b.writtenDate) || "1900-01-01").getTime()-target);
         return ad-bd;
       })[0];
-      if (nearest?.grade) p.grade=nearest.grade;
+      if (nearest?.grade) p.grade=normalizeCareGrade(nearest.grade);
     });
   }
   return plans;
