@@ -75,29 +75,20 @@ function findValueNearLabel(rows, label) {
   }
   return "";
 }
-const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
+const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
+const FEE_RANGE_RE = new RegExp(FEE_RANGE_PATTERN, "g");
 function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
-function cleanFrequencyCount(unit, value) {
+function cleanWeeklyCount(value) {
   const n=String(value ?? "").match(/\d+/)?.[0];
-  return n ? `${unit === "월" ? "월" : "주"} ${n}회` : "";
+  return n ? `주 ${n}회` : "";
 }
-function extractFrequencyFeePairs(text) {
+function extractWeeklyFeePairs(text) {
   const source = cellText(text).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-  const freqRe = /(주|월)\s*(\d+)\s*회/g;
-  const feeRe = new RegExp(FEE_RANGE_PATTERN, "g");
-  const freqs=[], fees=[];
-  let m;
-  while ((m=freqRe.exec(source)) !== null) freqs.push({count:cleanFrequencyCount(m[1],m[2]), index:m.index, end:freqRe.lastIndex});
-  while ((m=feeRe.exec(source)) !== null) fees.push({fee:cleanFeeRange(m[1]), index:m.index, end:feeRe.lastIndex});
-
-  // 횟수 바로 뒤에 실제로 적혀 있는 시간구간만 연결한다.
-  // 다음 횟수가 나오기 전의 첫 시간구간만 허용하여 다른 문장의 수가가 섞이지 않게 한다.
+  const re = new RegExp(`주\\s*(\\d+)\\s*회(?:(?!주\\s*\\d+\\s*회)[\\s\\S]){0,140}?${FEE_RANGE_PATTERN}`, "g");
   const pairs=[];
-  for (let i=0;i<freqs.length;i++) {
-    const f=freqs[i];
-    const nextFreqIndex = i+1 < freqs.length ? freqs[i+1].index : source.length;
-    const fee = fees.find(x => x.index >= f.end && x.index < nextFreqIndex && x.index-f.end <= 100);
-    if (fee) pairs.push({count:f.count, fee:fee.fee, index:f.index});
+  let m;
+  while ((m=re.exec(source)) !== null) {
+    pairs.push({ count: cleanWeeklyCount(m[1]), fee: cleanFeeRange(m[2]), index: m.index });
   }
   return pairs;
 }
@@ -109,23 +100,32 @@ function extractFeeInfo(opinion) {
     weekendFee:"", weekendWeeklyCount:"",
     feeText:""
   };
+  // 종합의견 영역에 실제로 "수가"라는 글자가 전혀 없는 경우에만 수가/횟수를 모두 비웁니다.
   if (!text || !text.includes("수가")) return result;
 
-  // 계획서 문장과 실제 이용 문장을 '명시/계획되어 있으나'를 기준으로 정확히 분리한다.
-  const splitMatch=text.match(/(?:명시|계획)(?:\s*되어)?\s*있으나/);
+  // '명시되어 있으나/계획되어 있으나' 앞은 개인별장기요양이용계획서상의 원래 수가입니다.
+  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\\s*있으나|(?:명시|계획)[^,.]{0,30}?(?:수급자|보호자|욕구)/);
   const splitIndex=splitMatch ? splitMatch.index + splitMatch[0].length : -1;
   const beforeText=splitIndex >= 0 ? text.slice(0, splitIndex) : text;
-  const afterText=splitIndex >= 0 ? text.slice(splitIndex) : "";
+  const afterText=splitIndex >= 0 ? text.slice(splitIndex) : text;
 
-  const planPairs=extractFrequencyFeePairs(beforeText);
+  const planPairs=extractWeeklyFeePairs(beforeText);
+  const planRanges=beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
   if (planPairs.length) {
-    // '개인별장기요양이용계획서'에 가장 가까운 마지막 정상 묶음을 계획서 기준으로 사용
     const p=planPairs[planPairs.length-1];
     result.planFee=p.fee;
     result.planWeeklyCount=p.count;
+  } else if (planRanges.length) {
+    result.planFee=cleanFeeRange(planRanges[planRanges.length-1]);
   }
 
-  const actualPairs=extractFrequencyFeePairs(afterText);
+  // 실제 이용 수가는 원래 계획서 문구 뒤에 등장하는 순서대로 평일, 주말로 저장합니다.
+  // 주 5회/주 1회로 고정하지 않아 주 3회, 주 2회 등도 그대로 추출합니다.
+  let actualPairs=extractWeeklyFeePairs(afterText);
+  if (!actualPairs.length && splitIndex < 0) {
+    const allPairs=extractWeeklyFeePairs(text);
+    actualPairs=planPairs.length ? allPairs.slice(planPairs.length) : allPairs;
+  }
   if (actualPairs[0]) {
     result.weekdayFee=actualPairs[0].fee;
     result.weekdayWeeklyCount=actualPairs[0].count;
@@ -142,24 +142,6 @@ function extractFeeInfo(opinion) {
   ].filter(Boolean).join("\\n");
   return result;
 }
-function normalizeCareGrade(value) {
-  const text=cellText(value).replace(/\s+/g, "");
-  const match=text.match(/(인지지원등급|[1-5]등급)/);
-  return match ? match[1] : "";
-}
-function findGradeNearLabel(rows, r, c) {
-  // 병합셀/구양식 때문에 값이 바로 오른쪽이 아닐 수 있어 주변 셀에서 실제 등급 형식만 찾습니다.
-  const candidates=[];
-  for (let rr=Math.max(0,r-1); rr<=Math.min(rows.length-1,r+2); rr++) {
-    const row=rows[rr]||[];
-    for (let cc=Math.max(0,c); cc<=Math.min(row.length-1,c+5); cc++) candidates.push(row[cc]);
-  }
-  for (const value of candidates) {
-    const grade=normalizeCareGrade(value);
-    if (grade) return grade;
-  }
-  return "";
-}
 function parseNewCarePlanSheet(ws, fileName) {
   const a=sheetRows(ws);
   let recipientName="", longTermNumber="", grade="", applicationPeriod="", writtenDate="", summaryOpinion="";
@@ -168,7 +150,7 @@ function parseNewCarePlanSheet(ws, fileName) {
     for (let c=0;c<row.length;c++) {
       const t=normalizeText(row[c]);
       if (t==="성명" && !recipientName) recipientName=firstNonEmpty(row,c+1);
-      if (t.includes("장기요양등급") && !grade) grade=findGradeNearLabel(a,r,c);
+      if (t.includes("장기요양등급") && !grade) grade=firstNonEmpty(row,c+1);
       if (t.includes("장기요양인정번호") && !longTermNumber) longTermNumber=firstNonEmpty(row,c+1);
       if (t.includes("장기요양급여제공계획서적용기간") && !applicationPeriod) applicationPeriod=firstNonEmpty(a[r+1]||[],c);
       if (t==="작성일" && !writtenDate) writtenDate=firstNonEmpty(a[r+1]||[],c);
@@ -192,7 +174,6 @@ function parseNewCarePlanSheet(ws, fileName) {
   const fileInfo=extractInfoFromFileName(fileName);
   recipientName ||= fileInfo.recipientName;
   longTermNumber ||= fileInfo.longTermNumber;
-  grade=normalizeCareGrade(grade);
   const period=parseDateRange(applicationPeriod);
   writtenDate=normalizeDateString(writtenDate) || period.start;
 
@@ -298,35 +279,6 @@ function exportPlansToExcel() {
   XLSX.writeFile(wb, `요양급여제공계획서_${label}_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
-function fillMissingGradesFromSameRecipient(plans) {
-  // 일부 구형 계획서 원본은 '장기요양등급' 칸 자체가 공란입니다.
-  // 같은 인정번호의 다른 계획서에 등급이 있으면 가장 가까운 적용일의 등급을 화면 표시용으로 보완합니다.
-  const groups=new Map();
-  plans.forEach(p => {
-    const key=String(p.longTermNumber||"").trim();
-    if (!key) return;
-    if (!groups.has(key)) groups.set(key,[]);
-    groups.get(key).push(p);
-  });
-  for (const list of groups.values()) {
-    const graded=list.filter(p => normalizeCareGrade(p.grade));
-    if (!graded.length) continue;
-    list.forEach(p => {
-      const ownGrade=normalizeCareGrade(p.grade);
-      if (ownGrade) { p.grade=ownGrade; return; }
-      p.grade="";
-      const target=new Date(normalizeDateString(p.applicationStartDate || p.writtenDate) || "1900-01-01").getTime();
-      const nearest=[...graded].sort((a,b) => {
-        const ad=Math.abs(new Date(normalizeDateString(a.applicationStartDate || a.writtenDate) || "1900-01-01").getTime()-target);
-        const bd=Math.abs(new Date(normalizeDateString(b.applicationStartDate || b.writtenDate) || "1900-01-01").getTime()-target);
-        return ad-bd;
-      })[0];
-      if (nearest?.grade) p.grade=normalizeCareGrade(nearest.grade);
-    });
-  }
-  return plans;
-}
-
 async function loadLibrary() {
   try {
     if (!currentUser) return;
@@ -344,7 +296,6 @@ async function loadLibrary() {
         checked: false
       };
     });
-    carePlanLibrary = fillMissingGradesFromSameRecipient(carePlanLibrary);
     if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
     renderLibrary();
   } catch (error) {
