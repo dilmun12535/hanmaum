@@ -106,6 +106,7 @@
   window.HanmaumFirestore = {
     // 확인 월 출석자에 해당하는 계획서/상담일지만 읽습니다.
     carePlans: (monthValue) => queryForRecipients('carePlans', ['longTermNumber'], monthValue),
+    allCarePlans: () => all('carePlans'),
     counsels: (monthValue) => queryForRecipients('counsels', ['longTermNumber','certNumber'], monthValue, ['recipientName','name']),
     attendance,
     clearCache: () => cache.clear()
