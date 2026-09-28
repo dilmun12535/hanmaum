@@ -56,7 +56,29 @@ function getCareItemCount(rows) {
 }
 
 function cellText(v) { return String(v ?? "").replace(/\r/g, "").trim(); }
-function sheetRows(ws) { return XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false }); }
+function sheetRows(ws) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
+
+  // 엑셀 병합셀은 SheetJS에서 좌상단 셀에만 값이 남습니다.
+  // 예: N31:O32가 "일 2회"로 병합되어 있으면 32행(균형잡힌 식단 관리)의
+  // 횟수 칸은 빈칸처럼 읽힙니다. 병합 범위 전체에 좌상단 값을 복원하여
+  // 각 급여 행이 실제 화면에 보이는 횟수를 그대로 갖도록 합니다.
+  const merges = Array.isArray(ws?.["!merges"]) ? ws["!merges"] : [];
+  for (const merge of merges) {
+    const sr = merge.s.r, sc = merge.s.c, er = merge.e.r, ec = merge.e.c;
+    const topValue = rows?.[sr]?.[sc];
+    if (topValue === undefined || topValue === null || String(topValue).trim() === "") continue;
+    for (let r = sr; r <= er; r++) {
+      if (!rows[r]) rows[r] = [];
+      for (let c = sc; c <= ec; c++) {
+        if (rows[r][c] === undefined || rows[r][c] === null || String(rows[r][c]).trim() === "") {
+          rows[r][c] = topValue;
+        }
+      }
+    }
+  }
+  return rows;
+}
 function firstNonEmpty(row, start=0) {
   for (let i=start;i<row.length;i++) if (cellText(row[i])) return cellText(row[i]);
   return "";
