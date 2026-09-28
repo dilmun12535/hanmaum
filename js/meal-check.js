@@ -534,7 +534,21 @@ function getMealCountFromPlan(plan) {
     );
   });
 
+  // 식사 관련 항목이 여러 개 있으면 "균형잡힌 식단관리" 행을 최우선으로 사용한다.
+  // 예: 식사도움 1회 + 균형잡힌 식단관리 일 2회가 함께 있어도 최종 식사 횟수는 2회.
+  const priorityMealObjects = mealObjects.filter((obj) => {
+    const text = objectToCleanText(obj);
+    return text.includes("균형잡힌식단관리");
+  });
+
+  for (const obj of priorityMealObjects) {
+    const count = extractMealCountFromObject(obj);
+    if (count) return Math.min(count, 2);
+  }
+
+  // 우선 항목이 없을 때만 나머지 식사 관련 항목에서 횟수를 찾는다.
   for (const obj of mealObjects) {
+    if (priorityMealObjects.includes(obj)) continue;
     const count = extractMealCountFromObject(obj);
     if (count) return Math.min(count, 2);
   }
