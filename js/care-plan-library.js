@@ -46,10 +46,14 @@ function normalizeDateString(value) {
 function formatDateValue(value) { return normalizeDateString(value) || "-"; }
 function extractInfoFromFileName(fileName) {
   const nameOnly = fileName.replace(/\.(xlsx|xls)$/i, "").trim();
-  const match = nameOnly.match(/^(L\d+)\s+(.+?)\s+수급자\s+급여제공계획/i);
-  if (match) return { longTermNumber: match[1], recipientName: match[2].trim() };
-  const parts = nameOnly.split(/\s+/);
-  return { longTermNumber: parts[0] || "", recipientName: parts[1] || "" };
+  // 구버전: L240... 홍길동 수급자 급여제공계획 / 신버전: 장기요양급여 제공 계획서_홍길동_20250224
+  const legacy = nameOnly.match(/^(L\d+)\s+(.+?)\s+수급자\s+급여제공계획/i);
+  if (legacy) return { longTermNumber: legacy[1], recipientName: legacy[2].trim() };
+  const newer = nameOnly.match(/장기요양급여\s*제공\s*계획서[_\s-]+([가-힣]{2,5})(?:[_\s-]+\d{8})?$/i);
+  if (newer) return { longTermNumber: "", recipientName: newer[1].trim() };
+  const cert = nameOnly.match(/L\d{8,}/i)?.[0] || "";
+  const korean = nameOnly.match(/(?:^|[_\s-])([가-힣]{2,5})(?=[_\s-]|$)/)?.[1] || "";
+  return { longTermNumber: cert, recipientName: korean };
 }
 function getCareItemCount(rows) {
   return rows.filter(row => normalizeText(JSON.stringify(row)).length > 0).length;
@@ -97,6 +101,30 @@ function findValueNearLabel(rows, label) {
   }
   return "";
 }
+
+const CARE_PLAN_HEADER_WORDS = new Set([
+  "성명", "장기요양등급", "장기요양인정번호", "생년월일", "수급자와의관계", "작성일", "종합의견"
+]);
+function isHeaderLikeValue(value) {
+  const t=normalizeText(value);
+  return !t || CARE_PLAN_HEADER_WORDS.has(t) || /^(①수급자|②동의자)$/.test(t);
+}
+function findValidatedValueRight(rows, r, c, validator, maxCols=12) {
+  const row=rows[r] || [];
+  const label=normalizeText(row[c]);
+  for (let k=c+1; k<Math.min(row.length, c+maxCols+1); k++) {
+    const value=cellText(row[k]);
+    // 병합셀 복원으로 '성명 성명 성명 권선기'처럼 라벨이 반복될 수 있으므로 건너뜁니다.
+    if (!value || normalizeText(value)===label || isHeaderLikeValue(value)) continue;
+    if (!validator || validator(value)) return value;
+  }
+  return "";
+}
+function isRecipientNameValue(value) {
+  return /^[가-힣]{2,5}$/.test(cellText(value)) && !/^(성명|수급자|동의자)$/.test(cellText(value));
+}
+function isLongTermNumberValue(value) { return /^L\d{8,}$/i.test(cellText(value).replace(/\s/g,"")); }
+function isGradeValue(value) { return /^(?:[1-5]등급|인지지원등급)$/i.test(cellText(value).replace(/\s/g,"")); }
 const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
 const FEE_RANGE_RE = new RegExp(FEE_RANGE_PATTERN, "g");
 function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
@@ -171,9 +199,11 @@ function parseNewCarePlanSheet(ws, fileName) {
     const row=a[r]||[];
     for (let c=0;c<row.length;c++) {
       const t=normalizeText(row[c]);
-      if (t==="성명" && !recipientName) recipientName=firstNonEmpty(row,c+1);
-      if (t.includes("장기요양등급") && !grade) grade=firstNonEmpty(row,c+1);
-      if (t.includes("장기요양인정번호") && !longTermNumber) longTermNumber=firstNonEmpty(row,c+1);
+      // 신양식의 제목 셀 자체가 병합되어 있어 sheetRows() 복원 후
+      // '성명' 등이 오른쪽 칸에도 반복됩니다. 실제 값 형태를 검증해 찾아갑니다.
+      if (t==="성명" && !recipientName) recipientName=findValidatedValueRight(a,r,c,isRecipientNameValue,10);
+      if (t.includes("장기요양등급") && !grade) grade=findValidatedValueRight(a,r,c,isGradeValue,10);
+      if (t.includes("장기요양인정번호") && !longTermNumber) longTermNumber=findValidatedValueRight(a,r,c,isLongTermNumberValue,10).replace(/\s/g,"");
       if (t.includes("장기요양급여제공계획서적용기간") && !applicationPeriod) applicationPeriod=firstNonEmpty(a[r+1]||[],c);
       if (t==="작성일" && !writtenDate) writtenDate=firstNonEmpty(a[r+1]||[],c);
       if (t==="종합의견" && !summaryOpinion) {
@@ -194,6 +224,10 @@ function parseNewCarePlanSheet(ws, fileName) {
     }
   }
   const fileInfo=extractInfoFromFileName(fileName);
+  // 헤더 문자열이 실제 값으로 들어가는 것을 마지막 단계에서도 차단합니다.
+  if (!isRecipientNameValue(recipientName)) recipientName="";
+  if (!isLongTermNumberValue(longTermNumber)) longTermNumber="";
+  if (!isGradeValue(grade)) grade="";
   recipientName ||= fileInfo.recipientName;
   longTermNumber ||= fileInfo.longTermNumber;
   const period=parseDateRange(applicationPeriod);
@@ -412,10 +446,14 @@ function readWorkbookFile(file) {
     reader.readAsArrayBuffer(file);
   });
 }
-function isDuplicatePlan(parsed) {
+function findExistingPlan(parsed, fileName="") {
   const no=String(parsed.longTermNumber||"").trim();
   const start=normalizeDateString(parsed.applicationStartDate);
-  return carePlanLibrary.some(p => String(p.longTermNumber||"").trim()===no && normalizeDateString(p.applicationStartDate || p.writtenDate)===start);
+  const fn=String(fileName||"").trim();
+  return carePlanLibrary.find(p =>
+    (fn && String(p.fileName||"").trim()===fn) ||
+    (no && String(p.longTermNumber||"").trim()===no && normalizeDateString(p.applicationStartDate || p.writtenDate)===start)
+  );
 }
 
 if (elPlanUploadTrigger) elPlanUploadTrigger.addEventListener("click", async () => {
@@ -440,8 +478,11 @@ if (elPlanUploadTrigger) elPlanUploadTrigger.addEventListener("click", async () 
         if (!parsed.longTermNumber || !parsed.recipientName) throw new Error("수급자 성명 또는 장기요양인정번호를 찾지 못했습니다.");
         if (!parsed.applicationStartDate) throw new Error("적용기간 시작일을 찾지 못했습니다.");
         if (!parsed.rows.length) throw new Error("급여 제공계획 목록을 찾지 못했습니다.");
-        if (isDuplicatePlan(parsed)) { skipped++; continue; }
-        const newPlan={id:`${Date.now()}_${i}_${Math.random().toString(36).slice(2,8)}`,...parsed,fileName:file.name,uploadedAt:new Date().toLocaleString("ko-KR"),uploadedBy:getLoginName(),itemCount:getCareItemCount(parsed.rows),checked:false};
+        const existing=findExistingPlan(parsed,file.name);
+        // 같은 파일명 또는 같은 인정번호+적용시작일 자료가 있으면 새 중복행을 만들지 않고 교체합니다.
+        // 과거 파서가 '성명/장기요양인정번호/장기요양등급' 헤더를 값으로 저장한 자료도 재업로드만으로 바로잡힙니다.
+        const replacementId=existing ? String(existing.firestoreId || existing.id) : "";
+        const newPlan={id:replacementId || `${Date.now()}_${i}_${Math.random().toString(36).slice(2,8)}`,...parsed,fileName:file.name,uploadedAt:new Date().toLocaleString("ko-KR"),uploadedBy:getLoginName(),itemCount:getCareItemCount(parsed.rows),checked:false};
         await addPlanToFirestore(newPlan);
         carePlanLibrary.push({...newPlan, firestoreId:newPlan.id});
         success++;
