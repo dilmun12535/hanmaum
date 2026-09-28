@@ -63,22 +63,37 @@
     });
   }
 
-  async function recipientNumbersForMonth(month) {
+  async function recipientsForMonth(month) {
     const rows = await attendance(month);
-    return [...new Set(rows.map(x => String(x.longTermNumber || x.certNumber || '').trim()).filter(Boolean))];
+    return {
+      numbers: [...new Set(rows.map(x => String(x.longTermNumber || x.certNumber || '').trim()).filter(Boolean))],
+      names: [...new Set(rows.map(x => String(x.recipientName || x.name || '').trim()).filter(Boolean))]
+    };
   }
 
-  async function queryForRecipients(collectionName, fields, monthValue) {
+  async function queryForRecipients(collectionName, numberFields, monthValue, nameFields=[]) {
     await waitForSignedIn();
     const month = monthKey(monthValue);
     if (!month) return all(collectionName);
     return cached(`${collectionName}:recipients:${month}`, async () => {
-      const nums = await recipientNumbersForMonth(month);
-      if (!nums.length) return [];
+      const targets = await recipientsForMonth(month);
+      if (!targets.numbers.length && !targets.names.length) return [];
       const { db, fs } = await modules();
       const found = [];
-      for (const part of chunks(nums, 30)) {
-        for (const field of fields) {
+
+      // 인정번호가 있는 자료는 인정번호로 정확히 조회합니다.
+      for (const part of chunks(targets.numbers, 30)) {
+        for (const field of numberFields) {
+          const q = fs.query(fs.collection(db, collectionName), fs.where(field, 'in', part));
+          const snap = await fs.getDocs(q);
+          snap.docs.forEach(d => found.push(hydrate(d.data(), d.id)));
+        }
+      }
+
+      // 상담일지는 기존/신규 업로드 자료 중 인정번호가 저장되지 않은 문서가 있어
+      // 출석자의 수급자명으로도 조회합니다. 전체 컬렉션을 읽지 않고 해당 월 출석자만 조회합니다.
+      for (const part of chunks(targets.names, 30)) {
+        for (const field of nameFields) {
           const q = fs.query(fs.collection(db, collectionName), fs.where(field, 'in', part));
           const snap = await fs.getDocs(q);
           snap.docs.forEach(d => found.push(hydrate(d.data(), d.id)));
@@ -91,7 +106,7 @@
   window.HanmaumFirestore = {
     // 확인 월 출석자에 해당하는 계획서/상담일지만 읽습니다.
     carePlans: (monthValue) => queryForRecipients('carePlans', ['longTermNumber'], monthValue),
-    counsels: (monthValue) => queryForRecipients('counsels', ['longTermNumber','certNumber'], monthValue),
+    counsels: (monthValue) => queryForRecipients('counsels', ['longTermNumber','certNumber'], monthValue, ['recipientName','name']),
     attendance,
     clearCache: () => cache.clear()
   };
