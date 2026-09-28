@@ -544,6 +544,20 @@ function getMealCountFromPlan(plan) {
   for (const obj of priorityMealObjects) {
     const count = extractMealCountFromObject(obj);
     if (count) return Math.min(count, 2);
+
+    // 구버전/기존 Firebase 데이터 보정:
+    // 엑셀에서 `일 2회`가 위아래 급여행과 세로 병합된 경우,
+    // `균형잡힌 식단 관리` 행 자체의 횟수는 빈칸으로 저장되어 있을 수 있습니다.
+    // 이때 원본 급여목록에서 바로 인접한 행의 병합 횟수를 이어받습니다.
+    const sourceIndex = sourceObjects.indexOf(obj);
+    if (sourceIndex >= 0) {
+      for (const neighborIndex of [sourceIndex - 1, sourceIndex + 1]) {
+        if (neighborIndex < 0 || neighborIndex >= sourceObjects.length) continue;
+        const neighbor = sourceObjects[neighborIndex];
+        const neighborCount = extractMealCountFromObject(neighbor);
+        if (neighborCount) return Math.min(neighborCount, 2);
+      }
+    }
   }
 
   // 우선 항목이 없을 때만 나머지 식사 관련 항목에서 횟수를 찾는다.
