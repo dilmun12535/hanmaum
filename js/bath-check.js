@@ -4,7 +4,9 @@ let attendanceLibraryCache = [];
 
 async function loadCarePlanLibraryFromFirestore(monthValue) {
   try {
-    carePlanLibraryCache = await window.HanmaumFirestore.carePlans(monthValue);
+    const response = await window.HanmaumFirestore.carePlans(monthValue);
+    carePlanLibraryCache = Array.isArray(response) ? response : (response?.items || response?.data || response?.rows || []);
+    console.log("[목욕] 계획서 로드", carePlanLibraryCache.length, carePlanLibraryCache[0] || null);
     return carePlanLibraryCache;
   } catch (error) {
     console.error("Firebase 급여제공계획서 조회 오류:", error);
@@ -16,7 +18,9 @@ async function loadCarePlanLibraryFromFirestore(monthValue) {
 
 async function loadCounselLibraryFromFirestore(monthValue) {
   try {
-    counselLibraryCache = await window.HanmaumFirestore.counsels(monthValue);
+    const response = await window.HanmaumFirestore.counsels(monthValue);
+    counselLibraryCache = Array.isArray(response) ? response : (response?.items || response?.data || response?.rows || []);
+    console.log("[목욕] 상담일지 로드", counselLibraryCache.length, counselLibraryCache[0] || null);
     return counselLibraryCache;
   } catch (error) {
     console.error("Firebase 상담일지 조회 오류:", error);
@@ -28,7 +32,9 @@ async function loadCounselLibraryFromFirestore(monthValue) {
 
 async function loadAttendanceMonthFromFirestore(monthValue) {
   try {
-    attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
+    const response = await window.HanmaumFirestore.attendance(monthValue);
+    attendanceLibraryCache = Array.isArray(response) ? response : (response?.items || response?.data || response?.rows || []);
+    console.log("[목욕] 출석 로드", attendanceLibraryCache.length, attendanceLibraryCache[0] || null);
     return attendanceLibraryCache;
   } catch (error) {
     console.error("Firebase 출석관리 조회 오류:", error);
@@ -43,6 +49,16 @@ const bathFileInput = document.getElementById("bathFile");
 const checkBathBtn = document.getElementById("checkBathBtn");
 const clearBathBtn = document.getElementById("clearBathBtn");
 const bathResultBody = document.getElementById("bathResultBody");
+
+function getRecipientName(item) {
+  if (!item) return "";
+  return String(item.recipientName || item.name || item.recipient || item.userName || item["수급자명"] || item["성명"] || "").trim();
+}
+
+function getPlanWrittenDate(plan) {
+  if (!plan) return "";
+  return normalizeDateText(plan.writtenDate || plan.writeDate || plan.planDate || plan.createdDate || plan["작성일"] || plan["계획서작성일"] || "");
+}
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
@@ -362,18 +378,18 @@ function getWeekJudgeDate(monthValue, weekKey, weekData, weekStartDates, weekEnd
 function getLatestPlansByRecipient(checkDate) {
   const checkDateText = normalizeDateText(checkDate);
   const validPlans = carePlanLibraryCache.filter((plan) => {
-    const writtenDate = normalizeDateText(plan.writtenDate);
+    const writtenDate = getPlanWrittenDate(plan);
     return writtenDate && writtenDate <= checkDateText;
   });
 
   const latestByName = {};
   validPlans.forEach((plan) => {
-    const name = String(plan.recipientName || "").trim();
+    const name = getRecipientName(plan);
     if (!name) return;
 
     const current = latestByName[name];
-    const writtenDate = normalizeDateText(plan.writtenDate);
-    const currentDate = current ? normalizeDateText(current.writtenDate) : "";
+    const writtenDate = getPlanWrittenDate(plan);
+    const currentDate = current ? getPlanWrittenDate(current) : "";
 
     if (!current || writtenDate > currentDate) {
       latestByName[name] = { ...plan, writtenDate };
@@ -390,10 +406,10 @@ function getLatestPlanForRecipientAtDate(name, targetDate, grade = "", longTermN
 
   const validPlans = carePlanLibraryCache
     .filter((plan) => {
-      const writtenDate = normalizeDateText(plan.writtenDate);
+      const writtenDate = getPlanWrittenDate(plan);
       if (!writtenDate || writtenDate > targetDateText) return false;
 
-      const planName = normalizeText(plan.recipientName || "");
+      const planName = normalizeText(getRecipientName(plan));
       const planLongTermNumber = getLongTermNumberFromItem(plan);
 
       // 출석관리에서 인정번호를 가져올 수 있으면 인정번호로 먼저 정확히 구분합니다.
@@ -403,7 +419,7 @@ function getLatestPlanForRecipientAtDate(name, targetDate, grade = "", longTermN
 
       return planName === targetName;
     })
-    .sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
+    .sort((a, b) => getPlanWrittenDate(b).localeCompare(getPlanWrittenDate(a)));
 
   if (targetLongTermNumber) {
     const numberMatched = validPlans.find((plan) => getLongTermNumberFromItem(plan) === targetLongTermNumber);
@@ -422,8 +438,15 @@ function getLatestPlanForRecipientAtDate(name, targetDate, grade = "", longTermN
 }
 
 function hasBathPlan(plan) {
-  if (!plan || !plan.rows) return false;
-  const text = normalizeText(JSON.stringify(plan.rows));
+  if (!plan) return false;
+  const text = normalizeText(JSON.stringify([
+    plan.rows || [],
+    plan.rowsJson || "",
+    plan.items || [],
+    plan.benefits || [],
+    plan.content || "",
+    plan.opinion || ""
+  ]));
   return text.includes("몸씻기도움") || text.includes("몸씻기") || text.includes("목욕") || text.includes("B52");
 }
 
@@ -442,15 +465,20 @@ function getCounselDate(counsel) {
     counsel.date ||
     counsel.counselDate ||
     counsel.writtenDate ||
+    counsel.writeDate ||
+    counsel.createdDate ||
+    counsel["반영일"] ||
+    counsel["변경일"] ||
+    counsel["상담일"] ||
     ""
   );
 }
 
 function isPureBathCounsel(item) {
-  const categoryText = normalizeText(item.category || "");
-  const contentText = normalizeText(item.careContent || "");
-  const reasonText = normalizeText(item.reason || "");
-  const changeText = normalizeText(item.changeType || "");
+  const categoryText = normalizeText(item.category || item.type || item.serviceType || item["구분"] || "");
+  const contentText = normalizeText(item.careContent || item.content || item.counselContent || item.memo || item["내용"] || "");
+  const reasonText = normalizeText(item.reason || item.note || item.remark || item["사유"] || "");
+  const changeText = normalizeText(item.changeType || item.change || item.action || item["변경구분"] || "");
   const totalContent = categoryText + changeText + contentText + reasonText;
 
   // 옷입기/기저귀 등 다른 급여가 목욕으로 오인되지 않도록 제외
@@ -467,7 +495,7 @@ function isPureBathCounsel(item) {
 }
 
 function hasBathAction(item) {
-  const actionText = normalizeText(`${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
+  const actionText = normalizeText(`${item.changeType || item.change || item.action || ""} ${item.careContent || item.content || item.counselContent || ""} ${item.reason || item.note || item.remark || ""}`);
   return (
     actionText.includes("추가") || actionText.includes("제외") || actionText.includes("중단") ||
     actionText.includes("삭제") || actionText.includes("미제공") || actionText.includes("반영") ||
@@ -481,7 +509,7 @@ function getLatestBathCounsel(name, targetDate) {
 
   const bathCounsels = counselLibraryCache
     .filter((item) => {
-      const itemName = normalizeText(item.recipientName || "");
+      const itemName = normalizeText(getRecipientName(item));
       const sameName = itemName === targetName;
       if (!sameName) return false;
 
@@ -501,13 +529,13 @@ function getLatestBathCounsel(name, targetDate) {
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+  const text = normalizeText(`${counsel.changeType || counsel.change || counsel.action || ""} ${counsel.careContent || counsel.content || counsel.counselContent || ""} ${counsel.reason || counsel.note || counsel.remark || ""}`);
   return text.includes("제외") || text.includes("중단") || text.includes("삭제") || text.includes("미제공");
 }
 
 function isAddCounsel(counsel) {
   if (!counsel) return false;
-  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+  const text = normalizeText(`${counsel.changeType || counsel.change || counsel.action || ""} ${counsel.careContent || counsel.content || counsel.counselContent || ""} ${counsel.reason || counsel.note || counsel.remark || ""}`);
   return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
 }
 
@@ -628,11 +656,11 @@ function getCounselTextForMonth(name, monthEndDate) {
   if (!counsel) return "없음";
 
   const counselDate = getCounselDate(counsel);
-  let content = counsel.careContent || counsel.reason || "-";
+  let content = counsel.careContent || counsel.content || counsel.counselContent || counsel.reason || counsel.note || "-";
   if (content.length > 15) {
     content = content.substring(0, 15) + "...";
   }
-  return `${counselDate || "-"} / [${counsel.changeType || "-"}] <br/> ${content}`;
+  return `${counselDate || "-"} / [${counsel.changeType || counsel.change || counsel.action || "-"}] <br/> ${content}`;
 }
 
 function parseBathCell(value) {
@@ -1012,7 +1040,7 @@ function buildResults(monthValue, bathRows) {
       gender: person.gender || "",
       grade,
       longTermNumber,
-      planDate: monthPlan ? monthPlan.writtenDate : "-",
+      planDate: monthPlan ? getPlanWrittenDate(monthPlan) : "-",
       counselText: getCounselTextForMonth(name, displayCounselDate),
       requiredText: monthBathBenefit.required ? "있음" : "없음",
       bathBenefit: monthBathBenefit,
@@ -1104,4 +1132,3 @@ clearBathBtn.addEventListener("click", () => {
 
 localStorage.removeItem("counselLibrary");
 localStorage.removeItem("carePlanLibrary");
-
