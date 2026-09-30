@@ -301,55 +301,104 @@ function extractMedicationCountFromObject(obj) {
 function getMedicationCountFromPlan(plan) {
   if (!plan) return 0;
 
-  const sourceObjects = [
-    ...collectPlanObjects(plan.rows || []),
-    ...collectPlanObjects(plan.rowsJson || [])
+  // 계획서 보관함에 저장된 rows / rowsJson의 실제 "급여 행"을 기준으로 찾습니다.
+  // 종합의견에 복약 문구가 언급된 것만으로는 복약 대상자로 판정하지 않습니다.
+  const roots = [
+    tryParseJson(plan.rows || []),
+    tryParseJson(plan.rowsJson || [])
   ];
 
-  // 중요:
-  // 종합의견/세부제공내용/다른 급여항목에 '약', '복약', '투약'이라는 단어가
-  // 들어 있다는 이유만으로 복약 대상자로 잡지 않습니다.
-  // 실제 급여항목 값에 '정확한 복약도움'이 있는 객체만 인정합니다.
-  const isExactMedicationItem = (obj) => {
-    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+  const candidates = [];
 
-    return Object.entries(obj).some(([key, value]) => {
-      if (value === null || value === undefined || typeof value === "object") return false;
+  function walk(value) {
+    const parsed = tryParseJson(value);
 
-      const keyText = normalizeText(key);
-      const valueText = normalizeText(value);
+    if (Array.isArray(parsed)) {
+      // 배열 자체가 엑셀 한 행일 수 있으므로 후보로 저장
+      if (parsed.some(v => v !== null && v !== undefined && typeof v !== "object")) {
+        candidates.push(parsed);
+      }
+      parsed.forEach(walk);
+      return;
+    }
 
-      // 장기요양 필요내용/급여내용/항목명 등 실제 항목 필드에서만 판정
-      const isItemField =
-        keyText.includes("필요내용") ||
-        keyText.includes("급여내용") ||
-        keyText.includes("급여항목") ||
-        keyText.includes("항목명") ||
-        keyText.includes("서비스명") ||
-        keyText.includes("제공내용");
+    if (parsed && typeof parsed === "object") {
+      candidates.push(parsed);
+      Object.values(parsed).forEach(v => {
+        if (Array.isArray(v) || (v && typeof v === "object")) walk(v);
+      });
+    }
+  }
 
-      if (!isItemField) return false;
+  roots.forEach(walk);
 
-      // 정확한 복약도움 항목만 인정
-      return valueText === "정확한복약도움";
-    });
-  };
+  function scalarTexts(container) {
+    if (Array.isArray(container)) {
+      return container
+        .filter(v => v !== null && v !== undefined && typeof v !== "object")
+        .map(v => String(v));
+    }
+    if (container && typeof container === "object") {
+      return Object.values(container)
+        .filter(v => v !== null && v !== undefined && typeof v !== "object")
+        .map(v => String(v));
+    }
+    return [];
+  }
 
-  const medicationObjects = sourceObjects.filter(isExactMedicationItem);
+  function isMedicationBenefitRow(container) {
+    const values = scalarTexts(container);
+    if (!values.length) return false;
 
-  if (medicationObjects.length === 0) return 0;
+    const cleanValues = values.map(normalizeText);
+    const whole = cleanValues.join("|");
+
+    // 종합의견/비고처럼 다른 급여를 설명하는 긴 문장은 제외
+    if (
+      cleanValues.some(v => v === "종합의견" || v === "종합의견및총평") ||
+      whole.includes("*대체한급여") ||
+      whole.includes("*추가한급여") ||
+      whole.includes("*제외한급여")
+    ) return false;
+
+    // 실제 계획서 급여명:
+    // "정확한 복약도움" 또는 "정확한 복약도움(시간, 용량, 용법 등)"
+    return cleanValues.some(v =>
+      v === "정확한복약도움" ||
+      v.startsWith("정확한복약도움(") ||
+      v.startsWith("정확한복약도움（")
+    );
+  }
+
+  function countFromMedicationRow(container) {
+    const values = scalarTexts(container);
+
+    // 실제 계획서의 "일 1회 / 일 2회 / 일 3회" 형식을 우선 사용
+    for (const value of values) {
+      const t = String(value || "").replace(/\s/g, "");
+      let m = t.match(/(?:일)?([1-3])회/);
+      if (m) return Number(m[1]);
+    }
+
+    // 객체형 저장 데이터라면 횟수 필드도 확인
+    if (container && !Array.isArray(container) && typeof container === "object") {
+      const parsed = extractMedicationCountFromObject(container);
+      if (parsed) return parsed;
+    }
+
+    return 0;
+  }
 
   let result = 0;
-  medicationObjects.forEach((obj) => {
-    const count = extractMedicationCountFromObject(obj);
-    if (count && count > result) result = count;
+
+  candidates.forEach(container => {
+    if (!isMedicationBenefitRow(container)) return;
+    const count = countFromMedicationRow(container);
+    if (count > result) result = count;
   });
 
-  // 항목은 있으나 횟수 파싱이 안 되는 경우에는 1회로 임의 추정하지 않습니다.
-  // 화면에서 잘못된 횟수를 만드는 것보다 0회로 두어 확인 대상으로 잡히게 합니다.
-  return result > 0 ? Math.min(result, 3) : 0;
+  return Math.min(result, 3);
 }
-
 function getCounselDate(item) {
   return normalizeDateText(item.reflectionDate || item.reflection || item.consultDate || item.date || item.counselDate || "");
 }
