@@ -106,6 +106,8 @@ function getWeekEndDates(monthValue) {
   const monthStart = new Date(year, month - 1, 1);
   const monthEnd = new Date(year, month, 0);
 
+  // 월요일~일요일을 한 주로 보고, 해당 월 1일이 포함된 주는
+  // 전월 날짜까지 포함하여 1주차로 처리합니다.
   const dayOfWeek = monthStart.getDay();
   const daysFromMonday = (dayOfWeek + 6) % 7;
   const anchorMonday = new Date(monthStart);
@@ -115,17 +117,13 @@ function getWeekEndDates(monthValue) {
   for (let i = 0; i < 5; i++) {
     const weekStart = new Date(anchorMonday);
     weekStart.setDate(anchorMonday.getDate() + i * 7);
-    const weekFriday = new Date(weekStart);
-    weekFriday.setDate(weekStart.getDate() + 4);
+    const weekSunday = new Date(weekStart);
+    weekSunday.setDate(weekStart.getDate() + 6);
 
-    const currentStart = new Date(Math.max(weekStart.getTime(), monthStart.getTime()));
-    const currentEnd = new Date(Math.min(weekFriday.getTime(), monthEnd.getTime()));
-
-    if (currentStart.getTime() > currentEnd.getTime()) {
-      ranges[`week${i + 1}`] = null;
-    } else {
-      ranges[`week${i + 1}`] = `${currentEnd.getFullYear()}-${String(currentEnd.getMonth() + 1).padStart(2, "0")}-${String(currentEnd.getDate()).padStart(2, "0")}`;
-    }
+    // 규칙 판정일은 그 주의 마지막 날(일요일).
+    // 단, 마지막 주가 다음 달로 넘어가면 확인 월 말일까지만 봅니다.
+    const ruleDate = new Date(Math.min(weekSunday.getTime(), monthEnd.getTime()));
+    ranges[`week${i + 1}`] = `${ruleDate.getFullYear()}-${String(ruleDate.getMonth() + 1).padStart(2, "0")}-${String(ruleDate.getDate()).padStart(2, "0")}`;
   }
   return ranges;
 }
@@ -148,7 +146,9 @@ function getDaysInWeekRange(monthValue, weekKey) {
   for (let i = 0; i < 5; i++) {
     const current = new Date(weekStart);
     current.setDate(weekStart.getDate() + i);
-    if (current >= monthStart && current <= monthEnd) {
+    // 1주차는 전월 말일이 포함되어도 같은 주로 인정합니다.
+    // 출석 보관함에 전월 날짜가 함께 저장되어 있다면 그대로 반영됩니다.
+    if (current <= monthEnd) {
       days.push(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`);
     }
   }
