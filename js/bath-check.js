@@ -1060,13 +1060,65 @@ function buildResults(monthValue, bathRows) {
   });
 }
 
-function renderResults(results) {
+let bathLatestResults = [];
+let bathResultFilterMode = "all";
+
+function ensureBathResultFilterButtons() {
+  if (!bathResultBody) return;
+  const table = bathResultBody.closest("table");
+  if (!table || document.getElementById("bathResultFilterBar")) return;
+
+  const bar = document.createElement("div");
+  bar.id = "bathResultFilterBar";
+  bar.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin:0 0 10px 0;";
+  bar.innerHTML = `
+    <button type="button" id="bathFilterAllBtn" style="border:1px solid #1e40af;background:#1e40af;color:#fff;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">전체</button>
+    <button type="button" id="bathFilterCheckBtn" style="border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">확인 필요만</button>
+  `;
+  table.parentNode.insertBefore(bar, table);
+
+  document.getElementById("bathFilterAllBtn").addEventListener("click", () => {
+    bathResultFilterMode = "all";
+    updateBathFilterButtonStyle();
+    renderResults(bathLatestResults, true);
+  });
+
+  document.getElementById("bathFilterCheckBtn").addEventListener("click", () => {
+    bathResultFilterMode = "check";
+    updateBathFilterButtonStyle();
+    renderResults(bathLatestResults, true);
+  });
+}
+
+function updateBathFilterButtonStyle() {
+  const allBtn = document.getElementById("bathFilterAllBtn");
+  const checkBtn = document.getElementById("bathFilterCheckBtn");
+  if (!allBtn || !checkBtn) return;
+
+  const allActive = bathResultFilterMode === "all";
+  allBtn.style.background = allActive ? "#1e40af" : "#fff";
+  allBtn.style.color = allActive ? "#fff" : "#1e40af";
+  checkBtn.style.background = allActive ? "#fff" : "#dc2626";
+  checkBtn.style.color = allActive ? "#dc2626" : "#fff";
+}
+
+function renderResults(results, fromFilter = false) {
+  if (!fromFilter) bathLatestResults = Array.isArray(results) ? results : [];
+  ensureBathResultFilterButtons();
+  updateBathFilterButtonStyle();
+
+  const sourceResults = Array.isArray(results) ? results : [];
+  const visibleResults = bathResultFilterMode === "check"
+    ? sourceResults.filter((item) => item.overallResult === "확인 필요")
+    : sourceResults;
+
   bathResultBody.innerHTML = "";
-  if (!results || results.length === 0) {
-    bathResultBody.innerHTML = `<tr class="empty-row"><td colspan="10">확인할 데이터가 없습니다.</td></tr>`;
+  if (visibleResults.length === 0) {
+    const emptyText = bathResultFilterMode === "check" ? "확인 필요한 대상자가 없습니다." : "확인할 데이터가 없습니다.";
+    bathResultBody.innerHTML = `<tr class="empty-row"><td colspan="10">${emptyText}</td></tr>`;
     return;
   }
-  results.forEach((item) => {
+  visibleResults.forEach((item) => {
     const row = document.createElement("tr");
     
     if (item.overallResult === "확인 필요") {
@@ -1127,6 +1179,9 @@ checkBathBtn.addEventListener("click", async () => {
 clearBathBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
   bathFileInput.value = "";
+  bathLatestResults = [];
+  bathResultFilterMode = "all";
+  updateBathFilterButtonStyle();
   bathResultBody.innerHTML = `<tr class="empty-row"><td colspan="10">확인 월과 목욕 리포트 파일을 선택해주세요.</td></tr>`;
 });
 
