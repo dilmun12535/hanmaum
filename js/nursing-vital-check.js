@@ -448,6 +448,81 @@ const clearNursingVitalBtn = document.getElementById("clearNursingVitalBtn");
 const nursingVitalTableHead = document.getElementById("nursingVitalTableHead");
 const nursingVitalResultBody = document.getElementById("nursingVitalResultBody");
 
+let nursingVitalLastMonthValue = "";
+let nursingVitalLastResults = [];
+let nursingVitalProblemOnly = false;
+
+function getNursingVitalProblemCount(monthValue, item) {
+  const days = getDaysInMonth(monthValue);
+  const attendanceSet = new Set(Array.isArray(item.attendanceDates) ? item.attendanceDates : []);
+  let problemCount = 0;
+
+  days.forEach((day) => {
+    if (!attendanceSet.has(day)) return;
+
+    const dayPlan = getLatestPlansByRecipient(item.name, day);
+    const medicationRule = getMedicationRuleAtDate(dayPlan, item.name, day);
+    const requiredHealthMinutes = getRequiredHealthMinutes(medicationRule.count);
+    const checked = checkVitalDay(item.nursingDays[day], requiredHealthMinutes);
+
+    if (checked.result !== "정상") problemCount += 1;
+  });
+
+  return problemCount;
+}
+
+function ensureNursingVitalFilterButtons() {
+  if (document.getElementById("nursingVitalResultFilterWrap")) return;
+
+  const table = nursingVitalResultBody ? nursingVitalResultBody.closest("table") : null;
+  if (!table || !table.parentElement) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "nursingVitalResultFilterWrap";
+  wrap.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin:12px 0;";
+
+  const allBtn = document.createElement("button");
+  allBtn.type = "button";
+  allBtn.id = "nursingVitalShowAllBtn";
+  allBtn.textContent = "전체";
+
+  const problemBtn = document.createElement("button");
+  problemBtn.type = "button";
+  problemBtn.id = "nursingVitalProblemOnlyBtn";
+  problemBtn.textContent = "확인 필요만";
+
+  [allBtn, problemBtn].forEach((btn) => {
+    btn.style.cssText = "padding:8px 16px;border-radius:8px;font-weight:800;cursor:pointer;";
+  });
+
+  function paint() {
+    allBtn.style.background = nursingVitalProblemOnly ? "#fff" : "#1e3a8a";
+    allBtn.style.color = nursingVitalProblemOnly ? "#1e3a8a" : "#fff";
+    allBtn.style.border = "1px solid #1e3a8a";
+
+    problemBtn.style.background = nursingVitalProblemOnly ? "#dc2626" : "#fff";
+    problemBtn.style.color = nursingVitalProblemOnly ? "#fff" : "#dc2626";
+    problemBtn.style.border = "1px solid #dc2626";
+  }
+
+  allBtn.addEventListener("click", () => {
+    nursingVitalProblemOnly = false;
+    paint();
+    renderResults(nursingVitalLastMonthValue, nursingVitalLastResults);
+  });
+
+  problemBtn.addEventListener("click", () => {
+    nursingVitalProblemOnly = true;
+    paint();
+    renderResults(nursingVitalLastMonthValue, nursingVitalLastResults);
+  });
+
+  wrap.appendChild(allBtn);
+  wrap.appendChild(problemBtn);
+  table.parentElement.insertBefore(wrap, table);
+  paint();
+}
+
 function parseNursingReport(workbook, monthValue) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = sheetToRowsWithMerges(sheet);
@@ -563,12 +638,20 @@ function renderResults(monthValue, results) {
   nursingVitalResultBody.innerHTML = "";
   const days = getDaysInMonth(monthValue);
 
-  if (!results || results.length === 0) {
+  nursingVitalLastMonthValue = monthValue;
+  nursingVitalLastResults = Array.isArray(results) ? results : [];
+  ensureNursingVitalFilterButtons();
+
+  const visibleResults = nursingVitalProblemOnly
+    ? nursingVitalLastResults.filter((item) => getNursingVitalProblemCount(monthValue, item) > 0)
+    : nursingVitalLastResults;
+
+  if (!visibleResults || visibleResults.length === 0) {
     nursingVitalResultBody.innerHTML = `<tr><td colspan="${6 + days.length}">확인할 간호 대상자가 없습니다.</td></tr>`;
     return;
   }
 
-  results.forEach((item) => {
+  visibleResults.forEach((item) => {
     const row = document.createElement("tr");
     
     // 💡 [핵심 교정]: item.attendanceDates가 null이나 undefined일 경우를 100% 방어하도록 Set 구성 방식 리모델링
@@ -636,6 +719,13 @@ checkNursingVitalBtn.addEventListener("click", async () => {
 });
 
 clearNursingVitalBtn.addEventListener("click", () => {
+  nursingVitalProblemOnly = false;
+  nursingVitalLastMonthValue = "";
+  nursingVitalLastResults = [];
+
+  const filterWrap = document.getElementById("nursingVitalResultFilterWrap");
+  if (filterWrap) filterWrap.remove();
+
   checkMonthInput.value = "";
   nursingFileInput.value = "";
   nursingVitalTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>복약도움</th><th>건강관리 기준</th></tr>`;
