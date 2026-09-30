@@ -104,26 +104,16 @@ function getMonthEndDate(monthValue) {
 function getWeekEndDates(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 0);
-
-  // 월요일~일요일을 한 주로 보고, 해당 월 1일이 포함된 주는
-  // 전월 날짜까지 포함하여 1주차로 처리합니다.
-  const dayOfWeek = monthStart.getDay();
-  const daysFromMonday = (dayOfWeek + 6) % 7;
+  const daysFromMonday = (monthStart.getDay() + 6) % 7;
   const anchorMonday = new Date(monthStart);
   anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
   const ranges = {};
   for (let i = 0; i < 5; i++) {
-    const weekStart = new Date(anchorMonday);
-    weekStart.setDate(anchorMonday.getDate() + i * 7);
-    const weekSunday = new Date(weekStart);
-    weekSunday.setDate(weekStart.getDate() + 6);
-
-    // 규칙 판정일은 그 주의 마지막 날(일요일).
-    // 단, 마지막 주가 다음 달로 넘어가면 확인 월 말일까지만 봅니다.
-    const ruleDate = new Date(Math.min(weekSunday.getTime(), monthEnd.getTime()));
-    ranges[`week${i + 1}`] = `${ruleDate.getFullYear()}-${String(ruleDate.getMonth() + 1).padStart(2, "0")}-${String(ruleDate.getDate()).padStart(2, "0")}`;
+    const weekFriday = new Date(anchorMonday);
+    weekFriday.setDate(anchorMonday.getDate() + i * 7 + 4);
+    ranges[`week${i + 1}`] =
+      `${weekFriday.getFullYear()}-${String(weekFriday.getMonth()+1).padStart(2,"0")}-${String(weekFriday.getDate()).padStart(2,"0")}`;
   }
   return ranges;
 }
@@ -131,10 +121,7 @@ function getWeekEndDates(monthValue) {
 function getDaysInWeekRange(monthValue, weekKey) {
   const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 0);
-
-  const dayOfWeek = monthStart.getDay();
-  const daysFromMonday = (dayOfWeek + 6) % 7;
+  const daysFromMonday = (monthStart.getDay() + 6) % 7;
   const anchorMonday = new Date(monthStart);
   anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
@@ -146,33 +133,28 @@ function getDaysInWeekRange(monthValue, weekKey) {
   for (let i = 0; i < 5; i++) {
     const current = new Date(weekStart);
     current.setDate(weekStart.getDate() + i);
-    // 1주차는 전월 말일이 포함되어도 같은 주로 인정합니다.
-    // 출석 보관함에 전월 날짜가 함께 저장되어 있다면 그대로 반영됩니다.
-    if (current <= monthEnd) {
-      days.push(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`);
-    }
+    days.push(`${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,"0")}-${String(current.getDate()).padStart(2,"0")}`);
   }
   return days;
 }
 
-function getWeekKey(dateText) {
-  const [year, month, day] = dateText.split("-").map(Number);
-  const targetDate = new Date(year, month - 1, day);
+function getWeekKeyForMonth(dateText, monthValue) {
+  const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
-
-  const dayOfWeek = monthStart.getDay();
-  const daysFromMonday = (dayOfWeek + 6) % 7;
+  const daysFromMonday = (monthStart.getDay() + 6) % 7;
   const anchorMonday = new Date(monthStart);
   anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
+  const [dy, dm, dd] = dateText.split("-").map(Number);
+  const targetDate = new Date(dy, dm - 1, dd);
   const diffDays = Math.floor((targetDate - anchorMonday) / 86400000);
   const weekNumber = Math.floor(diffDays / 7) + 1;
+  if (weekNumber < 1 || weekNumber > 5) return "";
+  return `week${weekNumber}`;
+}
 
-  if (weekNumber <= 1) return "week1";
-  if (weekNumber === 2) return "week2";
-  if (weekNumber === 3) return "week3";
-  if (weekNumber === 4) return "week4";
-  return "week5";
+function isDateInDisplayedWeeks(dateText, monthValue) {
+  return !!getWeekKeyForMonth(dateText, monthValue);
 }
 
 function readPlanRows(plan) {
@@ -480,9 +462,10 @@ function parseTherapyReport(workbook, monthValue) {
     if (!name || name === "수급자명") continue;
 
     const dateText = parseDate(row[dateCol]);
-    if (!dateText || !dateText.startsWith(monthValue)) continue;
+    if (!dateText || !isDateInDisplayedWeeks(dateText, monthValue)) continue;
 
-    const weekKey = getWeekKey(dateText);
+    const weekKey = getWeekKeyForMonth(dateText, monthValue);
+    if (!weekKey) continue;
     const timeText = String(row[timeCol] || "").trim();
     const noteText = noteCol >= 0 ? String(row[noteCol] || "").trim() : "";
 
