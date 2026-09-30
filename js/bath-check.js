@@ -439,15 +439,24 @@ function getLatestPlanForRecipientAtDate(name, targetDate, grade = "", longTermN
 
 function hasBathPlan(plan) {
   if (!plan) return false;
-  const text = normalizeText(JSON.stringify([
+
+  // 중요:
+  // 계획서 안에 '몸씻기'라는 영역명/장기요양 세부목표가 존재하는 것만으로는
+  // 몸씻기 도움 급여가 선택된 것으로 보지 않습니다.
+  // 실제 급여 항목인 '몸씻기 도움' 또는 해당 코드(B52)가 들어있는 경우만 인정합니다.
+  const sources = [
     plan.rows || [],
     plan.rowsJson || "",
     plan.items || [],
-    plan.benefits || [],
-    plan.content || "",
-    plan.opinion || ""
-  ]));
-  return text.includes("몸씻기도움") || text.includes("몸씻기") || text.includes("목욕") || text.includes("B52");
+    plan.benefits || []
+  ];
+
+  const text = normalizeText(JSON.stringify(sources));
+
+  return (
+    text.includes("몸씻기도움") ||
+    text.includes("B52")
+  );
 }
 
 function getCounselDate(counsel) {
