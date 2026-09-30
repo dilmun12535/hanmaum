@@ -74,7 +74,15 @@ function parseWorkbook(workbook){
 }
 function planStart(p){return dateVal(p.applicationStartDate||p.startDate||p.writtenDate)} function planEnd(p){return dateVal(p.applicationEndDate||p.endDate)||'9999-12-31'}
 function choosePlan(plans,rec){const valid=plans.filter(p=>sameName(p.recipientName||p.name,rec.name)&&planStart(p)<=rec.date&&planEnd(p)>=rec.date);valid.sort((a,b)=>planStart(b).localeCompare(planStart(a)));return valid[0]||null}
-function expectedFee(p,date){if(!p)return '';const dow=new Date(date+'T12:00:00').getDay();const weekend=dow===0||dow===6;return feeBand((weekend?p.weekendFee:p.weekdayFee)||p.planFee||'')}
+function expectedFee(p,date){
+  if(!p)return '';
+  const dow=new Date(date+'T12:00:00').getDay();
+  const weekend=dow===0||dow===6;
+  // 보관함 > 요양급여계획서 Firestore 문서에 저장된 수가 필드를 직접 사용한다.
+  // 평일은 weekdayFee, 토/일은 weekendFee. 해당 값이 비어 있을 때만 planFee를 사용한다.
+  const raw = weekend ? (p.weekendFee || p.planFee || '') : (p.weekdayFee || p.planFee || '');
+  return feeBand(raw);
+}
 function weekday(date){return ['일','월','화','수','목','금','토'][new Date(date+'T12:00:00').getDay()]}
 async function run(){if(!wb){alert('제공기록지 엑셀을 먼저 선택해주세요.');return} $('fileStatus').textContent='제공기록지 분석 중...';records=parseWorkbook(wb);if(!records.length){$('fileStatus').textContent='총 이용시간(분)이 있는 날짜를 찾지 못했습니다.';return} const months=[...new Set(records.map(x=>x.date.slice(0,7)))];let plans=[];for(const m of months){const x=await window.HanmaumFirestore.carePlans(m);plans.push(...x)}const pm=new Map();plans.forEach(p=>pm.set(p.firestoreId||p.id||JSON.stringify(p),p));plans=[...pm.values()];results=records.map(rec=>{const p=choosePlan(plans,rec),dur=rec.totalMinutes,actual=band(dur),expected=expectedFee(p,rec.date);return {...rec,plan:p,dur,actual,expected,mismatch:!!expected&&expected!==actual}}).filter(x=>x.mismatch);$('days').textContent=records.length;$('mismatch').textContent=results.length;$('withNote').textContent=results.filter(x=>x.note).length;$('withoutNote').textContent=results.filter(x=>!x.note).length;$('fileStatus').textContent=`이용일 ${records.length}건 · 계획서 ${plans.length}건 연동`;render()}
 function render(){const list=filter==='nonote'?results.filter(x=>!x.note):results;$('body').innerHTML=list.length?list.map(x=>`<tr class="bad"><td><b>${esc(x.name)}</b></td><td>${x.date}</td><td>${weekday(x.date)}</td><td><b>${esc(x.expected)}</b></td><td><b>${x.dur}분</b><br><span class="muted">${Math.floor(x.dur/60)}시간 ${x.dur%60}분</span></td><td>${esc(x.actual)}</td><td><span class="badge badge-bad">불일치</span></td><td class="note">${x.note?esc(x.note):'<span class="badge badge-bad">특이사항 없음</span>'}</td><td>${x.plan?`${planStart(x.plan)} ~ ${planEnd(x.plan)}`:'<span class="muted">계획서 없음</span>'}</td></tr>`).join(''):'<tr><td colspan="9" class="empty">해당 결과가 없습니다.</td></tr>'}
