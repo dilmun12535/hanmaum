@@ -504,10 +504,17 @@ function getMedicationRuleAtDate(plan, name, targetDate) {
   let count = planCount;
   let source = "계획서";
 
-  // 상담일지가 있고, 상담일지가 해당 날짜 기준 최신 계획서보다 최신일 때만 상담일지를 반영합니다.
-  // 예: 상담일지 2023-12-11 추가 → 계획서 2024-01-18 작성이면
-  // 2024-01-17까지는 상담 기준, 2024-01-18부터는 계획서 기준입니다.
-  const shouldApplyCounsel = counsel && (!planDate || !counselDate || counselDate > planDate);
+  // 상담일지는 계획서의 "작성일"이 아니라 실제 적용 시작일 전까지도 유효합니다.
+  // 중요: getLatestPlansByRecipient()는 targetDate에 유효한 계획서만 반환하므로,
+  // 적용 시작 전 날짜에는 plan이 null일 수 있습니다. 이 경우 그 날짜까지의 최신 상담일지를 그대로 적용합니다.
+  // 적용기간 안에서는 상담일지가 계획 적용 시작일보다 뒤에 반영된 경우에만 상담 내용을 우선합니다.
+  const shouldApplyCounsel = Boolean(
+    counsel && (
+      !plan ||
+      !planDate ||
+      (counselDate && counselDate > planDate)
+    )
+  );
 
   if (shouldApplyCounsel) {
     const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
