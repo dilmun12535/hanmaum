@@ -46,6 +46,10 @@ const checkTherapyBtn = document.getElementById("checkTherapyBtn");
 const clearTherapyBtn = document.getElementById("clearTherapyBtn");
 const therapyResultBody = document.getElementById("therapyResultBody");
 
+let therapyLatestResults = [];
+let therapyResultFilterMode = "all";
+
+
 function normalizeText(value) {
   return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
 }
@@ -701,16 +705,83 @@ function applyTherapyReadableStyle() {
   document.head.appendChild(style);
 }
 
-function renderResults(monthValue, results) {
+function ensureTherapyResultFilterButtons() {
+  if (!therapyResultBody) return;
+
+  const table = therapyResultBody.closest("table");
+  if (!table || document.getElementById("therapyResultFilterBar")) return;
+
+  const bar = document.createElement("div");
+  bar.id = "therapyResultFilterBar";
+  bar.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin:0 0 10px 0;";
+
+  bar.innerHTML = `
+    <button type="button" id="therapyFilterAllBtn"
+      style="border:1px solid #1e40af;background:#1e40af;color:#fff;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">
+      전체
+    </button>
+    <button type="button" id="therapyFilterCheckBtn"
+      style="border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">
+      확인 필요만
+    </button>
+  `;
+
+  table.parentNode.insertBefore(bar, table);
+
+  document.getElementById("therapyFilterAllBtn").addEventListener("click", () => {
+    therapyResultFilterMode = "all";
+    updateTherapyFilterButtonStyle();
+    renderResults(checkMonthInput.value, therapyLatestResults, true);
+  });
+
+  document.getElementById("therapyFilterCheckBtn").addEventListener("click", () => {
+    therapyResultFilterMode = "check";
+    updateTherapyFilterButtonStyle();
+    renderResults(checkMonthInput.value, therapyLatestResults, true);
+  });
+}
+
+function updateTherapyFilterButtonStyle() {
+  const allBtn = document.getElementById("therapyFilterAllBtn");
+  const checkBtn = document.getElementById("therapyFilterCheckBtn");
+  if (!allBtn || !checkBtn) return;
+
+  const allActive = therapyResultFilterMode === "all";
+
+  allBtn.style.background = allActive ? "#1e40af" : "#fff";
+  allBtn.style.color = allActive ? "#fff" : "#1e40af";
+
+  checkBtn.style.background = allActive ? "#fff" : "#dc2626";
+  checkBtn.style.color = allActive ? "#dc2626" : "#fff";
+}
+
+function renderResults(monthValue, results, fromFilter = false) {
   applyTherapyReadableStyle();
+
+  if (!fromFilter) {
+    therapyLatestResults = Array.isArray(results) ? results : [];
+  }
+
+  ensureTherapyResultFilterButtons();
+  updateTherapyFilterButtonStyle();
+
+  const sourceResults = Array.isArray(results) ? results : [];
+  const visibleResults = therapyResultFilterMode === "check"
+    ? sourceResults.filter((item) => item.overallResult === "확인 필요")
+    : sourceResults;
+
   therapyResultBody.innerHTML = "";
 
-  if (!results || results.length === 0) {
-    therapyResultBody.innerHTML = `<tr><td colspan="10">확인할 데이터가 없습니다.</td></tr>`;
+  if (visibleResults.length === 0) {
+    const emptyText = therapyResultFilterMode === "check"
+      ? "확인 필요한 대상자가 없습니다."
+      : "확인할 데이터가 없습니다.";
+
+    therapyResultBody.innerHTML = `<tr><td colspan="10">${emptyText}</td></tr>`;
     return;
   }
 
-  results.forEach((item) => {
+  visibleResults.forEach((item) => {
     const row = document.createElement("tr");
     const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
 
@@ -741,7 +812,9 @@ function renderResults(monthValue, results) {
       <td style="${getCellBgColor(item.weekResultsMap.week4)}">${buildWeekCell(item.weekResultsMap.week4, item.weeks.week4)}</td>
       <td style="${getCellBgColor(item.weekResultsMap.week5)}">${buildWeekCell(item.weekResultsMap.week5, item.weeks.week5)}</td>
 
-      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${item.overallResult}</td>
+      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">
+        ${item.overallResult}
+      </td>
     `;
 
     therapyResultBody.appendChild(row);
@@ -788,5 +861,8 @@ checkTherapyBtn.addEventListener("click", async () => {
 clearTherapyBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
   therapyFileInput.value = "";
+  therapyLatestResults = [];
+  therapyResultFilterMode = "all";
+  updateTherapyFilterButtonStyle();
   therapyResultBody.innerHTML = `<tr><td colspan="10">확인 월과 물리치료 기록 파일을 선택해주세요.</td></tr>`;
 });
