@@ -716,14 +716,23 @@ function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
     const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
     const cleanText = text.replace(/[^a-zA-Z0-9가-힣]/g, "");
 
-    if (
+    // 음식 준비 제외는 식사 자체 제외가 아니라 다진식/죽식 -> 일반식 변경입니다.
+    const isFoodPrepCounsel =
+      cleanText.includes("음식준비") ||
+      cleanText.includes("다진식") ||
+      cleanText.includes("죽식") ||
+      cleanText.includes("미음");
+
+    const isMealCountCounsel =
       cleanText.includes("식단") ||
       cleanText.includes("식사") ||
       cleanText.includes("석식") ||
       cleanText.includes("저녁") ||
       cleanText.includes("중식") ||
-      cleanText.includes("점심")
-    ) {
+      cleanText.includes("점심");
+
+    // 음식 준비 상담은 식사 횟수를 건드리지 않습니다.
+    if (isMealCountCounsel && !isFoodPrepCounsel) {
       if (isRemoveCounsel(counsel)) mealCount = 0;
       else if (isAddCounsel(counsel)) mealCount = Math.max(1, mealCount);
 
@@ -731,12 +740,7 @@ function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
       mealCountSource = "상담";
     }
 
-    if (
-      cleanText.includes("음식준비") ||
-      cleanText.includes("다진식") ||
-      cleanText.includes("죽식") ||
-      cleanText.includes("미음")
-    ) {
+    if (isFoodPrepCounsel) {
       if (isRemoveCounsel(counsel)) specialFood = false;
       if (isAddCounsel(counsel)) specialFood = true;
       specialFoodSource = "상담";
@@ -946,12 +950,12 @@ function renderHeader(monthValue) {
       <th>상담일지 반영</th>
       <th>식사 횟수</th>
       <th>음식 준비</th>
+      <th>종합 결과</th>
       ${days.map((day) => {
         const dayNum = Number(day.split("-")[2]);
         const colorClass = getDayColorClass(day);
         return `<th class="meal-day-head ${colorClass}">${dayNum}</th>`;
       }).join("")}
-      <th>종합 결과</th>
     </tr>
   `;
 }
@@ -1055,8 +1059,8 @@ function renderResults(monthValue, results) {
       <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px; ${errorCellBg}">${item.counselText || "없음"}</td>
       <td style="text-align:center; font-weight:700; ${errorCellBg}">${buildMealRuleSourceHtml(`${monthEndRule.mealCount || 0}회`, monthEndRule.mealCountSource, (monthEndRule.mealCount || 0) > 0)}</td>
       <td style="text-align:center; ${errorCellBg}">${buildMealRuleSourceHtml(monthEndRule.specialFood ? "기능상태" : "일반식", monthEndRule.specialFoodSource, monthEndRule.specialFood)}</td>
-      ${dayCells}
       <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${overallText}</td>
+      ${dayCells}
     `;
     mealResultBody.appendChild(row);
   });
@@ -1078,8 +1082,8 @@ function applyMealStyle() {
     .meal-table th:nth-child(3), .meal-table td:nth-child(3) { min-width: 160px; width: 160px; text-align: left; }
     .meal-table th:nth-child(4), .meal-table td:nth-child(4) { min-width: 80px; width: 80px; }
     .meal-table th:nth-child(5), .meal-table td:nth-child(5) { min-width: 100px; width: 100px; }
+    .meal-table th:nth-child(6), .meal-table td:nth-child(6) { min-width: 115px; width: 115px; word-break: keep-all; line-height: 1.5; text-align: center; }
     .meal-day-head, .meal-day-cell { min-width: 95px; width: 95px; }
-    .meal-table th:last-child, .meal-table td:last-child { min-width: 115px; width: 115px; word-break: keep-all; line-height: 1.5; text-align: center; }
     .small-cell-text { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; word-break: keep-all; }
     .leave-time-badge {
       display: inline-block;
@@ -1132,6 +1136,6 @@ checkMealBtn.addEventListener("click", async () => {
 clearMealBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
   mealFileInput.value = "";
-  mealTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>식사 횟수</th><th>음식 준비</th></tr>`;
-  mealResultBody.innerHTML = `<tr><td colspan="5">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td></tr>`;
+  mealTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>식사 횟수</th><th>음식 준비</th><th>종합 결과</th></tr>`;
+  mealResultBody.innerHTML = `<tr><td colspan="6">확인 월과 식사/화장실 기록 파일을 선택해주세요.</td></tr>`;
 });
