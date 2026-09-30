@@ -440,86 +440,64 @@ function getLatestPlanForRecipientAtDate(name, targetDate, grade = "", longTermN
 function hasBathPlan(plan) {
   if (!plan) return false;
 
-  // 계획서의 실제 급여제공내역 행만 검사합니다.
-  // '장기요양 필요내용/목표/종합의견'에 몸씻기라는 말이 있는 것은 급여 선택으로 보지 않습니다.
   let rawRows = plan.rows || plan.rowsJson || plan.items || plan.benefits || [];
-
   if (typeof rawRows === "string") {
-    try {
-      rawRows = JSON.parse(rawRows);
-    } catch (e) {
-      rawRows = [];
-    }
+    try { rawRows = JSON.parse(rawRows); } catch (e) { rawRows = []; }
   }
-
   if (!Array.isArray(rawRows)) {
     rawRows = rawRows && typeof rawRows === "object" ? Object.values(rawRows) : [];
   }
 
-  const normalizeBathLabel = (value) =>
-    String(value || "")
-      .replace(/\s+/g, "")
-      .replace(/[·ㆍ]/g, "")
-      .trim();
-
-  const exactBathLabels = [
-    "전적인도움받아몸씻기",
-    "부분적인도움받아몸씻기",
-    "몸씻기도움",
-    "몸씻기도움받기"
-  ];
+  const clean = (v) => String(v ?? "").replace(/\s+/g, "").replace(/[·ㆍ]/g, "").trim();
+  const isBathNeed = (v) => {
+    const t = clean(v);
+    if (!t) return false;
+    // 실제 계획서에서 '부분적인/전적인 도움받아 몸씻기'처럼 저장되는 값을 인정합니다.
+    return t === "몸씻기" || t === "몸씻기도움" || t === "몸씻기도움받기" ||
+      t.includes("도움받아몸씻기") || t.includes("도움받아몸씻기");
+  };
+  const isBathCode = (v) => {
+    const t = clean(v).toUpperCase();
+    return t === "B52" || /^B52[-_]/.test(t);
+  };
 
   return rawRows.some((row) => {
     if (!row) return false;
 
-    // 배열 형태의 엑셀 행도 지원
+    // 배열형 행은 '몸씻기'가 들어 있는 셀을 찾되, 목표/종합의견 같은 장문 서술의
+    // 단순 언급은 급여 선택으로 오인하지 않도록 짧은 항목 셀만 인정합니다.
     if (Array.isArray(row)) {
       return row.some((cell) => {
-        const cellText = normalizeBathLabel(cell);
-        return exactBathLabels.some(label => cellText === label) ||
-               cellText === "B52" ||
-               /^B52[-_]/.test(cellText);
+        const t = clean(cell);
+        return isBathCode(t) || (t.length <= 40 && isBathNeed(t));
       });
     }
-
     if (typeof row !== "object") return false;
 
-    // 실제 '장기요양 필요내용/급여항목' 계열 필드만 확인
-    const candidates = [
-      row.needContent,
-      row.careNeed,
-      row.longTermCareNeed,
-      row.benefitName,
-      row.serviceName,
-      row.itemName,
-      row.careItem,
-      row["장기요양 필요내용"],
-      row["장기요양필요내용"],
-      row["급여항목"],
-      row["급여 항목"],
-      row["서비스명"],
-      row["항목명"]
+    // 신버전/구버전에서 실제 급여 항목명이 저장될 수 있는 필드들.
+    // 특히 화면의 '장기요양 필요내용' 값(예: 전적인 도움받아 몸씻기)을 포함합니다.
+    const itemCandidates = [
+      row.needContent, row.careNeed, row.longTermCareNeed,
+      row.benefitName, row.serviceName, row.itemName, row.careItem,
+      row.needName, row.needItem, row.detailNeed, row.longTermNeed,
+      row["장기요양 필요내용"], row["장기요양필요내용"],
+      row["급여항목"], row["급여 항목"], row["서비스명"], row["항목명"],
+      row["필요내용"], row["선택된 장기요양 필요내용"]
     ];
+    const codeCandidates = [row.code, row.serviceCode, row.benefitCode, row["급여코드"], row["서비스코드"]];
 
-    const codeCandidates = [
-      row.code,
-      row.serviceCode,
-      row.benefitCode,
-      row["급여코드"],
-      row["서비스코드"]
-    ];
+    if (itemCandidates.some(isBathNeed) || codeCandidates.some(isBathCode)) return true;
 
-    const hasExactLabel = candidates.some((value) => {
-      const valueText = normalizeBathLabel(value);
-      return exactBathLabels.some(label => valueText === label);
+    // Firestore 이관본 중 필드명이 달라진 행을 위한 보정:
+    // 값 전체에서 정확한 급여항목 형태가 존재할 때만 인정한다.
+    // '세부제공내용/목표'에 몸씻기라는 단어만 있는 경우는 인정하지 않는다.
+    const excludedKeys = /목표|goal|세부제공|detail|종합|overall|판단근거|reason|필요영역|needarea/i;
+    return Object.entries(row).some(([key, value]) => {
+      if (excludedKeys.test(String(key))) return false;
+      if (typeof value !== "string" && typeof value !== "number") return false;
+      const t = clean(value);
+      return isBathCode(t) || (t.length <= 40 && isBathNeed(t));
     });
-
-    const hasBathCode = codeCandidates.some((value) => {
-      const valueText = normalizeBathLabel(value);
-      return valueText === "B52" || /^B52[-_]/.test(valueText);
-    });
-
-    return hasExactLabel || hasBathCode;
   });
 }
 
