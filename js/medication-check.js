@@ -222,14 +222,7 @@ function getLatestPlansByRecipient(name, checkDate) {
   const periodPlans = sameRecipientPlans.filter((plan) => {
     const startDate = getPlanStartDate(plan);
     const endDate = getPlanEndDate(plan);
-    const writtenDate = normalizeDateText(plan.writtenDate);
     if (!startDate) return false;
-
-    // 계획서는 작성되기 전 날짜에 소급 적용하지 않습니다.
-    // 예: 작성일이 2024-03-23이면 03-22까지는 이전 계획서/상담일지 기준,
-    //     03-23부터 새 계획서를 적용합니다.
-    if (writtenDate && checkDateText < writtenDate) return false;
-
     return startDate <= checkDateText && (!endDate || checkDateText <= endDate);
   });
 
@@ -500,10 +493,8 @@ function getLatestMedicationCounsel(name, targetDate) {
 
 function getMedicationRuleAtDate(plan, name, targetDate) {
   // 상담일지와 계획서 우선순위도 작성일이 아니라 실제 적용 시작일을 우선 사용합니다.
-  // 상담일지와 계획서의 전환 기준은 계획서 작성일입니다.
-  // 적용 시작일이 작성일보다 빠르더라도 새 계획서를 과거 날짜에 소급하지 않습니다.
   const planDate = plan
-    ? (normalizeDateText(plan.writtenDate) || getPlanStartDate(plan))
+    ? (getPlanStartDate(plan) || normalizeDateText(plan.writtenDate))
     : "";
   const planCount = getMedicationCountFromPlan(plan);
 

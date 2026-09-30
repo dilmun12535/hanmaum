@@ -228,27 +228,81 @@ function collectPlanObjects(value, result = []) {
 function getMedicationCountFromPlan(plan) {
   if (!plan) return 0;
 
-  const sourceObjects = [
-    ...collectPlanObjects(plan.rows || []),
-    ...collectPlanObjects(plan.rowsJson || [])
+  // 계획서 보관함의 실제 급여 행에서 "정확한 복약도움"이 있는 경우만 복약 대상으로 봅니다.
+  // 건강관리, 약 복용 이력, 종합의견 등에 약 관련 단어가 있는 것만으로는 복약으로 판정하지 않습니다.
+  const roots = [
+    tryParseJson(plan.rows || []),
+    tryParseJson(plan.rowsJson || [])
   ];
+  const candidates = [];
+
+  function walk(value) {
+    const parsed = tryParseJson(value);
+    if (Array.isArray(parsed)) {
+      if (parsed.some(v => v !== null && v !== undefined && typeof v !== "object")) {
+        candidates.push(parsed);
+      }
+      parsed.forEach(walk);
+      return;
+    }
+    if (parsed && typeof parsed === "object") {
+      candidates.push(parsed);
+      Object.values(parsed).forEach(v => {
+        if (Array.isArray(v) || (v && typeof v === "object")) walk(v);
+      });
+    }
+  }
+  roots.forEach(walk);
+
+  function scalarTexts(container) {
+    const values = Array.isArray(container)
+      ? container
+      : (container && typeof container === "object" ? Object.values(container) : []);
+    return values
+      .filter(v => v !== null && v !== undefined && typeof v !== "object")
+      .map(v => String(v));
+  }
+
+  function isExactMedicationBenefitRow(container) {
+    const values = scalarTexts(container);
+    if (!values.length) return false;
+    const cleanValues = values.map(normalizeText);
+    const whole = cleanValues.join("|");
+
+    if (
+      cleanValues.some(v => v === "종합의견" || v === "종합의견및총평") ||
+      whole.includes("*대체한급여") ||
+      whole.includes("*추가한급여") ||
+      whole.includes("*제외한급여")
+    ) return false;
+
+    return cleanValues.some(v =>
+      v === "정확한복약도움" ||
+      v.startsWith("정확한복약도움(") ||
+      v.startsWith("정확한복약도움（")
+    );
+  }
+
+  function countFromRow(container) {
+    const values = scalarTexts(container);
+    for (const value of values) {
+      const t = String(value || "").replace(/\s/g, "");
+      const m = t.match(/(?:일)?([1-3])회/);
+      if (m) return Number(m[1]);
+    }
+
+    if (container && !Array.isArray(container) && typeof container === "object") {
+      const countValue = container["횟수"] || container["회수"] || container["제공횟수"] || container["12"] || container[12] || "";
+      const m = String(countValue).replace(/\s/g, "").match(/(?:일)?([1-3])회|([1-3])/);
+      if (m) return Number(m[1] || m[2] || 0);
+    }
+    return 0;
+  }
 
   let result = 0;
-
-  sourceObjects.forEach((row) => {
-    const text = normalizeText(JSON.stringify(row));
-    if (text.includes("정확한복약도움") || text.includes("복약도움") || text.includes("약복용")) {
-      const countValue = row["횟수"] || row["회수"] || row["제공횟수"] || row["12"] || row[12] || "";
-      const parsed = Number(String(countValue).replace(/[^0-9]/g, ""));
-
-      if (parsed > result) result = parsed;
-
-      if (result === 0) {
-        if (text.includes("3회") || text.includes("아침점심저녁")) result = 3;
-        else if (text.includes("2회") || text.includes("아침저녁") || text.includes("점심저녁")) result = 2;
-        else if (text.includes("1회") || text.includes("아침") || text.includes("점심") || text.includes("저녁")) result = 1;
-      }
-    }
+  candidates.forEach(container => {
+    if (!isExactMedicationBenefitRow(container)) return;
+    result = Math.max(result, countFromRow(container));
   });
 
   return Math.min(result, 3);
