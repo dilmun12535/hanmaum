@@ -440,23 +440,87 @@ function getLatestPlanForRecipientAtDate(name, targetDate, grade = "", longTermN
 function hasBathPlan(plan) {
   if (!plan) return false;
 
-  // 중요:
-  // 계획서 안에 '몸씻기'라는 영역명/장기요양 세부목표가 존재하는 것만으로는
-  // 몸씻기 도움 급여가 선택된 것으로 보지 않습니다.
-  // 실제 급여 항목인 '몸씻기 도움' 또는 해당 코드(B52)가 들어있는 경우만 인정합니다.
-  const sources = [
-    plan.rows || [],
-    plan.rowsJson || "",
-    plan.items || [],
-    plan.benefits || []
+  // 계획서의 실제 급여제공내역 행만 검사합니다.
+  // '장기요양 필요내용/목표/종합의견'에 몸씻기라는 말이 있는 것은 급여 선택으로 보지 않습니다.
+  let rawRows = plan.rows || plan.rowsJson || plan.items || plan.benefits || [];
+
+  if (typeof rawRows === "string") {
+    try {
+      rawRows = JSON.parse(rawRows);
+    } catch (e) {
+      rawRows = [];
+    }
+  }
+
+  if (!Array.isArray(rawRows)) {
+    rawRows = rawRows && typeof rawRows === "object" ? Object.values(rawRows) : [];
+  }
+
+  const normalizeBathLabel = (value) =>
+    String(value || "")
+      .replace(/\s+/g, "")
+      .replace(/[·ㆍ]/g, "")
+      .trim();
+
+  const exactBathLabels = [
+    "전적인도움받아몸씻기",
+    "부분적인도움받아몸씻기",
+    "몸씻기도움",
+    "몸씻기도움받기"
   ];
 
-  const text = normalizeText(JSON.stringify(sources));
+  return rawRows.some((row) => {
+    if (!row) return false;
 
-  return (
-    text.includes("몸씻기도움") ||
-    text.includes("B52")
-  );
+    // 배열 형태의 엑셀 행도 지원
+    if (Array.isArray(row)) {
+      return row.some((cell) => {
+        const cellText = normalizeBathLabel(cell);
+        return exactBathLabels.some(label => cellText === label) ||
+               cellText === "B52" ||
+               /^B52[-_]/.test(cellText);
+      });
+    }
+
+    if (typeof row !== "object") return false;
+
+    // 실제 '장기요양 필요내용/급여항목' 계열 필드만 확인
+    const candidates = [
+      row.needContent,
+      row.careNeed,
+      row.longTermCareNeed,
+      row.benefitName,
+      row.serviceName,
+      row.itemName,
+      row.careItem,
+      row["장기요양 필요내용"],
+      row["장기요양필요내용"],
+      row["급여항목"],
+      row["급여 항목"],
+      row["서비스명"],
+      row["항목명"]
+    ];
+
+    const codeCandidates = [
+      row.code,
+      row.serviceCode,
+      row.benefitCode,
+      row["급여코드"],
+      row["서비스코드"]
+    ];
+
+    const hasExactLabel = candidates.some((value) => {
+      const valueText = normalizeBathLabel(value);
+      return exactBathLabels.some(label => valueText === label);
+    });
+
+    const hasBathCode = codeCandidates.some((value) => {
+      const valueText = normalizeBathLabel(value);
+      return valueText === "B52" || /^B52[-_]/.test(valueText);
+    });
+
+    return hasExactLabel || hasBathCode;
+  });
 }
 
 function getCounselDate(counsel) {
