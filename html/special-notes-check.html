@@ -146,12 +146,51 @@
     @media(max-width:900px){.main-layout{display:block}.sidebar{width:auto;border-right:0;border-bottom:1px solid #e5e7eb;padding:12px 14px}.menu-list{display:grid;grid-template-columns:1fr 1fr;gap:8px}.menu-link{min-height:42px;font-size:13px}.page-head{display:block}.page-head .btn-row{justify-content:flex-start;margin-top:14px}.summary-grid{grid-template-columns:repeat(2,1fr)}.simple-control-row{align-items:stretch}.auto-info-box,.result-filter-field,.action-buttons{width:100%;margin-left:0}.action-buttons .btn{flex:1}}
     @media(max-width:620px){.topbar-right{display:none}.page-wrap{padding:18px 14px 34px}.upload-grid,.summary-grid{grid-template-columns:1fr}.card{padding:16px}.menu-list{grid-template-columns:1fr}.btn{flex:1}}
   .match-note{padding:8px 0;border-bottom:1px dashed #e5e7eb}.match-note:last-child{border-bottom:0}.match-note b{color:#1d4ed8}.match-note span{font-size:11px;color:#64748b;margin-left:6px}.match-reason{font-size:11px;color:#059669;margin-top:4px}.no-match{color:#dc2626;font-weight:800}.result-table th:nth-child(4),.result-table td:nth-child(4){min-width:280px;width:28%}.result-table th:nth-child(6),.result-table td:nth-child(6){min-width:360px;width:36%}
+
+/* ===== 기존 한마음 포털 레이아웃과 통일 ===== */
+body{margin:0;background:#f6f7fb;color:#111827;font-family:Arial,'Noto Sans KR',sans-serif}
+.topbar{height:86px;padding:18px 28px}
+.logo-img{height:48px}
+.main-layout{min-height:calc(100vh - 86px)}
+.sidebar{width:240px;min-width:240px;max-width:240px;flex:0 0 240px;height:calc(100vh - 86px);padding:24px 16px}
+.content-area{padding:24px;overflow-x:hidden}
+.page-wrap{max-width:none;margin:0;padding:0}
+.page-head{background:#fff;border-radius:20px 20px 0 0;padding:24px 24px 8px;margin:0}
+.page-title h1{font-size:24px;color:#1f3c88;margin:0 0 8px}
+.page-title p{font-size:14px;color:#666}
+.card{border-radius:0;box-shadow:none;border:0;border-left:1px solid transparent;border-right:1px solid transparent;margin:0;padding:16px 24px;background:#fff}
+.page-head + .card{padding-top:12px}
+.summary-grid{margin:0;padding:12px 24px 18px;background:#fff}
+.summary-card{min-height:88px;border-radius:12px;padding:16px;box-shadow:none}
+.page-wrap > .card:last-child{border-radius:0 0 20px 20px;padding-bottom:24px}
+.btn{height:42px;border-radius:10px;font-weight:600}
+.btn-primary{background:#1f3c88}.btn-secondary{background:#16a34a;color:#fff}.btn-ghost{background:#ffe8e8;color:#c53030}
+.upload-grid{grid-template-columns:minmax(420px,1.5fr) minmax(300px,1fr)!important}
+.upload-box{min-height:96px;border-radius:10px}
+.table-wrap{max-height:calc(100vh - 360px);border-radius:0;overflow:auto}
+.result-table{min-width:1680px;width:100%;table-layout:fixed;border-collapse:collapse}
+.result-table th,.result-table td{border:1px solid #e5e7eb;padding:12px 10px;vertical-align:top;font-size:13px;line-height:1.55}
+.result-table th{background:#eef3ff;color:#1f3c88;text-align:center;position:sticky;top:0;z-index:10}
+.result-table th:nth-child(1),.result-table td:nth-child(1){width:115px;min-width:115px}
+.result-table th:nth-child(2),.result-table td:nth-child(2){width:105px;min-width:105px}
+.result-table th:nth-child(3),.result-table td:nth-child(3){width:155px;min-width:155px;white-space:normal}
+.result-table th:nth-child(4),.result-table td:nth-child(4){width:330px;min-width:330px}
+.result-table th:nth-child(5),.result-table td:nth-child(5){width:90px;min-width:90px;text-align:center}
+.result-table th:nth-child(6),.result-table td:nth-child(6){width:480px;min-width:480px}
+.result-table th:nth-child(7),.result-table td:nth-child(7){width:260px;min-width:260px}
+.result-table th:nth-child(8),.result-table td:nth-child(8){width:120px;min-width:120px;text-align:center}
+.result-table td,.note-text,.match-note,.match-reason{white-space:normal!important;word-break:keep-all!important;overflow-wrap:anywhere!important;max-width:none!important}
+.match-note{display:block;padding:8px 0;border-bottom:1px dashed #e5e7eb}
+.match-note:last-child{border-bottom:0}
+.copy-btn{white-space:nowrap}
+.pill-filter{justify-content:flex-end}
+
 </style>
 </head>
 <body>
 <header class="topbar">
 <div class="logo-area">
-<img alt="한마음주간보호센터" class="logo-img" src="../images/logo2.png"/>
+<img alt="한마음주간보호센터" class="logo-img" src="../images/logo.png"/>
 </div>
 <div class="topbar-right">
 <div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
@@ -166,35 +205,16 @@
 <div class="main-layout">
 <aside class="sidebar">
 <p class="menu-title">메뉴</p>
-<nav class="menu-list"><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details><a class="menu-item" href="./timely-notice.html">적기통보</a>
-
-
-
-
-<details class="menu-group">
-<summary class="menu-parent">요양기록지</summary>
-<div class="submenu">
-<a class="submenu-item" href="./meal-check.html">식사 제공 확인</a>
-<a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a>
-<a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a>
-<a class="submenu-item" href="./meal-bath-check.html">정량/목욕의자</a>
-</div>
-</details>
-<details class="menu-group">
-<summary class="menu-parent">물리치료 기록지</summary>
-<div class="submenu">
-<a class="submenu-item" href="./therapy-check.html">물리치료 제공 확인</a>
-</div>
-</details>
-<details class="menu-group">
-<summary class="menu-parent">간호 기록지</summary>
-<div class="submenu">
-<a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a>
-<a class="submenu-item" href="./medication-check.html">투약 확인</a>
-</div>
-</details>
+<nav class="menu-list">
+<details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a></div></details>
+<details class="menu-group"><summary class="menu-parent">요양기록지</summary><div class="submenu"><a class="submenu-item" href="./meal-check.html">식사 제공 확인</a><a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a><a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a><a class="submenu-item" href="./meal-bath-check.html">정량/목욕의자</a></div></details>
+<details class="menu-group"><summary class="menu-parent">물리치료 기록지</summary><div class="submenu"><a class="submenu-item" href="./therapy-check.html">물리치료 제공 확인</a></div></details>
+<details class="menu-group"><summary class="menu-parent">간호 기록지</summary><div class="submenu"><a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a><a class="submenu-item" href="./medication-check.html">투약 확인</a></div></details>
 <a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a>
+<a class="menu-item" href="./fee-history.html">수가 변동표</a>
 <a class="menu-item active" href="./special-notes-check.html">특이사항 검증</a>
+<a class="menu-item" href="./timely-notice.html">적기통보</a>
+<a class="menu-item" href="./claim.html">청구</a>
 </nav>
 </aside>
 <main class="content-area">
@@ -208,5 +228,6 @@
 </main>
 </div>
 <script src="../js/firebase-auth-guard.js" type="module"></script>
+<script src="../js/main.js"></script>
 </body>
 </html>
