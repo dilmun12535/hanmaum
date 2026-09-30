@@ -224,51 +224,74 @@ function hasTherapyPlan(plan) {
 
   const rows = readPlanRows(plan);
 
-  // M10, 기능회복훈련 같은 공통 코드/광범위 문구만으로는
-  // 물리치료 대상자로 판정하지 않습니다.
-  // 실제 계획서 데이터에 물리치료 계열 서비스명이 명시된 경우에만 true입니다.
+  // 중요:
+  // 계획서 전체에서 "물리치료"라는 단어를 찾으면
+  // 목표/종합의견/세부제공내용의 설명 문구까지 잡혀 오판할 수 있습니다.
+  // 따라서 실제 급여목록의 "장기요양 필요내용(서비스명)" 계열 필드만 판정합니다.
   const therapyKeywords = [
     "물리치료",
-    "물이치료",
     "재활치료",
     "운동치료",
     "작업치료"
   ].map(normalizeText);
 
-  const isTherapyValue = (value) => {
+  const serviceKeyKeywords = [
+    "장기요양필요내용",
+    "필요내용",
+    "급여항목",
+    "서비스명",
+    "급여명",
+    "항목명",
+    "필요서비스"
+  ].map(normalizeText);
+
+  const excludedKeyKeywords = [
+    "세부제공내용",
+    "제공내용",
+    "종합의견",
+    "목표",
+    "판단근거",
+    "사유",
+    "비고",
+    "설명"
+  ].map(normalizeText);
+
+  const containsTherapy = (value) => {
     const text = normalizeText(value);
     if (!text) return false;
     return therapyKeywords.some((keyword) => text.includes(keyword));
   };
 
-  const inspect = (value, keyName = "") => {
-    if (value == null) return false;
-
-    const key = normalizeText(keyName).toLowerCase();
-
-    // 코드 필드는 물리치료 판정에서 제외
-    if (
-      key === "id" ||
-      key.includes("code") ||
-      key.includes("코드")
-    ) {
-      return false;
-    }
-
-    if (Array.isArray(value)) {
-      return value.some((item) => inspect(item));
-    }
-
-    if (typeof value === "object") {
-      return Object.entries(value).some(([childKey, childValue]) =>
-        inspect(childValue, childKey)
-      );
-    }
-
-    return isTherapyValue(value);
+  const isServiceKey = (keyName) => {
+    const key = normalizeText(keyName);
+    if (!key) return false;
+    if (excludedKeyKeywords.some((word) => key.includes(word))) return false;
+    return serviceKeyKeywords.some((word) => key.includes(word));
   };
 
-  return rows.some((row) => inspect(row));
+  const inspectServiceFields = (value) => {
+    if (value == null) return false;
+
+    if (Array.isArray(value)) {
+      return value.some((item) => inspectServiceFields(item));
+    }
+
+    if (typeof value !== "object") return false;
+
+    return Object.entries(value).some(([key, childValue]) => {
+      if (isServiceKey(key) && containsTherapy(childValue)) return true;
+
+      // 중첩된 급여행/목록은 계속 내려가되,
+      // 일반 문자열 값 자체는 전역 검색하지 않습니다.
+      if (childValue && typeof childValue === "object") {
+        return inspectServiceFields(childValue);
+      }
+
+      return false;
+    });
+  };
+
+  return rows.some((row) => inspectServiceFields(row));
 }
 
 function getLatestTherapyCounsel(name, targetDate) {
