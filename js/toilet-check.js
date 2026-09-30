@@ -47,6 +47,62 @@ const clearToiletBtn = document.getElementById("clearToiletBtn");
 const toiletResultBody = document.getElementById("toiletResultBody");
 const toiletTableHead = document.getElementById("toiletTableHead");
 
+let lastToiletResultData = null;
+let toiletResultFilter = "all";
+
+function hasToiletRowError(item, days) {
+  return days.some((day) => {
+    const dayData = item.days[day];
+    if (!(item.attendanceDates || []).includes(day) || !dayData) return false;
+    return getResultText(
+      dayData.stoolCount + dayData.urineCount + dayData.diaperCount,
+      dayData.diaperCount,
+      item.daysDiaperAllowed[day]
+    ) !== "정상";
+  });
+}
+
+function ensureToiletFilterButtons() {
+  let wrap = document.getElementById("toiletResultFilterWrap");
+  if (wrap) return;
+
+  const table = toiletTableHead && toiletTableHead.closest("table");
+  const host = table ? table.parentElement : null;
+  if (!host) return;
+
+  wrap = document.createElement("div");
+  wrap.id = "toiletResultFilterWrap";
+  wrap.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin:0 0 10px 0;";
+  wrap.innerHTML = `
+    <button type="button" id="toiletFilterAll" style="border:1px solid #1e40af;background:#1e40af;color:#fff;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">전체</button>
+    <button type="button" id="toiletFilterError" style="border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">확인 필요만</button>
+  `;
+  host.insertBefore(wrap, table);
+
+  document.getElementById("toiletFilterAll").addEventListener("click", () => {
+    toiletResultFilter = "all";
+    updateToiletFilterButtonStyle();
+    if (lastToiletResultData) renderResults(lastToiletResultData);
+  });
+  document.getElementById("toiletFilterError").addEventListener("click", () => {
+    toiletResultFilter = "error";
+    updateToiletFilterButtonStyle();
+    if (lastToiletResultData) renderResults(lastToiletResultData);
+  });
+  updateToiletFilterButtonStyle();
+}
+
+function updateToiletFilterButtonStyle() {
+  const allBtn = document.getElementById("toiletFilterAll");
+  const errorBtn = document.getElementById("toiletFilterError");
+  if (!allBtn || !errorBtn) return;
+  const allActive = toiletResultFilter === "all";
+  allBtn.style.background = allActive ? "#1e40af" : "#fff";
+  allBtn.style.color = allActive ? "#fff" : "#1e40af";
+  errorBtn.style.background = allActive ? "#fff" : "#dc2626";
+  errorBtn.style.color = allActive ? "#dc2626" : "#fff";
+}
+
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
 }
@@ -483,8 +539,13 @@ function getDayHeaderHtml(dayText) {
 }
 
 function renderResults(data) {
+  lastToiletResultData = data;
+  ensureToiletFilterButtons();
   const days = data.days || [];
-  const rows = data.rows || [];
+  const allRows = data.rows || [];
+  const rows = toiletResultFilter === "error"
+    ? allRows.filter((item) => hasToiletRowError(item, days))
+    : allRows;
 
   toiletTableHead.innerHTML = `
     <tr>
@@ -504,18 +565,7 @@ function renderResults(data) {
 
   rows.forEach((item) => {
     const row = document.createElement("tr");
-    let hasRowError = false;
-    
-    // [행 전체 에러 색상 판정 조치]
-    // 화장실 기록이 아예 없는 날은 결석 처리되므로, 행 전체를 빨갛게(hasRowError) 만드는 대상에서 제외합니다.
-    days.forEach((day) => {
-      const dayData = item.days[day];
-      if ((item.attendanceDates || []).includes(day) && dayData) {
-        if (getResultText(dayData.stoolCount + dayData.urineCount + dayData.diaperCount, dayData.diaperCount, item.daysDiaperAllowed[day]) !== "정상") {
-          hasRowError = true;
-        }
-      }
-    });
+    const hasRowError = hasToiletRowError(item, days);
 
     row.style.backgroundColor = hasRowError ? "#fff5f5" : "#ffffff";
     row.innerHTML = `
@@ -560,6 +610,9 @@ checkToiletBtn.addEventListener("click", async () => {
 });
 
 clearToiletBtn.addEventListener("click", () => {
+  lastToiletResultData = null;
+  toiletResultFilter = "all";
+  updateToiletFilterButtonStyle();
   checkMonthInput.value = "";
   toiletFileInput.value = "";
   toiletTableHead.innerHTML = `<tr><th style="border: 1px solid #e2e8f0; text-align: center;">수급자명</th><th style="border: 1px solid #e2e8f0; text-align: center;">계획서 작성일</th><th style="border: 1px solid #e2e8f0; text-align: center;">상담일지 반영</th><th style="border: 1px solid #e2e8f0; text-align: center;">기저귀 급여</th></tr>`;
