@@ -306,16 +306,38 @@ function getMedicationCountFromPlan(plan) {
     ...collectPlanObjects(plan.rowsJson || [])
   ];
 
-  const medicationObjects = sourceObjects.filter((obj) => {
-    const text = objectToCleanText(obj);
-    return (
-      text.includes("정확한복약도움") ||
-      text.includes("복약도움") ||
-      text.includes("약복용") ||
-      text.includes("투약") ||
-      text.includes("복약")
-    );
-  });
+  // 중요:
+  // 종합의견/세부제공내용/다른 급여항목에 '약', '복약', '투약'이라는 단어가
+  // 들어 있다는 이유만으로 복약 대상자로 잡지 않습니다.
+  // 실제 급여항목 값에 '정확한 복약도움'이 있는 객체만 인정합니다.
+  const isExactMedicationItem = (obj) => {
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false;
+
+    return Object.entries(obj).some(([key, value]) => {
+      if (value === null || value === undefined || typeof value === "object") return false;
+
+      const keyText = normalizeText(key);
+      const valueText = normalizeText(value);
+
+      // 장기요양 필요내용/급여내용/항목명 등 실제 항목 필드에서만 판정
+      const isItemField =
+        keyText.includes("필요내용") ||
+        keyText.includes("급여내용") ||
+        keyText.includes("급여항목") ||
+        keyText.includes("항목명") ||
+        keyText.includes("서비스명") ||
+        keyText.includes("제공내용");
+
+      if (!isItemField) return false;
+
+      // 정확한 복약도움 항목만 인정
+      return valueText === "정확한복약도움";
+    });
+  };
+
+  const medicationObjects = sourceObjects.filter(isExactMedicationItem);
+
+  if (medicationObjects.length === 0) return 0;
 
   let result = 0;
   medicationObjects.forEach((obj) => {
@@ -323,27 +345,9 @@ function getMedicationCountFromPlan(plan) {
     if (count && count > result) result = count;
   });
 
-  if (result > 0) return Math.min(result, 3);
-
-  const fullText = objectToCleanText({
-    rows: plan.rows || "",
-    rowsJson: plan.rowsJson || "",
-    opinion: plan.opinion || "",
-    content: plan.content || ""
-  });
-
-  if (
-    fullText.includes("정확한복약도움") ||
-    fullText.includes("복약도움") ||
-    fullText.includes("약복용") ||
-    fullText.includes("투약")
-  ) {
-    if (fullText.includes("3회") || fullText.includes("아침점심저녁")) return 3;
-    if (fullText.includes("2회") || fullText.includes("아침저녁") || fullText.includes("점심저녁")) return 2;
-    return 1;
-  }
-
-  return 0;
+  // 항목은 있으나 횟수 파싱이 안 되는 경우에는 1회로 임의 추정하지 않습니다.
+  // 화면에서 잘못된 횟수를 만드는 것보다 0회로 두어 확인 대상으로 잡히게 합니다.
+  return result > 0 ? Math.min(result, 3) : 0;
 }
 
 function getCounselDate(item) {
@@ -503,6 +507,79 @@ const clearMedicationBtn = document.getElementById("clearMedicationBtn");
 const medicationTableHead = document.getElementById("medicationTableHead");
 const medicationResultBody = document.getElementById("medicationResultBody");
 
+let medicationLastMonthValue = "";
+let medicationLastResults = [];
+let medicationProblemOnly = false;
+
+function ensureMedicationFilterButtons() {
+  if (document.getElementById("medicationResultFilterWrap")) return;
+
+  const table = medicationResultBody ? medicationResultBody.closest("table") : null;
+  if (!table || !table.parentElement) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "medicationResultFilterWrap";
+  wrap.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin:12px 0;";
+
+  const allBtn = document.createElement("button");
+  allBtn.type = "button";
+  allBtn.id = "medicationShowAllBtn";
+  allBtn.textContent = "전체";
+
+  const problemBtn = document.createElement("button");
+  problemBtn.type = "button";
+  problemBtn.id = "medicationProblemOnlyBtn";
+  problemBtn.textContent = "확인 필요만";
+
+  [allBtn, problemBtn].forEach((btn) => {
+    btn.style.cssText = "padding:8px 16px;border-radius:8px;font-weight:800;cursor:pointer;";
+  });
+
+  function paint() {
+    allBtn.style.background = medicationProblemOnly ? "#fff" : "#1e3a8a";
+    allBtn.style.color = medicationProblemOnly ? "#1e3a8a" : "#fff";
+    allBtn.style.border = "1px solid #1e3a8a";
+
+    problemBtn.style.background = medicationProblemOnly ? "#dc2626" : "#fff";
+    problemBtn.style.color = medicationProblemOnly ? "#fff" : "#dc2626";
+    problemBtn.style.border = "1px solid #dc2626";
+  }
+
+  allBtn.addEventListener("click", () => {
+    medicationProblemOnly = false;
+    paint();
+    renderResults(medicationLastMonthValue, medicationLastResults);
+  });
+
+  problemBtn.addEventListener("click", () => {
+    medicationProblemOnly = true;
+    paint();
+    renderResults(medicationLastMonthValue, medicationLastResults);
+  });
+
+  wrap.appendChild(allBtn);
+  wrap.appendChild(problemBtn);
+  table.parentElement.insertBefore(wrap, table);
+  paint();
+}
+
+function getMedicationProblemCount(monthValue, item) {
+  const days = getDaysInMonth(monthValue);
+  const attendanceSet = new Set(Array.isArray(item.attendanceDates) ? item.attendanceDates : []);
+  let problemCount = 0;
+
+  days.forEach((day) => {
+    if (!attendanceSet.has(day)) return;
+    const dayPlan = getLatestPlansByRecipient(item.name, day);
+    const requiredCount = getMedicationRuleAtDate(dayPlan, item.name, day).count;
+    const realCount = item.medicationMap[`${item.name}_${day}`] || 0;
+    if (checkMedicationDay(requiredCount, realCount).result !== "정상") problemCount += 1;
+  });
+
+  return problemCount;
+}
+
+
 function parseMedicationReport(workbook, monthValue) {
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = sheetToRowsWithMerges(sheet);
@@ -640,12 +717,20 @@ function renderResults(monthValue, results) {
   medicationResultBody.innerHTML = "";
   const days = getDaysInMonth(monthValue);
 
-  if (!results || results.length === 0) {
+  medicationLastMonthValue = monthValue;
+  medicationLastResults = Array.isArray(results) ? results : [];
+  ensureMedicationFilterButtons();
+
+  const visibleResults = medicationProblemOnly
+    ? medicationLastResults.filter((item) => getMedicationProblemCount(monthValue, item) > 0)
+    : medicationLastResults;
+
+  if (!visibleResults || visibleResults.length === 0) {
     medicationResultBody.innerHTML = `<tr><td colspan="${4 + days.length}">확인할 투약 대상자가 없습니다.</td></tr>`;
     return;
   }
 
-  results.forEach((item) => {
+  visibleResults.forEach((item) => {
     const row = document.createElement("tr");
     
     // 💡 attendanceDates 유실 방어막 구축
@@ -709,6 +794,12 @@ checkMedicationBtn.addEventListener("click", async () => {
 });
 
 clearMedicationBtn.addEventListener("click", () => {
+  medicationProblemOnly = false;
+  medicationLastMonthValue = "";
+  medicationLastResults = [];
+  const filterWrap = document.getElementById("medicationResultFilterWrap");
+  if (filterWrap) filterWrap.remove();
+
   checkMonthInput.value = "";
   medicationFileInput.value = "";
   medicationTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>복약도움</th></tr>`;
