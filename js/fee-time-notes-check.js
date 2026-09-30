@@ -17,35 +17,45 @@ function parseWorkbook(workbook){
  const out=[];
  workbook.SheetNames.forEach(sn=>{
   const rs=rows(workbook.Sheets[sn]), name=detectName(rs,sn); if(!name)return;
-  // '총 이용시간' 행을 찾고, 그 행의 날짜별 분 값을 직접 사용한다.
-  const totalRows=[];
+
+  // 제공기록지 실제 양식 대응:
+  // 날짜행: A열에 "(2024) 년 월/일", 각 날짜칸에는 "03 / 04 (월)"
+  // 바로 다음 행: A열 "총시간", 날짜와 같은 열에 "605분"처럼 기록됨.
   for(let r=0;r<rs.length;r++){
-    const lead=compact((rs[r]||[]).slice(0,8).join(' '));
-    if(/총이용시간|총이용분|이용시간\(분\)|총시간\(분\)/.test(lead)) totalRows.push(r);
-  }
-  for(let r=0;r<rs.length;r++) for(let c=0;c<(rs[r]||[]).length;c++){
-    const dt=dateVal(rs[r][c]); if(!dt)continue;
-    let total=null;
-    // 날짜 열과 같은 열의 '총 이용시간' 값을 우선 사용
-    for(const tr of totalRows){ const n=numberMinutes(rs[tr]?.[c]); if(n!=null && n>=0 && n<=1440){ total=n; break; } }
-    // 양식에 따라 날짜 아래 20행 안에 총 이용시간 라벨이 있는 경우도 대응
-    if(total==null){
-      for(let rr=r+1;rr<Math.min(rs.length,r+24);rr++){
-        const label=compact((rs[rr]||[]).slice(0,Math.min(c,8)).join(' '));
-        if(/총이용시간|총이용분|이용시간\(분\)|총시간\(분\)/.test(label)){
-          const n=numberMinutes(rs[rr]?.[c]); if(n!=null){total=n;break;}
+    const row=rs[r]||[];
+    const joined=norm(row.slice(0,5).join(' '));
+    const ym=joined.match(/\(?\s*(20\d{2})\s*\)?\s*년\s*월\/?일/);
+    if(!ym) continue;
+    const year=Number(ym[1]);
+
+    let totalRow=-1;
+    for(let rr=r+1;rr<Math.min(rs.length,r+5);rr++){
+      const lead=compact((rs[rr]||[]).slice(0,5).join(' '));
+      if(/총시간|총이용시간|총이용분|이용시간\(분\)|총시간\(분\)/.test(lead)){ totalRow=rr; break; }
+    }
+    if(totalRow<0) continue;
+
+    for(let c=0;c<row.length;c++){
+      const ds=norm(row[c]);
+      const dm=ds.match(/(\d{1,2})\s*\/\s*(\d{1,2})/);
+      if(!dm) continue;
+      const month=Number(dm[1]), day=Number(dm[2]);
+      if(month<1||month>12||day<1||day>31) continue;
+      const dt=`${year}-${pad(month)}-${pad(day)}`;
+      const total=numberMinutes(rs[totalRow]?.[c]);
+      if(total==null || total<0 || total>1440) continue;
+
+      // 같은 날짜 열에 있는 모든 '특이사항' 행을 합쳐 가져온다.
+      const notes=[];
+      for(let rr=totalRow+1;rr<rs.length;rr++){
+        const lead=compact((rs[rr]||[]).slice(0,Math.min(c,8)).join(' '));
+        if(lead.includes('특이사항')){
+          const t=norm(rs[rr]?.[c]);
+          if(t && t!=='□' && t!=='■' && !/^※?별지첨부$/.test(compact(t))) notes.push(t);
         }
       }
+      out.push({name,date:dt,totalMinutes:total,note:[...new Set(notes)].join('\n'),sheet:sn});
     }
-    if(total==null)continue;
-    let notes=[];
-    for(let rr=0;rr<rs.length;rr++){
-      const lead=compact((rs[rr]||[]).slice(0,Math.min(c,8)).join(' '));
-      if(lead.includes('특이사항')) for(let z=rr;z<Math.min(rs.length,rr+6);z++){
-        const t=norm(rs[z]?.[c]); if(t&&!dateVal(t)&&numberMinutes(t)==null&&t!=='□')notes.push(t);
-      }
-    }
-    out.push({name,date:dt,totalMinutes:total,note:[...new Set(notes)].join('\n'),sheet:sn});
   }
  });
  const m=new Map(); out.forEach(x=>m.set(`${compact(x.name)}|${x.date}`,x)); return [...m.values()];
