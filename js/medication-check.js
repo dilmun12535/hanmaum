@@ -186,17 +186,66 @@ function parseMinutes(value) {
   return match ? Number(match[0]) : 0;
 }
 
+function getPlanStartDate(plan) {
+  return normalizeDateText(
+    plan?.startDate ||
+    plan?.applyStartDate ||
+    plan?.effectiveStartDate ||
+    plan?.periodStart ||
+    plan?.serviceStartDate ||
+    plan?.applicationStartDate ||
+    ""
+  );
+}
+
+function getPlanEndDate(plan) {
+  return normalizeDateText(
+    plan?.endDate ||
+    plan?.applyEndDate ||
+    plan?.effectiveEndDate ||
+    plan?.periodEnd ||
+    plan?.serviceEndDate ||
+    plan?.applicationEndDate ||
+    ""
+  );
+}
+
 function getLatestPlansByRecipient(name, checkDate) {
   const checkDateText = normalizeDateText(checkDate);
   const library = carePlanLibraryCache || [];
 
-  const validPlans = library.filter((plan) => {
-    const writtenDate = normalizeDateText(plan.writtenDate);
-    return writtenDate && writtenDate <= checkDateText && isSameRecipient(plan.recipientName, name);
+  const sameRecipientPlans = library.filter((plan) =>
+    isSameRecipient(plan.recipientName, name)
+  );
+
+  // 1순위: 계획서 보관함의 적용기간에 해당 날짜가 포함되는 계획서
+  const periodPlans = sameRecipientPlans.filter((plan) => {
+    const startDate = getPlanStartDate(plan);
+    const endDate = getPlanEndDate(plan);
+    if (!startDate) return false;
+    return startDate <= checkDateText && (!endDate || checkDateText <= endDate);
   });
 
-  validPlans.sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
-  return validPlans[0] || null;
+  if (periodPlans.length) {
+    periodPlans.sort((a, b) => {
+      const startCompare = getPlanStartDate(b).localeCompare(getPlanStartDate(a));
+      if (startCompare !== 0) return startCompare;
+      return normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate));
+    });
+    return periodPlans[0];
+  }
+
+  // 구형 데이터처럼 적용기간 필드가 없는 계획서만 작성일 기준으로 보완
+  const legacyPlans = sameRecipientPlans.filter((plan) => {
+    const hasPeriod = getPlanStartDate(plan) || getPlanEndDate(plan);
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    return !hasPeriod && writtenDate && writtenDate <= checkDateText;
+  });
+
+  legacyPlans.sort((a, b) =>
+    normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate))
+  );
+  return legacyPlans[0] || null;
 }
 
 function tryParseJson(value) {
@@ -443,7 +492,10 @@ function getLatestMedicationCounsel(name, targetDate) {
 }
 
 function getMedicationRuleAtDate(plan, name, targetDate) {
-  const planDate = plan ? normalizeDateText(plan.writtenDate) : "";
+  // 상담일지와 계획서 우선순위도 작성일이 아니라 실제 적용 시작일을 우선 사용합니다.
+  const planDate = plan
+    ? (getPlanStartDate(plan) || normalizeDateText(plan.writtenDate))
+    : "";
   const planCount = getMedicationCountFromPlan(plan);
 
   const counsel = getLatestMedicationCounsel(name, targetDate);
