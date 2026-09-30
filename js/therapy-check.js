@@ -104,28 +104,16 @@ function getMonthEndDate(monthValue) {
 function getWeekEndDates(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 0);
-
-  const dayOfWeek = monthStart.getDay();
-  const daysFromMonday = (dayOfWeek + 6) % 7;
+  const daysFromMonday = (monthStart.getDay() + 6) % 7;
   const anchorMonday = new Date(monthStart);
   anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
   const ranges = {};
   for (let i = 0; i < 5; i++) {
-    const weekStart = new Date(anchorMonday);
-    weekStart.setDate(anchorMonday.getDate() + i * 7);
-    const weekFriday = new Date(weekStart);
-    weekFriday.setDate(weekStart.getDate() + 4);
-
-    const currentStart = new Date(Math.max(weekStart.getTime(), monthStart.getTime()));
-    const currentEnd = new Date(Math.min(weekFriday.getTime(), monthEnd.getTime()));
-
-    if (currentStart.getTime() > currentEnd.getTime()) {
-      ranges[`week${i + 1}`] = null;
-    } else {
-      ranges[`week${i + 1}`] = `${currentEnd.getFullYear()}-${String(currentEnd.getMonth() + 1).padStart(2, "0")}-${String(currentEnd.getDate()).padStart(2, "0")}`;
-    }
+    const weekFriday = new Date(anchorMonday);
+    weekFriday.setDate(anchorMonday.getDate() + i * 7 + 4);
+    ranges[`week${i + 1}`] =
+      `${weekFriday.getFullYear()}-${String(weekFriday.getMonth()+1).padStart(2,"0")}-${String(weekFriday.getDate()).padStart(2,"0")}`;
   }
   return ranges;
 }
@@ -133,10 +121,7 @@ function getWeekEndDates(monthValue) {
 function getDaysInWeekRange(monthValue, weekKey) {
   const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
-  const monthEnd = new Date(year, month, 0);
-
-  const dayOfWeek = monthStart.getDay();
-  const daysFromMonday = (dayOfWeek + 6) % 7;
+  const daysFromMonday = (monthStart.getDay() + 6) % 7;
   const anchorMonday = new Date(monthStart);
   anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
@@ -148,31 +133,28 @@ function getDaysInWeekRange(monthValue, weekKey) {
   for (let i = 0; i < 5; i++) {
     const current = new Date(weekStart);
     current.setDate(weekStart.getDate() + i);
-    if (current >= monthStart && current <= monthEnd) {
-      days.push(`${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}-${String(current.getDate()).padStart(2, "0")}`);
-    }
+    days.push(`${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,"0")}-${String(current.getDate()).padStart(2,"0")}`);
   }
   return days;
 }
 
-function getWeekKey(dateText) {
-  const [year, month, day] = dateText.split("-").map(Number);
-  const targetDate = new Date(year, month - 1, day);
+function getWeekKeyForMonth(dateText, monthValue) {
+  const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
-
-  const dayOfWeek = monthStart.getDay();
-  const daysFromMonday = (dayOfWeek + 6) % 7;
+  const daysFromMonday = (monthStart.getDay() + 6) % 7;
   const anchorMonday = new Date(monthStart);
   anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
+  const [dy, dm, dd] = dateText.split("-").map(Number);
+  const targetDate = new Date(dy, dm - 1, dd);
   const diffDays = Math.floor((targetDate - anchorMonday) / 86400000);
   const weekNumber = Math.floor(diffDays / 7) + 1;
+  if (weekNumber < 1 || weekNumber > 5) return "";
+  return `week${weekNumber}`;
+}
 
-  if (weekNumber <= 1) return "week1";
-  if (weekNumber === 2) return "week2";
-  if (weekNumber === 3) return "week3";
-  if (weekNumber === 4) return "week4";
-  return "week5";
+function isDateInDisplayedWeeks(dateText, monthValue) {
+  return !!getWeekKeyForMonth(dateText, monthValue);
 }
 
 function readPlanRows(plan) {
@@ -480,9 +462,10 @@ function parseTherapyReport(workbook, monthValue) {
     if (!name || name === "수급자명") continue;
 
     const dateText = parseDate(row[dateCol]);
-    if (!dateText || !dateText.startsWith(monthValue)) continue;
+    if (!dateText || !isDateInDisplayedWeeks(dateText, monthValue)) continue;
 
-    const weekKey = getWeekKey(dateText);
+    const weekKey = getWeekKeyForMonth(dateText, monthValue);
+    if (!weekKey) continue;
     const timeText = String(row[timeCol] || "").trim();
     const noteText = noteCol >= 0 ? String(row[noteCol] || "").trim() : "";
 
