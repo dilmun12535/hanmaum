@@ -741,8 +741,13 @@ function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
     }
 
     if (isFoodPrepCounsel) {
-      if (isRemoveCounsel(counsel)) specialFood = false;
-      if (isAddCounsel(counsel)) specialFood = true;
+      // "급여 제외" 문장에는 '급여/제공' 관련 단어가 함께 있어도
+      // 제외 판정을 최우선으로 적용합니다.
+      if (isRemoveCounsel(counsel)) {
+        specialFood = false;
+      } else if (isAddCounsel(counsel)) {
+        specialFood = true;
+      }
       specialFoodSource = "상담";
     }
   }
