@@ -9,7 +9,8 @@
 <link href="../css/common.css" rel="stylesheet"/>
 <link href="../css/dashboard.css" rel="stylesheet"/>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script defer="" src="../js/special-notes-check.js"></script>
+<script defer src="../js/firestore-data.js"></script>
+<script defer src="../js/special-notes-check.js"></script>
 <style>
     *{box-sizing:border-box}
     body{margin:0;background:#f6f7fb;color:#101828;font-family:Arial,'Noto Sans KR',sans-serif}
@@ -144,12 +145,13 @@
     @media(max-width:1280px){.upload-grid{grid-template-columns:1fr 1fr}.summary-grid{grid-template-columns:repeat(3,1fr)}}
     @media(max-width:900px){.main-layout{display:block}.sidebar{width:auto;border-right:0;border-bottom:1px solid #e5e7eb;padding:12px 14px}.menu-list{display:grid;grid-template-columns:1fr 1fr;gap:8px}.menu-link{min-height:42px;font-size:13px}.page-head{display:block}.page-head .btn-row{justify-content:flex-start;margin-top:14px}.summary-grid{grid-template-columns:repeat(2,1fr)}.simple-control-row{align-items:stretch}.auto-info-box,.result-filter-field,.action-buttons{width:100%;margin-left:0}.action-buttons .btn{flex:1}}
     @media(max-width:620px){.topbar-right{display:none}.page-wrap{padding:18px 14px 34px}.upload-grid,.summary-grid{grid-template-columns:1fr}.card{padding:16px}.menu-list{grid-template-columns:1fr}.btn{flex:1}}
-  </style>
+  .match-note{padding:8px 0;border-bottom:1px dashed #e5e7eb}.match-note:last-child{border-bottom:0}.match-note b{color:#1d4ed8}.match-note span{font-size:11px;color:#64748b;margin-left:6px}.match-reason{font-size:11px;color:#059669;margin-top:4px}.no-match{color:#dc2626;font-weight:800}.result-table th:nth-child(4),.result-table td:nth-child(4){min-width:280px;width:28%}.result-table th:nth-child(6),.result-table td:nth-child(6){min-width:360px;width:36%}
+</style>
 </head>
 <body>
 <header class="topbar">
 <div class="logo-area">
-<img alt="한마음주간보호센터" class="logo-img" src="../images/logo.png"/>
+<img alt="한마음주간보호센터" class="logo-img" src="../images/logo2.png"/>
 </div>
 <div class="topbar-right">
 <div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
@@ -197,100 +199,11 @@
 </aside>
 <main class="content-area">
 <div class="page-wrap">
-<div class="page-head">
-<div class="page-title">
-<h1>급여제공기록지 특이사항 검증</h1>
-<p>제공기록지 엑셀 하나를 업로드하면 특이사항 누락 여부를 확인합니다. 날짜는 제공기록지의 날짜 행만 읽습니다.</p>
-</div>
-<div class="btn-row">
-<button class="btn btn-ghost" id="reloadBtn" type="button">상담/출석 다시 불러오기</button>
-<button class="btn btn-secondary" id="downloadBtn" type="button">결과 엑셀 다운로드</button>
-</div>
-</div>
-<section class="card">
-<div class="upload-grid">
-<div class="upload-box main">
-<strong>① 장기요양급여 제공기록지 업로드</strong>
-<input accept=".xlsx,.xls" id="recordFile" type="file"/>
-<div class="upload-help" id="recordFileStatus">제공기록지 엑셀 파일 하나만 업로드하세요.</div>
-</div>
-<div class="upload-box">
-<strong>② 상담일지 보관함</strong>
-<div class="upload-help" id="counselLibraryStatus">상담일지 보관함에서 자동으로 불러옵니다.</div>
-</div>
-<div class="upload-box">
-<strong>③ 출석관리 보관함</strong>
-<div class="upload-help" id="attendanceLibraryStatus">출석관리 보관함에서 자동으로 불러옵니다.</div>
-</div>
-<div class="upload-box">
-<strong>④ 수가/계획서 보관함</strong>
-<div class="upload-help" id="feeLibraryStatus">계획서/수가 보관함에서 자동으로 불러옵니다.</div>
-</div>
-</div>
-</section>
-<section class="card">
-<div class="simple-control-row">
-<div class="auto-info-box">
-<span>업로드 기록 범위</span>
-<b id="detectedMonthText">업로드 파일 자동 인식</b>
-</div>
-<div class="field result-filter-field">
-<label for="statusFilter">결과 필터</label>
-<select id="statusFilter">
-<option value="all">전체</option>
-<option value="miss">누락</option>
-<option value="ok">정상</option>
-<option value="warn">확인필요</option>
-</select>
-</div>
-<div class="btn-row action-buttons">
-<button class="btn btn-primary" id="checkBtn" type="button">검증하기</button>
-<button class="btn btn-ghost" id="resetBtn" type="button">초기화</button>
-</div>
-</div>
-<div class="guide-text">
-            ※ 월 선택은 사용하지 않습니다. 날짜는 제공기록지 상단의 “06/01(월)” 같은 날짜 행만 인식합니다.
-          </div>
-</section>
-<section class="summary-grid">
-<div class="summary-card"><span>전체 필요 항목</span><b id="totalCount">0</b></div>
-<div class="summary-card"><span>정상</span><b class="status-ok" id="okCount">0</b></div>
-<div class="summary-card"><span>누락</span><b class="status-miss" id="missCount">0</b></div>
-<div class="summary-card"><span>확인필요</span><b class="status-warn" id="warnCount">0</b></div>
-<div class="summary-card"><span>업로드 특이사항</span><b class="status-info" id="uploadedCount">0</b></div>
-</section>
-<section class="card">
-<div class="pill-filter" id="typeTabs">
-<button class="active" data-type="all" type="button">전체</button>
-<button data-type="상담일지" type="button">상담일지</button>
-<button data-type="식사" type="button">식사</button>
-<button data-type="조기하원" type="button">조기하원</button>
-<button data-type="이용시간" type="button">이용시간</button>
-<button data-type="목욕" type="button">목욕</button>
-<button data-type="투약" type="button">투약</button>
-</div>
-<div class="table-wrap">
-<table class="result-table">
-<thead>
-<tr>
-<th>결과</th>
-<th>어르신</th>
-<th>일자</th>
-<th>구분</th>
-<th>필요 특이사항</th>
-<th>업로드 특이사항</th>
-<th>판정 사유</th>
-<th>추천 문구</th>
-</tr>
-</thead>
-<tbody id="resultBody">
-<tr>
-<td class="empty" colspan="8">제공기록지 엑셀을 업로드한 뒤 검증하기를 눌러주세요.</td>
-</tr>
-</tbody>
-</table>
-</div>
-</section>
+<div class="page-head"><div class="page-title"><h1>상담일지 특이사항 검증</h1><p>Firebase 상담일지의 반영일부터 30일 동안 실제 급여제공기록지 특이사항에 관련 내용이 기록되었는지 내용까지 비교합니다.</p></div><div class="btn-row"><button class="btn btn-ghost" id="reloadBtn" type="button">상담일지 다시 불러오기</button><button class="btn btn-secondary" id="downloadBtn" type="button">결과 엑셀 다운로드</button></div></div>
+<section class="card"><div class="upload-grid" style="grid-template-columns:minmax(420px,1.5fr) minmax(300px,1fr)"><div class="upload-box main"><strong>① 급여제공기록지 특이사항 엑셀</strong><input accept=".xlsx,.xls" id="recordFile" type="file"><div class="upload-help" id="recordFileStatus">급여제공기록지 특이사항 엑셀 파일을 업로드하세요.</div></div><div class="upload-box"><strong>② 상담일지 보관함</strong><div class="upload-help" id="counselLibraryStatus">Firebase 상담일지 보관함에서 자동으로 불러옵니다.</div></div></div></section>
+<section class="card"><div class="simple-control-row"><div class="auto-info-box"><span>업로드 기록 범위</span><b id="detectedMonthText">업로드 파일 자동 인식</b></div><div class="btn-row action-buttons"><button class="btn btn-primary" id="checkBtn" type="button">검증하기</button><button class="btn btn-ghost" id="resetBtn" type="button">초기화</button></div></div><div class="guide-text">※ 상담일지 반영일부터 30일을 검증기간으로 잡습니다. 단순 날짜 존재 여부가 아니라 상담 내용의 핵심어와 업무 영역을 실제 특이사항 문장과 비교합니다. 자동 비교가 애매한 경우에는 “내용 확인 필요”로 남겨 직접 확인할 수 있게 합니다.</div></section>
+<section class="summary-grid" style="grid-template-columns:repeat(4,minmax(0,1fr))"><div class="summary-card"><span>검증 상담일지</span><b id="totalCount">0</b></div><div class="summary-card"><span>관련 기록 있음</span><b class="status-ok" id="okCount">0</b></div><div class="summary-card"><span>내용 확인 필요</span><b class="status-warn" id="warnCount">0</b></div><div class="summary-card"><span>업로드 특이사항</span><b class="status-info" id="uploadedCount">0</b></div></section>
+<section class="card"><div class="pill-filter" id="resultTabs"><button class="active" data-filter="all" type="button">전체</button><button data-filter="warn" type="button">확인 필요만</button></div><div class="table-wrap"><table class="result-table"><thead><tr><th>판정</th><th>어르신</th><th>상담 반영일 / 검증기간</th><th>상담일지 내용</th><th>관련/전체</th><th>관련 특이사항 내용</th><th>판정 사유</th><th>복사</th></tr></thead><tbody id="resultBody"><tr><td class="empty" colspan="8">특이사항 엑셀을 업로드한 뒤 검증하기를 눌러주세요.</td></tr></tbody></table></div></section>
 </div>
 </main>
 </div>

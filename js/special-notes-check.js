@@ -1,1077 +1,190 @@
-/* special-notes-check.js
-   급여제공기록지 특이사항 검증 - 날짜 오인식/0건 표시 개선본
+let counselLibraryCache = [];
+let parsedSpecialNotes = [];
+let verificationResults = [];
+let currentFilter = "all";
 
-   변경사항
-   - 검증월 삭제 → 업로드 기록 범위로 표시
-   - 날짜 인식 엄격화: 시간(06:51), 방번호, 20분 등을 날짜로 오인식하지 않음
-   - API가 0건이면 실패/0건을 구분 표시
-   - 계획서 연결이 0건이어도 석식 공란을 무조건 누락 처리하지 않음
-   - 토요일 식사 공란은 기본적으로 누락 처리하지 않음
-*/
+const recordFile = document.getElementById("recordFile");
+const recordFileStatus = document.getElementById("recordFileStatus");
+const counselLibraryStatus = document.getElementById("counselLibraryStatus");
+const detectedMonthText = document.getElementById("detectedMonthText");
+const checkBtn = document.getElementById("checkBtn");
+const resetBtn = document.getElementById("resetBtn");
+const reloadBtn = document.getElementById("reloadBtn");
+const downloadBtn = document.getElementById("downloadBtn");
+const resultBody = document.getElementById("resultBody");
+const totalCount = document.getElementById("totalCount");
+const okCount = document.getElementById("okCount");
+const warnCount = document.getElementById("warnCount");
+const uploadedCount = document.getElementById("uploadedCount");
 
-(() => {
-  "use strict";
-
-  const API_URL =
-    "https://script.google.com/macros/s/AKfycbwJhnr6jFypaNIPzsaCUx8zk9Lc0SHN3AYPzhoT0uoMW_eTDPVlnrIzONA1gCD0_A5WDQ/exec";
-
-  const state = {
-    file: null,
-    recordRows: [],
-    requiredItems: [],
-    results: [],
-    typeFilter: "all",
-    recordRangeText: "",
-    libraries: {
-      counsel: [],
-      plan: [],
-      attendance: [],
-      fee: []
-    }
-  };
-
-  const $ = (id) => document.getElementById(id);
-  const pad = (n) => String(n).padStart(2, "0");
-
-  function getWeekday(dateKey) {
-    if (!dateKey) return "";
-    const d = new Date(`${dateKey}T00:00:00`);
-    if (Number.isNaN(d.getTime())) return "";
-    return ["일", "월", "화", "수", "목", "금", "토"][d.getDay()];
+function normalize(v) {
+  return String(v ?? "").replace(/[\u200e\u200f\ufeff]/g, "").replace(/\s+/g, " ").trim();
+}
+function compact(v) { return normalize(v).replace(/[^0-9a-zA-Z가-힣]/g, "").toLowerCase(); }
+function sameName(a,b) { return compact(a) && compact(a) === compact(b); }
+function pad(n){ return String(n).padStart(2,"0"); }
+function dateText(v){
+  if (!v) return "";
+  if (v instanceof Date && !Number.isNaN(v.getTime())) return `${v.getFullYear()}-${pad(v.getMonth()+1)}-${pad(v.getDate())}`;
+  if (typeof v === "number") {
+    const d = XLSX.SSF.parse_date_code(v);
+    if (d) return `${d.y}-${pad(d.m)}-${pad(d.d)}`;
   }
-
-  function isSaturday(dateKey) {
-    return getWeekday(dateKey) === "토";
-  }
-
-  function setText(id, value) {
-    const el = $(id);
-    if (el) el.textContent = String(value ?? "");
-  }
-
-  function setStatus(id, text, mode) {
-    const el = $(id);
-    if (!el) return;
-
-    el.textContent = text;
-    el.classList.remove("status-ok-text", "status-warn-text", "status-error-text");
-
-    if (mode === "ok") el.classList.add("status-ok-text");
-    if (mode === "warn") el.classList.add("status-warn-text");
-    if (mode === "error") el.classList.add("status-error-text");
-  }
-
-  function normalize(value) {
-    return String(value ?? "")
-      .replace(/\s+/g, "")
-      .replace(/[(){}\[\],.·ㆍ:;'"‘’“”]/g, "")
-      .trim();
-  }
-
-  function cleanName(value) {
-    return String(value ?? "")
-      .replace(/\s+/g, "")
-      .replace(/어르신|수급자|님|氏/g, "")
-      .trim();
-  }
-
-  function onlyDigits(value) {
-    return String(value ?? "").replace(/\D/g, "");
-  }
-
-  function escapeHtml(value) {
-    return String(value ?? "").replace(/[&<>'"]/g, (m) => ({
-      "&": "&amp;",
-      "<": "&lt;",
-      ">": "&gt;",
-      "'": "&#39;",
-      '"': "&quot;"
-    }[m]));
-  }
-
-  function toDateKey(value) {
-    if (!value) return "";
-
-    if (value instanceof Date && !Number.isNaN(value.getTime())) {
-      return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
-    }
-
-    const s = String(value).trim();
-
-    let m = s.match(/(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})/);
-    if (m) return `${m[1]}-${pad(m[2])}-${pad(m[3])}`;
-
-    m = s.match(/(20\d{2})(\d{2})(\d{2})/);
-    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
-
-    return "";
-  }
-
-  function timeToMin(value) {
-    const m = String(value ?? "").match(/(\d{1,2})\s*[:시]\s*(\d{1,2})?/);
-    if (!m) return null;
-    return Number(m[1]) * 60 + Number(m[2] || 0);
-  }
-
-  function actualUseMinutes(row) {
-    const start = timeToMin(row.startTime);
-    const end = timeToMin(row.endTime);
-
-    if (start === null || end === null) return null;
-
-    let minutes = end - start;
-    if (minutes < 0) minutes += 24 * 60;
-
-    return minutes;
-  }
-
-  function formatMinutes(minutes) {
-    if (minutes === null || minutes === undefined || Number.isNaN(minutes)) return "";
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    if (m === 0) return `${h}시간`;
-    return `${h}시간 ${m}분`;
-  }
-
-  function parseFeeTimeBand(text) {
-    const raw = String(text || "");
-    const t = normalize(raw);
-
-    /*
-      월별 수가명/수가코드에서 이용시간 구간을 추정합니다.
-      예: 3시간 이상~6시간 미만, 6시간 이상~8시간 미만,
-          8시간 이상~10시간 미만, 10시간 이상~12시간 미만, 12시간 이상
-    */
-    let m = t.match(/(\d{1,2})시간이상(\d{1,2})시간미만/);
-    if (m) {
-      return {
-        min: Number(m[1]) * 60,
-        max: Number(m[2]) * 60,
-        label: `${m[1]}시간 이상 ${m[2]}시간 미만`
-      };
-    }
-
-    m = t.match(/(\d{1,2})시간~(\d{1,2})시간/);
-    if (m) {
-      return {
-        min: Number(m[1]) * 60,
-        max: Number(m[2]) * 60,
-        label: `${m[1]}시간 이상 ${m[2]}시간 미만`
-      };
-    }
-
-    m = t.match(/(\d{1,2})시간이상/);
-    if (m) {
-      return {
-        min: Number(m[1]) * 60,
-        max: null,
-        label: `${m[1]}시간 이상`
-      };
-    }
-
-    /*
-      수가코드만 들어있는 경우를 위한 보조 추정입니다.
-      실제 코드 체계가 센터 파일과 다르면 월별수가 rowsJson/serviceName 문구를 우선 사용합니다.
-    */
-    if (/주야간|주간|야간|방문요양|서비스/.test(t)) {
-      if (/3시간|3~6|3-6/.test(t)) return { min: 180, max: 360, label: "3시간 이상 6시간 미만" };
-      if (/6시간|6~8|6-8/.test(t)) return { min: 360, max: 480, label: "6시간 이상 8시간 미만" };
-      if (/8시간|8~10|8-10/.test(t)) return { min: 480, max: 600, label: "8시간 이상 10시간 미만" };
-      if (/10시간|10~12|10-12/.test(t)) return { min: 600, max: 720, label: "10시간 이상 12시간 미만" };
-      if (/12시간/.test(t)) return { min: 720, max: null, label: "12시간 이상" };
-    }
-
-    return null;
-  }
-
-  function getFeeTimeBandForDate(feeRows, recordDate) {
-    const candidates = feeRows
-      .map((fee) => {
-        const serviceDates = Array.isArray(fee.serviceDates) ? fee.serviceDates : [];
-        const dateMatch = serviceDates.length ? serviceDates.includes(recordDate) : true;
-        if (!dateMatch) return null;
-
-        const text = [
-          fee.serviceName,
-          fee.serviceType,
-          fee.serviceCode,
-          fee.rows ? JSON.stringify(fee.rows) : "",
-          textOfLibraryRow(fee)
-        ].join(" ");
-
-        const band = parseFeeTimeBand(text);
-        if (!band) return null;
-
-        return { ...band, sourceText: text };
-      })
-      .filter(Boolean);
-
-    if (!candidates.length) return null;
-
-    /*
-      같은 날짜에 여러 수가가 잡힌 경우, 가장 긴 구간을 우선합니다.
-      주야간보호 기본수가와 가산수가가 섞여도 시간 구간이 있는 항목만 사용합니다.
-    */
-    return candidates.sort((a, b) => (b.min || 0) - (a.min || 0))[0];
-  }
-
-  function getTimeRange(value) {
-    const s = String(value ?? "").trim();
-    const matches = [...s.matchAll(/(\d{1,2})\s*[:시]\s*(\d{1,2})?/g)]
-      .map((m) => `${pad(m[1])}:${pad(m[2] || 0)}`);
-
-    if (matches.length >= 2) return { start: matches[0], end: matches[1] };
-    if (matches.length === 1) return { start: "", end: matches[0] };
-    return { start: "", end: "" };
-  }
-
-  function findYear(rows) {
-    const joined = rows.slice(0, 10).flat().map(String).join(" ");
-    const m = joined.match(/(20\d{2})/);
-    return m ? Number(m[1]) : new Date().getFullYear();
-  }
-
-  function dateFromHeaderStrict(value, year) {
-    const raw = String(value ?? "").trim();
-
-    if (!raw) return "";
-
-    if (raw.includes(":") || /시\s*\d{0,2}/.test(raw) || /분/.test(raw)) return "";
-
-    let m = raw.match(/(20\d{2})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})\s*(?:일)?\s*(?:\([월화수목금토일]\))?/);
-    if (m) {
-      const month = Number(m[2]);
-      const day = Number(m[3]);
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return `${m[1]}-${pad(month)}-${pad(day)}`;
-      }
-      return "";
-    }
-
-    m = raw.match(/^(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*(?:\([월화수목금토일]\))?$/);
-    if (m) {
-      const month = Number(m[1]);
-      const day = Number(m[2]);
-      if (month >= 1 && month <= 12 && day >= 1 && day <= 31) {
-        return `${year}-${pad(month)}-${pad(day)}`;
-      }
-    }
-
-    return "";
-  }
-
-  function findName(rows, sheetName, fileName) {
-    for (let r = 0; r < Math.min(rows.length, 14); r += 1) {
-      for (let c = 0; c < rows[r].length; c += 1) {
-        const cell = normalize(rows[r][c]);
-
-        if (cell.includes("수급자명") || cell === "성명" || cell === "이름") {
-          for (let k = 1; k <= 4; k += 1) {
-            const next = cleanName(rows[r][c + k]);
-            if (next && /[가-힣]/.test(next) && !/생년월일|등급|인정번호|기관/.test(next)) {
-              return next;
-            }
-          }
-        }
-      }
-    }
-
-    const fileMatch = String(fileName || "").match(/L?\d{8,12}\s*([가-힣]{2,5})/);
-    if (fileMatch) return cleanName(fileMatch[1]);
-
-    const sheetMatch = String(sheetName || "").match(/[가-힣]{2,5}/);
-    return sheetMatch ? cleanName(sheetMatch[0]) : "이름 미확인";
-  }
-
-  function findLongTermNo(rows, fileName) {
-    const fileNo = String(fileName || "").match(/L?\d{8,12}/);
-    if (fileNo) return fileNo[0];
-
-    for (let r = 0; r < Math.min(rows.length, 14); r += 1) {
-      for (let c = 0; c < rows[r].length; c += 1) {
-        const cell = normalize(rows[r][c]);
-
-        if (cell.includes("장기요양인정번호") || cell.includes("인정번호")) {
-          for (let k = 1; k <= 4; k += 1) {
-            const next = String(rows[r][c + k] ?? "").trim();
-            const m = next.match(/L?\d{8,12}/);
-            if (m) return m[0];
-          }
-        }
-      }
-    }
-
-    return "";
-  }
-
-  function findDateColumns(rows, year) {
-    const found = [];
-    const maxHeaderRows = Math.min(rows.length, 12);
-
-    for (let r = 0; r < maxHeaderRows; r += 1) {
-      let rowDateCount = 0;
-      const temp = [];
-
-      for (let c = 0; c < rows[r].length; c += 1) {
-        const date = dateFromHeaderStrict(rows[r][c], year);
-        if (date) {
-          rowDateCount += 1;
-          temp.push({ row: r, col: c, date });
-        }
-      }
-
-      if (rowDateCount >= 2) {
-        found.push(...temp);
-      }
-    }
-
-    const seen = new Set();
-
-    return found.filter((item) => {
-      const key = `${item.col}-${item.date}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-  }
-
-  function rowLabel(row) {
-    return normalize(row.slice(0, 10).join(" "));
-  }
-
-  function findRowsByLabel(rows, keywords) {
-    const out = [];
-
-    rows.forEach((row, idx) => {
-      const label = rowLabel(row);
-      if (keywords.some((k) => label.includes(normalize(k)))) {
-        out.push(idx);
-      }
-    });
-
-    return out;
-  }
-
-  function getCell(rows, r, c) {
-    if (r == null || c == null || !rows[r]) return "";
-    return String(rows[r][c] ?? "").trim();
-  }
-
-  function nearbyText(rows, rowIndexes, col) {
-    const parts = [];
-
-    rowIndexes.forEach((r) => {
-      for (let c = Math.max(0, col - 1); c <= col + 1; c += 1) {
-        const v = getCell(rows, r, c);
-        if (v) parts.push(v);
-      }
-    });
-
-    return parts.join("\n").trim();
-  }
-
-  function isMarked(value) {
-    const raw = String(value ?? "");
-    const s = normalize(raw);
-
-    if (!s) return false;
-    if (/거부|미실시|안드|못드|미제공|결식|불참|안함|안하|X/.test(s)) return false;
-
-    return /■|●|○|O|V|✓|✔|1|실시|제공|완료|일반식|다진식|죽식|대변|소변|교환/.test(raw);
-  }
-
-  function isNegative(value) {
-    const s = normalize(value);
-    return /거부|미실시|안드|못드|미제공|결식|불참|안함|안하|X/.test(s);
-  }
-
-  function getArrayFromResponse(data) {
-    if (Array.isArray(data)) return data;
-    if (!data || typeof data !== "object") return [];
-
-    const candidates = [
-      data.data,
-      data.rows,
-      data.items,
-      data.list,
-      data.result,
-      data.results,
-      data.plans,
-      data.counsels,
-      data.attendance,
-      data.records
-    ];
-
-    for (const item of candidates) {
-      if (Array.isArray(item)) return item;
-    }
-
-    for (const key of Object.keys(data)) {
-      if (Array.isArray(data[key])) return data[key];
-    }
-
-    return [];
-  }
-
-  async function fetchAction(action) {
-    const url = `${API_URL}?action=${encodeURIComponent(action)}&_=${Date.now()}`;
-    const res = await fetch(url, { method: "GET" });
-
-    if (!res.ok) {
-      throw new Error(`${action} HTTP ${res.status}`);
-    }
-
-    const text = await res.text();
-
-    try {
-      return JSON.parse(text);
-    } catch (err) {
-      throw new Error(`${action} JSON 파싱 실패`);
-    }
-  }
-
-  async function fetchAny(actions) {
-    let lastError = null;
-
-    for (const action of actions) {
-      try {
-        const data = await fetchAction(action);
-        const arr = getArrayFromResponse(data);
-        if (arr.length > 0) return { action, data, rows: arr };
-        lastError = new Error(`${action} 0건`);
-      } catch (err) {
-        lastError = err;
-      }
-    }
-
-    return { action: "", data: null, rows: [], error: lastError };
-  }
-
-  function parseRowsJson(row) {
-    const raw =
-      row.rowsJson ??
-      row.rowJson ??
-      row.dataJson ??
-      row.detailsJson ??
-      row.json ??
-      "";
-
-    if (!raw) return [];
-    if (Array.isArray(raw)) return raw;
-
-    try {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }
-
-  function normalizeLibraryRow(row) {
-    const name =
-      row.recipientName ??
-      row.name ??
-      row.수급자명 ??
-      row.어르신 ??
-      row.성명 ??
-      "";
-
-    const longTermNo =
-      row.longTermNumber ??
-      row.longTermNo ??
-      row.careNumber ??
-      row.장기요양번호 ??
-      row.인정번호 ??
-      row.longTermCareNumber ??
-      "";
-
-    const date =
-      toDateKey(row.writtenDate) ||
-      toDateKey(row.date) ||
-      toDateKey(row.serviceDate) ||
-      toDateKey(row.attendanceDate) ||
-      toDateKey(row.changeDate) ||
-      toDateKey(row.reflectionDate) ||
-      toDateKey(row.반영일) ||
-      toDateKey(row.작성일자) ||
-      toDateKey(row.일자) ||
-      toDateKey(row.변경일);
-
-    return {
-      ...row,
-      _name: cleanName(name),
-      _longTermNo: String(longTermNo || "").trim(),
-      _longTermDigits: onlyDigits(longTermNo),
-      _date: date,
-      _rows: parseRowsJson(row),
-      _text: String(
-        Object.values(row)
-          .filter((v) => typeof v !== "object")
-          .join(" ")
-      )
-    };
-  }
-
-  async function loadLibraries() {
-    setStatus("counselLibraryStatus", "상담일지 보관함 불러오는 중...", "warn");
-    setStatus("attendanceLibraryStatus", "출석관리 보관함 불러오는 중...", "warn");
-    setStatus("feeLibraryStatus", "계획서/수가 보관함 불러오는 중...", "warn");
-
-    const counsel = await fetchAny(["listCounsel"]);
-    state.libraries.counsel = counsel.rows.map(normalizeLibraryRow);
-    if (state.libraries.counsel.length) {
-      setStatus("counselLibraryStatus", `상담일지 ${state.libraries.counsel.length}건 연결됨`, "ok");
-    } else {
-      setStatus("counselLibraryStatus", "상담일지 0건", "warn");
-    }
-
-    const attendance = await fetchAny(["listAttendance"]);
-    state.libraries.attendance = attendance.rows.map(normalizeLibraryRow);
-    if (state.libraries.attendance.length) {
-      setStatus("attendanceLibraryStatus", `출석관리 ${state.libraries.attendance.length}건 연결됨`, "ok");
-    } else {
-      setStatus("attendanceLibraryStatus", "출석관리 0건", "warn");
-    }
-
-    const plan = await fetchAny(["listPlan"]);
-    state.libraries.plan = plan.rows.map(normalizeLibraryRow);
-
-    const fee = await fetchAny(["listMonthlyFee"]);
-    state.libraries.fee = fee.rows.map(normalizeLibraryRow);
-
-    if (state.libraries.plan.length || state.libraries.fee.length) {
-      setStatus("feeLibraryStatus", `계획서 ${state.libraries.plan.length}건 / 월별수가 ${state.libraries.fee.length}건 연결됨`, "ok");
-    } else {
-      setStatus("feeLibraryStatus", "계획서/월별수가 0건", "warn");
-    }
-  }
-
-  function samePerson(a, b) {
-    const nameA = cleanName(a.name || a._name);
-    const nameB = cleanName(b.name || b._name);
-    const noA = onlyDigits(a.longTermNo || a._longTermNo || a._longTermDigits);
-    const noB = onlyDigits(b.longTermNo || b._longTermNo || b._longTermDigits);
-
-    if (noA && noB && noA === noB) return true;
-    if (nameA && nameB && nameA === nameB) return true;
-
-    return false;
-  }
-
-  function latestBeforeOrOn(rows, recordDate, recordPerson) {
-    const dateKey = recordDate || "9999-12-31";
-
-    return rows
-      .filter((row) => samePerson(recordPerson, row))
-      .filter((row) => !row._date || row._date <= dateKey)
-      .sort((a, b) => String(b._date || "").localeCompare(String(a._date || "")))[0] || null;
-  }
-
-  function relatedOnExactDate(rows, recordDate, recordPerson) {
-    return rows.filter((row) => {
-      if (!samePerson(recordPerson, row)) return false;
-      if (!row._date) return false;
-      return row._date === recordDate;
-    });
-  }
-
-  function textOfLibraryRow(row) {
-    if (!row) return "";
-
-    const parts = [];
-    if (row._text) parts.push(row._text);
-
-    if (Array.isArray(row._rows)) {
-      row._rows.forEach((r) => {
-        if (Array.isArray(r)) parts.push(r.join(" "));
-        else if (r && typeof r === "object") parts.push(Object.values(r).join(" "));
-        else parts.push(String(r ?? ""));
+  const s=normalize(v);
+  let m=s.match(/(20\d{2})[^0-9]?(\d{1,2})[^0-9]?(\d{1,2})/);
+  return m ? `${m[1]}-${pad(m[2])}-${pad(m[3])}` : "";
+}
+function addDays(d,n){ const x=new Date(`${d}T00:00:00`); x.setDate(x.getDate()+n); return `${x.getFullYear()}-${pad(x.getMonth()+1)}-${pad(x.getDate())}`; }
+function escapeHtml(v){ return String(v??"").replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+const DOMAIN_GROUPS = [
+  ["식사","식단","점심","중식","저녁","석식","반찬","섭취","다진식","죽식","일반식","연식","음식","수분"],
+  ["목욕","몸씻기","샤워","세신","목욕의자"],
+  ["화장실","배변","배뇨","기저귀","변기","대소변","요실금"],
+  ["보행","걷기","이동","부축","휠체어","지팡이","워커","보행기"],
+  ["투약","복약","약","약물","약복용"],
+  ["간호","혈압","혈당","활력","체온","맥박","건강관리","상처","피부"],
+  ["인지","치매","기억","회상","프로그램","의사소통"],
+  ["물리치료","재활","운동치료","기능회복","안마","자전거","근력"],
+  ["세면","양치","구강","틀니","옷입기","의복","위생","머리감기"],
+  ["정서","불안","우울","격려","대화","말벗","안정"],
+  ["등원","하원","송영","이용시간","외출"]
+];
+const STOP = new Set(["급여","제공","도움","지원","관련","변경","추가","제외","요청","필요","수급자","보호자","어르신","하도록","하기","하여","하고","있음","없음","실시","반영","서비스","관리","상태"]);
+function keywords(text){
+  const s=normalize(text);
+  const words=(s.match(/[가-힣]{2,}|[a-zA-Z]{3,}/g)||[]).map(x=>x.toLowerCase()).filter(x=>!STOP.has(x));
+  return [...new Set(words)].filter(x=>x.length>=2);
+}
+function domains(text){
+  const c=compact(text);
+  return DOMAIN_GROUPS.filter(g=>g.some(k=>c.includes(compact(k))));
+}
+function relatedScore(counselText, noteText){
+  const nc=compact(noteText); if(!nc) return {score:0, reasons:[]};
+  const ks=keywords(counselText);
+  const direct=ks.filter(k=>nc.includes(compact(k)));
+  const dg=domains(counselText);
+  const domainHits=dg.filter(g=>g.some(k=>nc.includes(compact(k))));
+  let score=direct.length*2 + domainHits.length*3;
+  const reasons=[];
+  if(domainHits.length) reasons.push(`관련 영역 ${domainHits.length}개`);
+  if(direct.length) reasons.push(`핵심어 ${direct.slice(0,5).join(", ")}`);
+  return {score,reasons};
+}
+function isRelated(counselText,noteText){
+  const r=relatedScore(counselText,noteText);
+  return {...r, related:r.score>=3};
+}
+
+function sheetRows(sheet){ return XLSX.utils.sheet_to_json(sheet,{header:1,defval:"",raw:true}); }
+function parseSpecialNotes(workbook){
+  const out=[];
+  workbook.SheetNames.forEach(sheetName=>{
+    const rows=sheetRows(workbook.Sheets[sheetName]);
+    const hi=rows.findIndex(r=>compact(r.join(" ")).includes("수급자명") && compact(r.join(" ")).includes("작성일") && compact(r.join(" ")).includes("특이사항"));
+    if(hi<0) return;
+    const h=rows[hi].map(normalize);
+    const nameCol=h.findIndex(x=>compact(x).includes("수급자명"));
+    const dateCol=h.findIndex(x=>compact(x).includes("작성일"));
+    const noteCols=h.map((x,i)=>compact(x).includes("특이사항")?i:-1).filter(i=>i>=0);
+    let lastName="";
+    for(let i=hi+1;i<rows.length;i++){
+      const row=rows[i]||[];
+      const nm=normalize(row[nameCol]); if(nm) lastName=nm;
+      const dt=dateText(row[dateCol]); if(!lastName||!dt) continue;
+      noteCols.forEach(ci=>{
+        const note=normalize(row[ci]);
+        if(note) out.push({name:lastName,date:dt,category:h[ci].replace(/\s*특이사항\s*/g,"").trim()||"특이사항",note,sheetName});
       });
     }
-
-    return parts.join(" ");
-  }
-
-  function getPlanMealCount(text) {
-    const t = normalize(text);
-
-    if (!t) return null;
-
-    if (/식사3회|3회|아침점심저녁|조식중식석식/.test(t)) return 3;
-    if (/식사2회|2회|점심저녁|중식석식|석식|저녁/.test(t)) return 2;
-    if (/식사1회|1회|점심|중식|균형잡힌식단관리/.test(t)) return 1;
-
-    return null;
-  }
-
-  function detectPlanBenefits(planRow, feeRow, counselRows) {
-    const planText = textOfLibraryRow(planRow);
-    const feeText = textOfLibraryRow(feeRow);
-    const counselText = counselRows.map(textOfLibraryRow).join(" ");
-    const allText = `${planText} ${feeText} ${counselText}`;
-    const text = normalize(allText);
-
-    const planExists = Boolean(planRow || feeRow);
-    let mealCount = getPlanMealCount(`${planText} ${feeText}`);
-    const counselMealCount = getPlanMealCount(counselText);
-
-    if (counselMealCount !== null) mealCount = counselMealCount;
-
-    let meal = mealCount !== null || /균형잡힌식단관리|식사도움|식사제공|영양관리/.test(text);
-    let lunch = meal && (mealCount === null || mealCount >= 1);
-    let dinner = meal && mealCount !== null && mealCount >= 2;
-
-    if (/석식제외|저녁제외|석식미제공|저녁미제공|식사1회|1회만|점심만/.test(text)) dinner = false;
-    if (/식사제외|식사중단|균형잡힌식단관리제외/.test(text)) {
-      meal = false;
-      lunch = false;
-      dinner = false;
-      mealCount = 0;
-    }
-
-    let bath = /몸씻기도움|목욕|목욕도움|전신입욕|부분목욕/.test(text);
-    if (/목욕제외|몸씻기도움제외|목욕중단|목욕미제공/.test(text)) bath = false;
-
-    let medication = /정확한복약도움|복약도움|투약|약도움/.test(text);
-    if (/복약도움제외|투약제외|정확한복약도움제외|약도움제외/.test(text)) medication = false;
-
-    return { planExists, meal, lunch, dinner, mealCount, bath, medication, text: allText };
-  }
-
-  function parseWorkbook(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-
-      reader.onload = (event) => {
-        try {
-          const data = new Uint8Array(event.target.result);
-          const wb = XLSX.read(data, { type: "array", cellDates: false });
-          const parsed = [];
-
-          wb.SheetNames.forEach((sheetName) => {
-            const ws = wb.Sheets[sheetName];
-            const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" });
-            if (!rows.length) return;
-
-            const year = findYear(rows);
-            const name = findName(rows, sheetName, file.name);
-            const longTermNo = findLongTermNo(rows, file.name);
-            const dateCols = findDateColumns(rows, year);
-            if (!dateCols.length) return;
-
-            const timeRows = findRowsByLabel(rows, ["이용시간", "급여시간", "서비스시간", "시작시간", "종료시간"]);
-            const lunchRows = findRowsByLabel(rows, ["점심", "중식"]);
-            const dinnerRows = findRowsByLabel(rows, ["저녁", "석식"]);
-            const breakfastRows = findRowsByLabel(rows, ["아침", "조식"]);
-            const bathRows = findRowsByLabel(rows, ["목욕"]);
-            const toiletRows = findRowsByLabel(rows, ["화장실", "배설", "대변", "소변"]);
-            const medicationRows = findRowsByLabel(rows, ["투약", "복약"]);
-            const noteRows = findRowsByLabel(rows, ["특이사항"]);
-
-            dateCols.forEach(({ col, date }) => {
-              const timeText = nearbyText(rows, timeRows, col);
-              const range = getTimeRange(timeText);
-              const breakfast = nearbyText(rows, breakfastRows, col);
-              const lunch = nearbyText(rows, lunchRows, col);
-              const dinner = nearbyText(rows, dinnerRows, col);
-              const bath = nearbyText(rows, bathRows, col);
-              const toilet = nearbyText(rows, toiletRows, col);
-              const medication = nearbyText(rows, medicationRows, col);
-              const note = nearbyText(rows, noteRows, col);
-
-              const hasAnyData = [timeText, breakfast, lunch, dinner, bath, toilet, medication, note].some(Boolean);
-              if (!hasAnyData) return;
-
-              parsed.push({
-                name,
-                longTermNo,
-                date,
-                sheetName,
-                timeText,
-                startTime: range.start,
-                endTime: range.end,
-                breakfast,
-                lunch,
-                dinner,
-                bath,
-                toilet,
-                medication,
-                note
-              });
-            });
-          });
-
-          resolve(parsed);
-        } catch (err) {
-          reject(err);
-        }
-      };
-
-      reader.onerror = reject;
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  function addRequired(list, row, type, code, requiredText, groupA, groupB, recommend, sourceText) {
-    list.push({
-      name: row.name,
-      longTermNo: row.longTermNo,
-      date: row.date,
-      type,
-      code,
-      requiredText,
-      uploaded: row.note || "",
-      groupA,
-      groupB,
-      recommend,
-      source: row.sheetName,
-      sourceText: sourceText || ""
-    });
-  }
-
-  function hasAnyAttendance(row) {
-    return Boolean(row.timeText || row.breakfast || row.lunch || row.dinner || row.bath || row.toilet || row.medication || row.note);
-  }
-
-  function buildRequiredItems() {
-    const list = [];
-
-    state.recordRows.forEach((row) => {
-      if (!hasAnyAttendance(row)) return;
-
-      const person = { name: row.name, longTermNo: row.longTermNo };
-      const counselToday = relatedOnExactDate(state.libraries.counsel, row.date, person);
-      const latestPlan = latestBeforeOrOn(state.libraries.plan, row.date, person);
-      const latestFee = latestBeforeOrOn(state.libraries.fee, row.date, person);
-      const benefits = detectPlanBenefits(latestPlan, latestFee, counselToday);
-      const personFeeRows = state.libraries.fee.filter((fee) => samePerson(person, fee));
-      const feeTimeBand = getFeeTimeBandForDate(personFeeRows, row.date);
-      const usedMinutes = actualUseMinutes(row);
-
-      const saturday = isSaturday(row.date);
-      const saturdayMealExplicit = /토요일식사|토요식사|토요일점심|토요일중식|토요일석식|토요일저녁|토요일제공|토요제공/.test(normalize(benefits.text));
-
-      const counselTodayText = normalize(counselToday.map(textOfLibraryRow).join(" "));
-      const bathN = normalize(row.bath);
-      const medN = normalize(row.medication);
-      const endMin = timeToMin(row.endTime);
-
-      if (counselTodayText) {
-        if (/목욕|몸씻기/.test(counselTodayText)) {
-          addRequired(list, row, "상담일지", "counsel-bath-change", "상담일지 변경에 따른 목욕 관련 내용이 특이사항에 필요합니다.", ["목욕", "몸씻기"], ["오늘부터", "금일부터", "변경", "제공", "제외", "중단"], "상담일지 변경에 따라 금일부터 목욕 제공 내용이 변경되었음을 확인하였음.", textOfLibraryRow(counselToday[0]));
-        }
-
-        if (/다진식|죽식|일반식|식사|석식|저녁/.test(counselTodayText)) {
-          addRequired(list, row, "상담일지", "counsel-meal-change", "상담일지 변경에 따른 식사 형태 또는 식사 횟수 변경 내용이 특이사항에 필요합니다.", ["식사", "다진", "죽식", "일반식", "석식", "저녁"], ["오늘부터", "금일부터", "변경", "제공", "제외", "중단"], "상담일지 변경에 따라 금일부터 식사 제공 내용이 변경되었음을 확인하였음.", textOfLibraryRow(counselToday[0]));
-        }
-
-        if (/복약|투약|약/.test(counselTodayText)) {
-          addRequired(list, row, "상담일지", "counsel-medication-change", "상담일지 변경에 따른 복약도움 내용이 특이사항에 필요합니다.", ["복약", "투약", "약"], ["오늘부터", "금일부터", "변경", "제공", "제외", "중단"], "상담일지 변경에 따라 금일부터 복약도움 내용이 변경되었음을 확인하였음.", textOfLibraryRow(counselToday[0]));
-        }
-      }
-
-      if (benefits.lunch && (!saturday || saturdayMealExplicit) && (!isMarked(row.lunch) || isNegative(row.lunch))) {
-        addRequired(list, row, "식사", "lunch-missing", "점심 미실시 내용이 특이사항에 필요합니다.", ["점심", "중식"], ["안드", "미실시", "거부", "섭취안", "식사안", "드지않", "결식"], "점심을 제공하였으나 드시지 않으셨으며 상태를 관찰하였음.", `계획서/상담일지 기준 식사 ${benefits.mealCount || ""}회 대상`);
-      }
-
-      // 토요일은 모든 어르신이 기본적으로 석식을 드시지 않는 날이므로 석식 누락 검사를 하지 않습니다.
-      if (benefits.dinner && !saturday && (!isMarked(row.dinner) || isNegative(row.dinner))) {
-        addRequired(list, row, "식사", "dinner-missing", "석식 미실시 내용이 특이사항에 필요합니다.", ["석식", "저녁"], ["안드", "미실시", "거부", "섭취안", "식사안", "드지않", "결식"], "석식을 제공하였으나 드시지 않으셨으며 상태를 관찰하였음.", `계획서/상담일지 기준 식사 ${benefits.mealCount || ""}회 대상`);
-      }
-
-      if (feeTimeBand && usedMinutes !== null) {
-        const tooShort = usedMinutes < feeTimeBand.min;
-        const tooLong = feeTimeBand.max !== null && usedMinutes >= feeTimeBand.max;
-
-        if (tooShort || tooLong) {
-          const actualLabel = formatMinutes(usedMinutes);
-          const needText = tooShort
-            ? `저장된 수가 기준보다 이용시간이 짧습니다. 기준 ${feeTimeBand.label}, 실제 ${actualLabel} 이용 내용이 특이사항에 필요합니다.`
-            : `저장된 수가 기준보다 이용시간이 깁니다. 기준 ${feeTimeBand.label}, 실제 ${actualLabel} 이용 내용이 특이사항에 필요합니다.`;
-
-          const recommendText = tooShort
-            ? `${row.endTime}경 개인 사정으로 수가 기준보다 짧게 이용 후 하원하심.`
-            : `수가 기준보다 이용시간이 길어 실제 이용시간 ${actualLabel}으로 확인됨.`;
-
-          addRequired(
-            list,
-            row,
-            "이용시간",
-            tooShort ? "fee-time-short" : "fee-time-long",
-            needText,
-            ["이용시간", "수가", "시간", "하원", "연장"],
-            tooShort ? ["짧", "조기", "일찍", "하원", "귀가"] : ["길", "연장", "늦", "초과"],
-            recommendText,
-            `수가 기준: ${feeTimeBand.label} / 실제: ${row.startTime || "시작미확인"} ~ ${row.endTime || "종료미확인"}`
-          );
-        }
-      }
-
-      /*
-        조기하원 기준
-        - 석식 제공 대상: 17:10~18:10 하원 → 17:10 이전이면 조기하원
-        - 석식 미제공 대상: 16:10~17:10 하원 → 16:10 이전이면 조기하원
-        - 출석 보관함에 개인별 기준 하원시간이 있으면 그 시간을 우선 적용하되, 30분 전부터는 조기하원으로 보지 않습니다.
-      */
-      let earlyBaseMin = benefits.dinner ? (17 * 60 + 10) : (16 * 60 + 10);
-      const latestAttendance = latestBeforeOrOn(state.libraries.attendance, row.date, person);
-
-      if (latestAttendance) {
-        const text = textOfLibraryRow(latestAttendance);
-        const range = getTimeRange(text);
-        const libEnd = timeToMin(range.end);
-        if (libEnd !== null) {
-          earlyBaseMin = libEnd - 30;
-        }
-      }
-
-      if (endMin !== null && endMin < earlyBaseMin) {
-        addRequired(list, row, "조기하원", "early-leave", `${row.endTime} 조기 하원 내용이 특이사항에 필요합니다.`, ["조기", "일찍", "하원", "귀가"], ["하원", "귀가", "가심"], `${row.endTime}경 개인 사정으로 조기 하원하심.`, `기준: ${benefits.dinner ? "석식 대상 17:10 이후 하원" : "석식 미대상 16:10 이후 하원"} / 기록: ${row.timeText}`);
-      }
-
-      if ((benefits.bath && (!isMarked(row.bath) || isNegative(row.bath))) || bathN.includes("거부") || bathN.includes("미실시")) {
-        addRequired(list, row, "목욕", "bath-refusal", "목욕 거부 또는 미실시 내용이 특이사항에 필요합니다.", ["목욕"], ["거부", "못하", "미실시", "안하"], "목욕을 권유하였으나 거부하셔서 실시하지 못하였음.", benefits.bath ? "계획서/상담일지 기준 목욕 대상" : row.bath);
-      }
-
-      if ((benefits.medication && (!isMarked(row.medication) || isNegative(row.medication))) || medN.includes("거부") || medN.includes("미실시")) {
-        addRequired(list, row, "투약", "medication-issue", "투약 미실시 또는 거부 내용이 특이사항에 필요합니다.", ["투약", "복약", "약"], ["거부", "미실시", "안드", "못드"], "복약 도움을 제공하려 하였으나 투약이 이루어지지 않아 상태를 관찰하였음.", benefits.medication ? "계획서/상담일지 기준 복약도움 대상" : row.medication);
-      }
-    });
-
-    state.requiredItems = list;
-  }
-
-  function keywordOk(note, groupA, groupB) {
-    const n = normalize(note);
-    if (!n) return false;
-
-    const aOk = !groupA.length || groupA.some((k) => n.includes(normalize(k)));
-    const bOk = !groupB.length || groupB.some((k) => n.includes(normalize(k)));
-
-    return aOk && bOk;
-  }
-
-  function compareResults() {
-    state.results = state.requiredItems.map((item) => {
-      const ok = keywordOk(item.uploaded, item.groupA, item.groupB);
-      const status = ok ? "ok" : item.uploaded ? "warn" : "miss";
-
-      return {
-        ...item,
-        status,
-        reason: ok
-          ? "필수 핵심 단어가 특이사항에서 확인되었습니다."
-          : item.uploaded
-            ? "특이사항은 있으나 필요한 핵심 내용이 부족하여 확인이 필요합니다."
-            : "업로드된 특이사항이 비어 있거나 관련 내용이 확인되지 않습니다."
-      };
-    });
-  }
-
-  function badge(status) {
-    if (status === "ok") return '<span class="badge badge-ok">정상</span>';
-    if (status === "miss") return '<span class="badge badge-miss">누락</span>';
-    return '<span class="badge badge-warn">확인필요</span>';
-  }
-
-  function getFilteredResults() {
-    const statusFilter = $("statusFilter")?.value || "all";
-    let rows = state.results.slice();
-
-    if (state.typeFilter !== "all") rows = rows.filter((row) => row.type === state.typeFilter);
-    if (statusFilter !== "all") rows = rows.filter((row) => row.status === statusFilter);
-
-    return rows;
-  }
-
-  function render() {
-    setText("totalCount", state.results.length);
-    setText("okCount", state.results.filter((r) => r.status === "ok").length);
-    setText("missCount", state.results.filter((r) => r.status === "miss").length);
-    setText("warnCount", state.results.filter((r) => r.status === "warn").length);
-    setText("uploadedCount", state.recordRows.filter((r) => r.note).length);
-
-    const body = $("resultBody");
-    if (!body) return;
-
-    const rows = getFilteredResults();
-
-    if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="8" class="empty">표시할 결과가 없습니다.</td></tr>';
-      return;
-    }
-
-    body.innerHTML = rows.map((row, idx) => `
-      <tr>
-        <td>${badge(row.status)}</td>
-        <td><b>${escapeHtml(row.name)}</b><div class="small">${escapeHtml(row.longTermNo || "")}</div></td>
-        <td class="date-cell">${escapeHtml(row.date)} (${getWeekday(row.date)})</td>
-        <td class="type-cell">${escapeHtml(row.type)}</td>
-        <td class="note-text">${escapeHtml(row.requiredText)}</td>
-        <td class="note-text">${escapeHtml(row.uploaded || "없음")}</td>
-        <td>${escapeHtml(row.reason)}${row.sourceText ? `<div class="small">근거: ${escapeHtml(String(row.sourceText).slice(0, 100))}</div>` : ""}</td>
-        <td class="note-text">${escapeHtml(row.recommend)}<br /><button type="button" class="copy-btn" data-row="${idx}">복사</button></td>
-      </tr>
-    `).join("");
-
-    body.querySelectorAll(".copy-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const row = rows[Number(btn.dataset.row)];
-        const text = row.recommend || "";
-
-        try {
-          if (navigator.clipboard && window.isSecureContext) {
-            await navigator.clipboard.writeText(text);
-            btn.textContent = "복사됨";
-            btn.classList.add("copied");
-            setTimeout(() => {
-              btn.textContent = "복사";
-              btn.classList.remove("copied");
-            }, 1200);
-          } else {
-            window.prompt("아래 문구를 복사하세요.", text);
-          }
-        } catch (err) {
-          window.prompt("아래 문구를 복사하세요.", text);
-        }
-      });
-    });
-  }
-
-  function updateRecordRangeText() {
-    const dates = [...new Set(state.recordRows.map((r) => r.date).filter(Boolean))].sort();
-
-    if (!dates.length) {
-      state.recordRangeText = "";
-      setText("detectedMonthText", "업로드 파일 자동 인식");
-      return;
-    }
-
-    const start = dates[0];
-    const end = dates[dates.length - 1];
-    state.recordRangeText = start === end ? start : `${start} ~ ${end}`;
-    setText("detectedMonthText", `${state.recordRangeText} / ${dates.length}일 인식`);
-  }
-
-  async function handleFileChange() {
-    const file = $("recordFile")?.files?.[0];
-
-    state.file = file || null;
-    state.recordRows = [];
-    state.requiredItems = [];
-    state.results = [];
-
-    if (!file) {
-      setStatus("recordFileStatus", "제공기록지 엑셀 파일 하나만 업로드하세요.", "");
-      setText("detectedMonthText", "업로드 파일 자동 인식");
-      render();
-      return;
-    }
-
-    if (!window.XLSX) {
-      alert("XLSX 라이브러리를 불러오지 못했습니다. 인터넷 연결 또는 script 태그를 확인해주세요.");
-      return;
-    }
-
-    setStatus("recordFileStatus", "파일을 읽는 중입니다...", "warn");
-
-    try {
-      state.recordRows = await parseWorkbook(file);
-      updateRecordRangeText();
-
-      if (!state.recordRows.length) {
-        setStatus("recordFileStatus", "파일은 업로드됐지만 날짜/수급자/특이사항 구조를 읽지 못했습니다.", "warn");
-      } else {
-        setStatus("recordFileStatus", `${file.name} / ${state.recordRows.length}개 일자 기록 인식`, "ok");
-      }
-
-      render();
-    } catch (err) {
-      console.error(err);
-      setStatus("recordFileStatus", "파일 읽기 실패", "error");
-      alert("파일을 읽는 중 오류가 발생했습니다. 엑셀 파일인지 확인해주세요.");
-    }
-  }
-
-  async function runCheck() {
-    if (!$("recordFile")?.files?.[0]) {
-      alert("장기요양급여 제공기록지 엑셀 파일을 먼저 업로드해주세요.");
-      return;
-    }
-
-    if (!state.recordRows.length) await handleFileChange();
-
-    buildRequiredItems();
-    compareResults();
-    render();
-
-    if (!state.results.length) {
-      alert("검증할 특이사항 필요 항목을 찾지 못했습니다. 제공기록지 구조 또는 보관함 데이터를 확인해주세요.");
-    }
-  }
-
-  function downloadResult() {
-    if (!state.results.length) {
-      alert("다운로드할 결과가 없습니다. 먼저 검증하기를 눌러주세요.");
-      return;
-    }
-
-    const rows = state.results.map((r) => ({
-      결과: r.status === "ok" ? "정상" : r.status === "miss" ? "누락" : "확인필요",
-      어르신: r.name,
-      장기요양번호: r.longTermNo,
-      일자: r.date,
-      요일: getWeekday(r.date),
-      구분: r.type,
-      필요특이사항: r.requiredText,
-      업로드특이사항: r.uploaded,
-      판정사유: r.reason,
-      추천문구: r.recommend,
-      근거: r.sourceText,
-      시트: r.source
-    }));
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-
-    XLSX.utils.book_append_sheet(wb, ws, "특이사항검증결과");
-    XLSX.writeFile(wb, `특이사항검증결과_${state.recordRangeText || "업로드"}.xlsx`);
-  }
-
-  function resetPage() {
-    if (confirm("초기화할까요?")) location.reload();
-  }
-
-  function initTodayText() {
-    const el = $("todayText");
-    if (!el) return;
-
-    const d = new Date();
-    el.textContent = `${d.getFullYear()}.${pad(d.getMonth() + 1)}.${pad(d.getDate())}`;
-  }
-
-  function bindEvents() {
-    $("recordFile")?.addEventListener("change", handleFileChange);
-    $("checkBtn")?.addEventListener("click", runCheck);
-    $("downloadBtn")?.addEventListener("click", downloadResult);
-    $("resetBtn")?.addEventListener("click", resetPage);
-    $("reloadBtn")?.addEventListener("click", loadLibraries);
-    $("statusFilter")?.addEventListener("change", render);
-
-    document.querySelectorAll("#typeTabs button").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        document.querySelectorAll("#typeTabs button").forEach((b) => b.classList.remove("active"));
-        btn.classList.add("active");
-        state.typeFilter = btn.dataset.type || "all";
-        render();
-      });
-    });
-  }
-
-  document.addEventListener("DOMContentLoaded", async () => {
-    initTodayText();
-    bindEvents();
-    render();
-    await loadLibraries();
   });
-})();
+  return out;
+}
+function detectedRange(rows){
+  const dates=rows.map(x=>x.date).filter(Boolean).sort();
+  return dates.length ? {start:dates[0],end:dates[dates.length-1],month:dates[0].slice(0,7)} : null;
+}
+function counselDate(c){ return dateText(c.reflectionDate||c.reflection||c.changeDate||c.date||c.writtenDate||c.counselDate); }
+function counselName(c){ return normalize(c.recipientName||c.name||c.recipient||c.clientName); }
+function counselContent(c){
+  return normalize([c.changeType,c.category,c.careContent,c.reason,c.content,c.counselContent,c.note,c.details].filter(Boolean).join(" "));
+}
+async function loadCounsels(month){
+  if(!window.HanmaumFirestore) throw new Error("Firestore 연결 모듈을 찾지 못했습니다.");
+  counselLibraryStatus.textContent="상담일지 불러오는 중...";
+  counselLibraryCache=await window.HanmaumFirestore.counsels(month);
+  counselLibraryStatus.textContent=`상담일지 ${counselLibraryCache.length}건 불러옴`;
+  counselLibraryStatus.className="upload-help status-ok-text";
+}
+function buildResults(){
+  const range=detectedRange(parsedSpecialNotes); if(!range) return [];
+  // 업로드 월과 겹치는 1개월 검증기간을 가진 상담일지를 모두 검사
+  const relevant=(counselLibraryCache||[]).map(c=>({raw:c,name:counselName(c),date:counselDate(c),content:counselContent(c)}))
+    .filter(c=>c.name&&c.date&&c.content)
+    .filter(c=>c.date<=range.end && addDays(c.date,30)>=range.start);
+  return relevant.map(c=>{
+    const end=addDays(c.date,30);
+    const notes=parsedSpecialNotes.filter(n=>sameName(n.name,c.name)&&n.date>=c.date&&n.date<=end);
+    const matches=notes.map(n=>({...n,...isRelated(c.content,n.note)})).filter(n=>n.related).sort((a,b)=>a.date.localeCompare(b.date));
+    const unrelated=notes.filter(n=>!matches.some(m=>m===n));
+    return {name:c.name,counselDate:c.date,endDate:end,counselContent:c.content,matches,unrelated,status:matches.length?"ok":"warn"};
+  }).sort((a,b)=>a.counselDate.localeCompare(b.counselDate)||a.name.localeCompare(b.name,"ko"));
+}
+function render(){
+  const rows=currentFilter==="warn"?verificationResults.filter(x=>x.status==="warn"):verificationResults;
+  totalCount.textContent=verificationResults.length;
+  okCount.textContent=verificationResults.filter(x=>x.status==="ok").length;
+  warnCount.textContent=verificationResults.filter(x=>x.status==="warn").length;
+  uploadedCount.textContent=parsedSpecialNotes.length;
+  if(!rows.length){ resultBody.innerHTML=`<tr><td class="empty" colspan="8">${currentFilter==="warn"?"확인 필요한 상담일지가 없습니다.":"검증할 상담일지가 없습니다."}</td></tr>`; return; }
+  resultBody.innerHTML=rows.map(r=>{
+    const matchHtml=r.matches.length?r.matches.map(m=>`<div class="match-note"><b>${escapeHtml(m.date)}</b> <span>${escapeHtml(m.category)}</span><br>${escapeHtml(m.note)}<div class="match-reason">${escapeHtml(m.reasons.join(" · "))}</div></div>`).join(""):`<span class="no-match">관련 특이사항을 찾지 못함</span>`;
+    const allCount=r.matches.length+r.unrelated.length;
+    return `<tr>
+      <td><span class="badge ${r.status==="ok"?"badge-ok":"badge-warn"}">${r.status==="ok"?"관련 기록 있음":"내용 확인 필요"}</span></td>
+      <td><b>${escapeHtml(r.name)}</b></td>
+      <td class="date-cell">${escapeHtml(r.counselDate)}<br><span class="small">~ ${escapeHtml(r.endDate)}</span></td>
+      <td class="note-text">${escapeHtml(r.counselContent)}</td>
+      <td style="text-align:center"><b>${r.matches.length}</b> / ${allCount}</td>
+      <td class="note-text">${matchHtml}</td>
+      <td>${r.status==="ok"?`상담 내용과 관련된 특이사항 ${r.matches.length}건 발견`:`검증기간 내 특이사항 ${allCount}건을 확인했으나 상담 내용과 관련된 기록을 자동으로 찾지 못했습니다.`}</td>
+      <td><button class="copy-btn" data-copy="${escapeHtml(r.counselContent)}">상담내용 복사</button></td>
+    </tr>`;
+  }).join("");
+  resultBody.querySelectorAll(".copy-btn").forEach(btn=>btn.addEventListener("click",async()=>{await navigator.clipboard.writeText(btn.dataset.copy||"");btn.textContent="복사됨";btn.classList.add("copied");setTimeout(()=>{btn.textContent="상담내용 복사";btn.classList.remove("copied")},1200);}));
+}
+function exportExcel(){
+  if(!verificationResults.length){ alert("먼저 검증을 실행해주세요."); return; }
+  const rows=[];
+  verificationResults.forEach(r=>{
+    if(r.matches.length){ r.matches.forEach(m=>rows.push({수급자:r.name,상담반영일:r.counselDate,검증종료일:r.endDate,상담내용:r.counselContent,판정:"관련 기록 있음",특이사항일:m.date,특이사항구분:m.category,특이사항내용:m.note,자동판정근거:m.reasons.join(" / ")})); }
+    else rows.push({수급자:r.name,상담반영일:r.counselDate,검증종료일:r.endDate,상담내용:r.counselContent,판정:"내용 확인 필요",특이사항일:"",특이사항구분:"",특이사항내용:"",자동판정근거:"관련 내용 자동 발견 없음"});
+  });
+  const ws=XLSX.utils.json_to_sheet(rows); ws["!cols"]=[12,14,14,55,16,14,22,70,35].map(w=>({wch:w}));
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"상담-특이사항 검증"); XLSX.writeFile(wb,"상담일지_특이사항_검증결과.xlsx");
+}
+
+recordFile.addEventListener("change",async()=>{
+  const f=recordFile.files[0]; if(!f) return;
+  try{
+    recordFileStatus.textContent="파일 읽는 중...";
+    const data=await f.arrayBuffer(); const wb=XLSX.read(data,{type:"array",cellDates:true});
+    parsedSpecialNotes=parseSpecialNotes(wb); const range=detectedRange(parsedSpecialNotes);
+    if(!range) throw new Error("수급자명/작성일/특이사항 머리글을 찾지 못했습니다.");
+    detectedMonthText.textContent=`${range.start} ~ ${range.end}`;
+    recordFileStatus.textContent=`특이사항 ${parsedSpecialNotes.length}건 인식`;
+    recordFileStatus.className="upload-help status-ok-text";
+    await loadCounsels(range.month);
+  }catch(e){ console.error(e); recordFileStatus.textContent=`오류: ${e.message}`; recordFileStatus.className="upload-help status-error-text"; }
+});
+checkBtn.addEventListener("click",async()=>{
+  if(!parsedSpecialNotes.length){ alert("급여제공기록지 특이사항 엑셀을 먼저 업로드해주세요."); return; }
+  const range=detectedRange(parsedSpecialNotes);
+  if(!counselLibraryCache.length) await loadCounsels(range.month);
+  verificationResults=buildResults(); currentFilter="all"; document.querySelectorAll("#resultTabs button").forEach(x=>x.classList.toggle("active",x.dataset.filter==="all")); render();
+});
+reloadBtn.addEventListener("click",async()=>{ const r=detectedRange(parsedSpecialNotes); if(!r){alert("먼저 특이사항 파일을 업로드해주세요.");return;} window.HanmaumFirestore?.clearCache?.(); await loadCounsels(r.month); alert("상담일지를 다시 불러왔습니다."); });
+resetBtn.addEventListener("click",()=>{ recordFile.value=""; parsedSpecialNotes=[]; counselLibraryCache=[]; verificationResults=[]; detectedMonthText.textContent="업로드 파일 자동 인식"; recordFileStatus.textContent="급여제공기록지 특이사항 엑셀 파일을 업로드하세요."; counselLibraryStatus.textContent="상담일지 보관함에서 자동으로 불러옵니다."; totalCount.textContent=okCount.textContent=warnCount.textContent=uploadedCount.textContent="0"; resultBody.innerHTML='<tr><td class="empty" colspan="8">특이사항 엑셀을 업로드한 뒤 검증하기를 눌러주세요.</td></tr>'; });
+downloadBtn.addEventListener("click",exportExcel);
+document.querySelectorAll("#resultTabs button").forEach(btn=>btn.addEventListener("click",()=>{currentFilter=btn.dataset.filter;document.querySelectorAll("#resultTabs button").forEach(x=>x.classList.toggle("active",x===btn));render();}));
