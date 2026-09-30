@@ -448,34 +448,76 @@ function hasBathPlan(plan) {
     rawRows = rawRows && typeof rawRows === "object" ? Object.values(rawRows) : [];
   }
 
-  const clean = (v) => String(v ?? "").replace(/\s+/g, "").replace(/[·ㆍ]/g, "").trim();
+  const clean = (v) => String(v ?? "")
+    .replace(/\s+/g, "")
+    .replace(/[·ㆍ]/g, "")
+    .trim();
+
+  // 실제 급여 행에서 인정할 몸씻기 항목
+  // 예: "몸씻기 지시 및 지켜보기", "부분적인 도움받아 몸씻기", "전적인 도움받아 몸씻기"
   const isBathNeed = (v) => {
     const t = clean(v);
     if (!t) return false;
-    // 실제 계획서에서 '부분적인/전적인 도움받아 몸씻기'처럼 저장되는 값을 인정합니다.
-    return t === "몸씻기" || t === "몸씻기도움" || t === "몸씻기도움받기" ||
-      t.includes("도움받아몸씻기") || t.includes("도움받아몸씻기");
+
+    if (t === "몸씻기" || t === "몸씻기도움" || t === "몸씻기도움받기") return true;
+
+    return (
+      t.includes("몸씻기지시및지켜보기") ||
+      t.includes("몸씻기지켜보기") ||
+      t.includes("몸씻기도움") ||
+      t.includes("도움받아몸씻기") ||
+      t.includes("부분적인도움받아몸씻기") ||
+      t.includes("전적인도움받아몸씻기")
+    );
   };
+
   const isBathCode = (v) => {
     const t = clean(v).toUpperCase();
     return t === "B52" || /^B52[-_]/.test(t);
   };
 
+  // 종합의견의 "*제외", "급여 제외" 문장을 실제 급여행으로 오인하지 않도록 차단
+  const looksLikeNarrativeOrExcluded = (value) => {
+    const t = clean(value);
+    if (!t) return false;
+
+    return (
+      t.includes("종합의견") ||
+      t.includes("개인별장기요양이용계획서와다른내용") ||
+      t.includes("*제외") ||
+      t.includes("급여제외") ||
+      t.includes("서비스이므로제외") ||
+      t.includes("제외하여제공")
+    );
+  };
+
   return rawRows.some((row) => {
     if (!row) return false;
 
-    // 배열형 행은 '몸씻기'가 들어 있는 셀을 찾되, 목표/종합의견 같은 장문 서술의
-    // 단순 언급은 급여 선택으로 오인하지 않도록 짧은 항목 셀만 인정합니다.
     if (Array.isArray(row)) {
+      const rowText = row.map(clean).filter(Boolean).join("|");
+
+      // 배분남처럼 종합의견의 제외 문장에
+      // "전적인 도움받아 몸씻기"가 적힌 경우는 목욕 급여로 인정하지 않음
+      if (looksLikeNarrativeOrExcluded(rowText)) return false;
+
       return row.some((cell) => {
         const t = clean(cell);
-        return isBathCode(t) || (t.length <= 40 && isBathNeed(t));
+        if (!t) return false;
+        return isBathCode(t) || (t.length <= 60 && isBathNeed(t));
       });
     }
+
     if (typeof row !== "object") return false;
 
-    // 신버전/구버전에서 실제 급여 항목명이 저장될 수 있는 필드들.
-    // 특히 화면의 '장기요양 필요내용' 값(예: 전적인 도움받아 몸씻기)을 포함합니다.
+    const entries = Object.entries(row);
+    const wholeRowText = entries
+      .map(([key, value]) => `${clean(key)}:${clean(value)}`)
+      .join("|");
+
+    // 종합의견/제외 설명 행 자체는 급여 선택행이 아님
+    if (looksLikeNarrativeOrExcluded(wholeRowText)) return false;
+
     const itemCandidates = [
       row.needContent, row.careNeed, row.longTermCareNeed,
       row.benefitName, row.serviceName, row.itemName, row.careItem,
@@ -484,19 +526,32 @@ function hasBathPlan(plan) {
       row["급여항목"], row["급여 항목"], row["서비스명"], row["항목명"],
       row["필요내용"], row["선택된 장기요양 필요내용"]
     ];
-    const codeCandidates = [row.code, row.serviceCode, row.benefitCode, row["급여코드"], row["서비스코드"]];
 
-    if (itemCandidates.some(isBathNeed) || codeCandidates.some(isBathCode)) return true;
+    const codeCandidates = [
+      row.code, row.serviceCode, row.benefitCode,
+      row["급여코드"], row["서비스코드"]
+    ];
 
-    // Firestore 이관본 중 필드명이 달라진 행을 위한 보정:
-    // 값 전체에서 정확한 급여항목 형태가 존재할 때만 인정한다.
-    // '세부제공내용/목표'에 몸씻기라는 단어만 있는 경우는 인정하지 않는다.
-    const excludedKeys = /목표|goal|세부제공|detail|종합|overall|판단근거|reason|필요영역|needarea/i;
-    return Object.entries(row).some(([key, value]) => {
+    if (itemCandidates.some((value) => {
+      const t = clean(value);
+      return t && t.length <= 60 && isBathNeed(t);
+    })) return true;
+
+    if (codeCandidates.some(isBathCode)) return true;
+
+    // Firestore 이관 시 원래 엑셀의 열명이 보존되지 않은 경우 보정.
+    // 단, 목표/세부제공내용/종합의견 등 설명 필드는 제외한다.
+    const excludedKeys =
+      /목표|goal|세부제공|detail|종합|overall|판단근거|reason|필요영역|needarea|의견|비고|remark|memo/i;
+
+    return entries.some(([key, value]) => {
       if (excludedKeys.test(String(key))) return false;
       if (typeof value !== "string" && typeof value !== "number") return false;
+
       const t = clean(value);
-      return isBathCode(t) || (t.length <= 40 && isBathNeed(t));
+      if (!t || looksLikeNarrativeOrExcluded(t)) return false;
+
+      return isBathCode(t) || (t.length <= 60 && isBathNeed(t));
     });
   });
 }
