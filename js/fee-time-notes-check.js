@@ -9,7 +9,19 @@ function numberMinutes(v){
   return null;
 }
 function band(m){if(m==null)return '';if(m<180)return '3시간 미만';if(m<360)return '3시간 이상 6시간 미만';if(m<480)return '6시간 이상 8시간 미만';if(m<600)return '8시간 이상 10시간 미만';if(m<780)return '10시간 이상 13시간 미만';return '13시간 이상'}
-function feeBand(v){let s=compact(v).replace(/수가/g,''); if(!s)return ''; if(s.includes('3시간미만'))return '3시간 미만';if(s.includes('3시간이상6시간미만'))return '3시간 이상 6시간 미만';if(s.includes('6시간이상8시간미만'))return '6시간 이상 8시간 미만';if(s.includes('8시간이상10시간미만'))return '8시간 이상 10시간 미만';if(s.includes('10시간이상13시간미만'))return '10시간 이상 13시간 미만';if(s.includes('13시간이상'))return '13시간 이상';return norm(v)}
+function feeBand(v){
+  const s=compact(v).replace(/수가/g,'');
+  if(!s)return '';
+  // 긴 구간부터 판정해야 '10시간이상13시간미만'의 끝부분 '3시간미만'을
+  // 잘못 3시간 미만으로 인식하지 않는다.
+  if(s.includes('10시간이상13시간미만'))return '10시간 이상 13시간 미만';
+  if(s.includes('8시간이상10시간미만'))return '8시간 이상 10시간 미만';
+  if(s.includes('6시간이상8시간미만'))return '6시간 이상 8시간 미만';
+  if(s.includes('3시간이상6시간미만'))return '3시간 이상 6시간 미만';
+  if(s.includes('13시간이상'))return '13시간 이상';
+  if(/^3시간미만$/.test(s))return '3시간 미만';
+  return norm(v);
+}
 function sameName(a,b){return compact(a)===compact(b)} function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function rows(sh){return XLSX.utils.sheet_to_json(sh,{header:1,defval:'',raw:true})}
 function detectName(rs,sheet){for(let r=0;r<Math.min(rs.length,35);r++){for(let c=0;c<Math.min((rs[r]||[]).length,12);c++){let s=norm(rs[r][c]);if(/수급자명|성명/.test(s)){for(let k=c+1;k<=c+3;k++){let x=norm(rs[r][k]);if(x&&!/수급자명|성명|생년|성별/.test(x))return x}}}} const s=sheet.replace(/[\[\]()_\-0-9]/g,' ').trim();return s.length<=12?s:''}
