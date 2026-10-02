@@ -109,6 +109,17 @@
     allCarePlans: () => all('carePlans'),
     counsels: (monthValue) => queryForRecipients('counsels', ['longTermNumber','certNumber'], monthValue, ['recipientName','name']),
     attendance,
+    outings: async (monthValue) => {
+      await waitForSignedIn();
+      const month = monthKey(monthValue);
+      if (!month) return all('outings');
+      return cached('outings:'+month, async () => {
+        const { db, fs } = await modules();
+        const q = fs.query(fs.collection(db, 'outings'), fs.where('month', '==', month));
+        const snap = await fs.getDocs(q);
+        return snap.docs.map(d => hydrate(d.data(), d.id));
+      });
+    },
     clearCache: () => cache.clear()
   };
 })();
