@@ -57,14 +57,23 @@ function parseWorkbook(workbook){
       const total=numberMinutes(rs[totalRow]?.[c]);
       if(total==null || total<0 || total>1440) continue;
 
-      // 같은 날짜 열에 있는 모든 '특이사항' 행을 합쳐 가져온다.
+      // 같은 날짜 열의 모든 '특이사항'을 그대로 가져온다.
+      // 실제 제공기록지는 '특이사항' 제목이 앞 8칸 밖에 있거나, 날짜 셀이 병합된 경우가 있어
+      // 행 전체에서 제목을 찾고 병합 셀의 원본 값까지 확인한다.
       const notes=[];
+      const sh=workbook.Sheets[sn];
+      const merges=sh['!merges']||[];
+      const mergedValue=(rr,cc)=>{
+        let v=rs[rr]?.[cc];
+        if(norm(v)) return v;
+        const mg=merges.find(m=>rr>=m.s.r&&rr<=m.e.r&&cc>=m.s.c&&cc<=m.e.c);
+        return mg ? rs[mg.s.r]?.[mg.s.c] : v;
+      };
       for(let rr=totalRow+1;rr<rs.length;rr++){
-        const lead=compact((rs[rr]||[]).slice(0,Math.min(c,8)).join(' '));
-        if(lead.includes('특이사항')){
-          const t=norm(rs[rr]?.[c]);
-          if(t && t!=='□' && t!=='■' && !/^※?별지첨부$/.test(compact(t))) notes.push(t);
-        }
+        const rowText=compact((rs[rr]||[]).join(' '));
+        if(!rowText.includes('특이사항')) continue;
+        const t=norm(mergedValue(rr,c));
+        if(t && t!=='□' && t!=='■' && !/^※?별지첨부$/.test(compact(t)) && !/^특이사항(?:\(.*\))?$/.test(compact(t))) notes.push(t);
       }
       out.push({name,date:dt,totalMinutes:total,note:[...new Set(notes)].join('\n'),sheet:sn});
     }
