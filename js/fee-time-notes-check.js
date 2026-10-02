@@ -117,7 +117,7 @@ function filterCounts(){
     all: results.length,
     in: results.filter(x=>['in','both'].includes(noteType(x))).length,
     out: results.filter(x=>['out','both'].includes(noteType(x))).length,
-    outing: results.filter(x=>x.outing && x.outing.items && x.outing.items.length>0).length,
+    outing: results.filter(x=>(x.outing && x.outing.items && x.outing.items.length>0)||/외출/.test(norm(x.note))).length,
     nonote: results.filter(x=>!norm(x.note)).length
   };
 }
@@ -130,7 +130,7 @@ function filteredList(){
   if(filter==='nonote') return results.filter(x=>!norm(x.note));
   if(filter==='in') return results.filter(x=>['in','both'].includes(noteType(x)));
   if(filter==='out') return results.filter(x=>['out','both'].includes(noteType(x)));
-  if(filter==='outing') return results.filter(x=>x.outing && x.outing.items && x.outing.items.length>0);
+  if(filter==='outing') return results.filter(x=>(x.outing && x.outing.items && x.outing.items.length>0)||/외출/.test(norm(x.note)));
   return results;
 }
 function render(){
