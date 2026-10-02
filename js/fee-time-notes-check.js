@@ -57,13 +57,14 @@ function parseWorkbook(workbook){
       const total=numberMinutes(rs[totalRow]?.[c]);
       if(total==null || total<0 || total>1440) continue;
 
-      // 해당 날짜의 특이사항 입력칸을 읽는다.
-      // 날짜별 칸이 여러 Excel 열로 구성되거나 병합된 양식도 처리한다.
+      // 해당 날짜의 특이사항을 읽는다.
+      // 1) 본문 특이사항 칸의 직접 입력값
+      // 2) 본문이 '※별지첨부'인 경우 같은 수급자 + 같은 날짜의 별지 특이사항
+      // 둘 다 지원한다.
       const notes=[];
       const sh=workbook.Sheets[sn];
       const merges=sh['!merges']||[];
 
-      // 현재 날짜의 시작 열 ~ 다음 날짜 시작 열 직전까지가 현재 날짜 영역이다.
       const dateCols=[];
       for(let dc=0;dc<row.length;dc++){
         const dsv=norm(row[dc]);
@@ -73,14 +74,6 @@ function parseWorkbook(workbook){
       const nextDateCol=(datePos>=0 && datePos<dateCols.length-1) ? dateCols[datePos+1] : row.length;
       const startCol=c;
       const endCol=Math.max(c,nextDateCol-1);
-
-      const isJunkNote=v=>{
-        const t=norm(v), ct=compact(t);
-        return !t || t==='□' || t==='■' ||
-               /^※?별지첨부$/.test(ct) ||
-               ct==='특이사항' ||
-               /^특이사항\(?.*별지첨부.*\)?$/.test(ct);
-      };
 
       const valueAt=(rr,cc)=>{
         let v=rs[rr]?.[cc];
@@ -92,20 +85,115 @@ function parseWorkbook(workbook){
         return v;
       };
 
+      let hasAttachment=false;
+      const isLabelOrJunk=v=>{
+        const t=norm(v), ct=compact(t);
+        if(!t || t==='□' || t==='■') return true;
+        if(ct.includes('별지첨부')){
+          hasAttachment=true;
+          return true;
+        }
+        if(ct==='특이사항' || /^특이사항\(?.*별지첨부.*\)?$/.test(ct)) return true;
+        return false;
+      };
+
+      // 본문 특이사항
       for(let rr=totalRow+1;rr<rs.length;rr++){
         const cur=rs[rr]||[];
         const rowText=compact(cur.join(' '));
         if(rr>totalRow+1 && /\(?20\d{2}\)?년월\/?일/.test(rowText)) break;
         if(!rowText.includes('특이사항')) continue;
 
-        // 특정 단어(등원/하원/외출 등)로 거르지 않고,
-        // 이 날짜의 특이사항 칸에 실제로 적힌 문장을 전부 가져온다.
         for(let cc=startCol;cc<=endCol;cc++){
           const t=norm(valueAt(rr,cc));
-          if(!isJunkNote(t)) notes.push(t);
+          if(!isLabelOrJunk(t)) notes.push(t);
         }
       }
-      out.push({name,date:dt,totalMinutes:total,note:[...new Set(notes)].join('\n'),sheet:sn});
+
+      // 별지첨부 실제 내용 검색.
+      // 시트명이 report35처럼 달라도 전체 통합문서에서
+      // 수급자명 + 같은 날짜가 확인되는 별지의 특이사항을 찾아 합친다.
+      if(hasAttachment || notes.length===0){
+        const targetName=compact(name);
+        const targetYmd=ymd(dt);
+
+        for(const extraSn of workbook.SheetNames){
+          if(extraSn===sn) continue;
+          const extraRs=XLSX.utils.sheet_to_json(workbook.Sheets[extraSn],{
+            header:1,defval:"",raw:false
+          });
+          if(!extraRs.length) continue;
+
+          const flat=extraRs.map(r=>r.map(v=>norm(v)).join(' ')).join('\n');
+          const flatCompact=compact(flat);
+
+          // 다른 수급자의 별지는 제외
+          if(targetName && !flatCompact.includes(targetName)) continue;
+
+          for(let er=0;er<extraRs.length;er++){
+            const erow=extraRs[er]||[];
+            const erowText=norm(erow.join(' '));
+            const erowCompact=compact(erowText);
+
+            // 날짜가 같은 행 또는 날짜가 시작되는 행을 찾는다.
+            let sameDate=false;
+            for(const cell of erow){
+              const d=parseDate(cell);
+              if(d && ymd(d)===targetYmd){
+                sameDate=true;
+                break;
+              }
+            }
+            if(!sameDate){
+              const md=erowText.match(/(?:20\d{2})[.\-\/년\s]+(\d{1,2})[.\-\/월\s]+(\d{1,2})/);
+              if(md){
+                const yy=(erowText.match(/20\d{2}/)||[])[0];
+                if(yy){
+                  const candidate=`${yy}-${String(+md[1]).padStart(2,'0')}-${String(+md[2]).padStart(2,'0')}`;
+                  sameDate=(candidate===targetYmd);
+                }
+              }
+            }
+            if(!sameDate) continue;
+
+            // 같은 날짜 행부터 다음 날짜 행 전까지에서 실제 특이사항 문장을 수집한다.
+            for(let xr=er;xr<Math.min(extraRs.length,er+12);xr++){
+              const xrow=extraRs[xr]||[];
+              if(xr>er){
+                const anotherDate=xrow.some(cell=>{
+                  const d=parseDate(cell);
+                  return d && ymd(d)!==targetYmd;
+                });
+                if(anotherDate) break;
+              }
+
+              for(const cell of xrow){
+                const t=norm(cell), ct=compact(t);
+                if(!t) continue;
+                if(ct===targetName) continue;
+                if(ct.includes('별지첨부')) continue;
+                if(ct==='특이사항' || ct==='수급자명' || ct==='날짜' || ct==='일자') continue;
+                if(/^\d{4}[-./년]\d{1,2}[-./월]\d{1,2}/.test(t)) continue;
+                if(/^\d{1,2}:\d{2}/.test(t)) continue;
+
+                // 별지에서 문장 형태의 실제 기록만 가져온다.
+                if(t.length>=4 && /[가-힣]/.test(t)){
+                  notes.push(t);
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // 중복/라벨 정리
+      const cleanNotes=[...new Set(notes.map(norm).filter(t=>{
+        const ct=compact(t);
+        return t && !ct.includes('별지첨부') &&
+               ct!=='특이사항' && ct!=='수급자명' &&
+               ct!=='날짜' && ct!=='일자';
+      }))];
+      out.push({name,date:dt,totalMinutes:total,note:cleanNotes.join('\n'),sheet:sn});
     }
   }
  });
