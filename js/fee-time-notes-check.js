@@ -96,7 +96,8 @@ async function run(){
  const om=new Map();outings.forEach(o=>om.set(o.firestoreId||o.id||JSON.stringify(o),o));outings=[...om.values()];
  allResults=records.map(rec=>{const p=choosePlan(plans,rec),oi=outingInfo(outingFor(outings,rec)),dur=rec.totalMinutes,adjusted=Math.max(0,dur-oi.minutes),actual=band(adjusted),expected=expectedFee(p,rec.date);return {...rec,plan:p,dur,outing:oi,adjusted,actual,expected,mismatch:!!expected&&expected!==actual}});
  results=allResults.filter(x=>x.mismatch);
- $('days').textContent=records.length;$('mismatch').textContent=results.length;$('withNote').textContent=results.filter(x=>x.note).length;$('withoutNote').textContent=results.filter(x=>!x.note).length;$('outingCount').textContent=allResults.filter(x=>x.outing.minutes>0).length;
+ $('days').textContent=records.length;$('mismatch').textContent=results.length;$('withNote').textContent=results.filter(x=>x.note).length;$('withoutNote').textContent=results.filter(x=>!norm(x.note)).length;$('outingCount').textContent=allResults.filter(x=>x.outing.items.length>0).length;
+ updateFilterCounts();
  $('fileStatus').textContent=`이용일 ${records.length}건 · 계획서 ${plans.length}건 · 외출 ${outings.length}건 연동`;render()
 }
 function outingHtml(x){if(!x.outing.items.length)return '<span class="muted">없음</span>';return x.outing.items.map(o=>{const staff=o.staffAccompanied||/직원\s*동행/.test(norm(o.companion||''));return `<div><b>${esc(o.outTime||'')}~${esc(o.returnTime||'')}</b> (${Number(o.durationMinutes)||0}분) ${staff?'<span class="badge ok">직원동행 · 차감 없음</span>':`<span class="badge badge-bad">${Number(o.durationMinutes)||0}분 차감</span>`}<br><span class="muted">${esc(o.purpose||'')} · ${esc(o.companion||'동행 미기재')}</span></div>`}).join('<hr style="border:0;border-top:1px solid #eee">')}
@@ -111,10 +112,25 @@ function noteType(x){
   if(hasIn && hasOut)return 'both';
   return 'other';
 }
+function filterCounts(){
+  return {
+    all: results.length,
+    in: results.filter(x=>['in','both'].includes(noteType(x))).length,
+    out: results.filter(x=>['out','both'].includes(noteType(x))).length,
+    outing: results.filter(x=>x.outing && x.outing.items && x.outing.items.length>0).length,
+    nonote: results.filter(x=>!norm(x.note)).length
+  };
+}
+function updateFilterCounts(){
+  const c=filterCounts();
+  const ids={all:'filterCountAll',in:'filterCountIn',out:'filterCountOut',outing:'filterCountOuting',nonote:'filterCountNoNote'};
+  Object.keys(ids).forEach(k=>{const el=$(ids[k]);if(el)el.textContent=c[k]||0;});
+}
 function filteredList(){
   if(filter==='nonote') return results.filter(x=>!norm(x.note));
   if(filter==='in') return results.filter(x=>['in','both'].includes(noteType(x)));
   if(filter==='out') return results.filter(x=>['out','both'].includes(noteType(x)));
+  if(filter==='outing') return results.filter(x=>x.outing && x.outing.items && x.outing.items.length>0);
   return results;
 }
 function render(){
