@@ -115,7 +115,7 @@ function parseWorkbook(workbook){
       // 수급자명 + 같은 날짜가 확인되는 별지의 특이사항을 찾아 합친다.
       if(hasAttachment || notes.length===0){
         const targetName=compact(name);
-        const targetYmd=ymd(dt);
+        const targetYmd=dt;
 
         for(const extraSn of workbook.SheetNames){
           if(extraSn===sn) continue;
@@ -138,8 +138,8 @@ function parseWorkbook(workbook){
             // 날짜가 같은 행 또는 날짜가 시작되는 행을 찾는다.
             let sameDate=false;
             for(const cell of erow){
-              const d=parseDate(cell);
-              if(d && ymd(d)===targetYmd){
+              const d=dateVal(cell);
+              if(d && d===targetYmd){
                 sameDate=true;
                 break;
               }
@@ -161,8 +161,8 @@ function parseWorkbook(workbook){
               const xrow=extraRs[xr]||[];
               if(xr>er){
                 const anotherDate=xrow.some(cell=>{
-                  const d=parseDate(cell);
-                  return d && ymd(d)!==targetYmd;
+                  const d=dateVal(cell);
+                  return d && d!==targetYmd;
                 });
                 if(anotherDate) break;
               }
