@@ -197,7 +197,32 @@ function parseWorkbook(workbook){
     }
   }
  });
- const m=new Map(); out.forEach(x=>m.set(`${compact(x.name)}|${x.date}`,x)); return [...m.values()];
+ const m=new Map();
+ out.forEach(x=>{
+   const key=`${compact(x.name)}|${x.date}`;
+   const prev=m.get(key);
+   if(!prev){
+     m.set(key,x);
+     return;
+   }
+
+   // 같은 수급자·같은 날짜가 여러 시트에 있으면 마지막 값으로 덮어쓰지 않고 합친다.
+   // 제공기록 본문/별지/다른 기록 시트에서 찾은 특이사항을 모두 보존한다.
+   const mergedNotes=[...new Set(
+     [prev.note,x.note]
+       .flatMap(v=>String(v||'').split(/\n+/))
+       .map(norm)
+       .filter(Boolean)
+   )];
+
+   m.set(key,{
+     ...prev,
+     totalMinutes: prev.totalMinutes ?? x.totalMinutes,
+     note: mergedNotes.join('\n'),
+     sheet: [prev.sheet,x.sheet].filter(Boolean).join(', ')
+   });
+ });
+ return [...m.values()];
 }
 function planStart(p){return dateVal(p.applicationStartDate||p.startDate||p.writtenDate)} function planEnd(p){return dateVal(p.applicationEndDate||p.endDate)||'9999-12-31'}
 function choosePlan(plans,rec){const valid=plans.filter(p=>sameName(p.recipientName||p.name,rec.name)&&planStart(p)<=rec.date&&planEnd(p)>=rec.date);valid.sort((a,b)=>planStart(b).localeCompare(planStart(a)));return valid[0]||null}
