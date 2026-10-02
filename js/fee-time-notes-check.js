@@ -57,28 +57,53 @@ function parseWorkbook(workbook){
       const total=numberMinutes(rs[totalRow]?.[c]);
       if(total==null || total<0 || total>1440) continue;
 
-      // 해당 날짜 열에서 실제 "특이사항" 입력칸만 읽는다.
-      // 라벨 주변의 일반 기록(건강체조, 작성자, 활력 등)은 특이사항으로 섞지 않는다.
+      // 해당 날짜의 특이사항 입력칸을 읽는다.
+      // 날짜별 칸이 여러 Excel 열로 구성되거나 병합된 양식도 처리한다.
       const notes=[];
       const sh=workbook.Sheets[sn];
       const merges=sh['!merges']||[];
-      const mergedValue=(rr,cc)=>{
-        let v=rs[rr]?.[cc];
-        if(norm(v)) return v;
-        const mg=merges.find(m=>rr>=m.s.r&&rr<=m.e.r&&cc>=m.s.c&&cc<=m.e.c);
-        return mg ? rs[mg.s.r]?.[mg.s.c] : v;
-      };
+
+      // 현재 날짜의 시작 열 ~ 다음 날짜 시작 열 직전까지가 현재 날짜 영역이다.
+      const dateCols=[];
+      for(let dc=0;dc<row.length;dc++){
+        const dsv=norm(row[dc]);
+        if(/(\d{1,2})\s*\/\s*(\d{1,2})/.test(dsv)) dateCols.push(dc);
+      }
+      const datePos=dateCols.indexOf(c);
+      const nextDateCol=(datePos>=0 && datePos<dateCols.length-1) ? dateCols[datePos+1] : row.length;
+      const startCol=c;
+      const endCol=Math.max(c,nextDateCol-1);
+
       const isJunkNote=v=>{
         const t=norm(v), ct=compact(t);
-        return !t || t==='□' || t==='■' || /^※?별지첨부$/.test(ct) || ct.includes('특이사항');
+        return !t || t==='□' || t==='■' ||
+               /^※?별지첨부$/.test(ct) ||
+               ct==='특이사항' ||
+               /^특이사항\(?.*별지첨부.*\)?$/.test(ct);
       };
+
+      const valueAt=(rr,cc)=>{
+        let v=rs[rr]?.[cc];
+        const mg=merges.find(m=>rr>=m.s.r&&rr<=m.e.r&&cc>=m.s.c&&cc<=m.e.c);
+        if(mg){
+          const mv=rs[mg.s.r]?.[mg.s.c];
+          if(norm(mv)) v=mv;
+        }
+        return v;
+      };
+
       for(let rr=totalRow+1;rr<rs.length;rr++){
         const cur=rs[rr]||[];
         const rowText=compact(cur.join(' '));
         if(rr>totalRow+1 && /\(?20\d{2}\)?년월\/?일/.test(rowText)) break;
         if(!rowText.includes('특이사항')) continue;
-        const t=norm(mergedValue(rr,c));
-        if(!isJunkNote(t)) notes.push(t);
+
+        // 특정 단어(등원/하원/외출 등)로 거르지 않고,
+        // 이 날짜의 특이사항 칸에 실제로 적힌 문장을 전부 가져온다.
+        for(let cc=startCol;cc<=endCol;cc++){
+          const t=norm(valueAt(rr,cc));
+          if(!isJunkNote(t)) notes.push(t);
+        }
       }
       out.push({name,date:dt,totalMinutes:total,note:[...new Set(notes)].join('\n'),sheet:sn});
     }
