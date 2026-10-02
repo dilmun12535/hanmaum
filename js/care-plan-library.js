@@ -134,64 +134,126 @@ function cleanWeeklyCount(value) {
 }
 function extractWeeklyFeePairs(text) {
   const source = cellText(text).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
-  const re = new RegExp(`주\\s*(\\d+)\\s*회(?:(?!주\\s*\\d+\\s*회)[\\s\\S]){0,140}?${FEE_RANGE_PATTERN}`, "g");
-  const pairs=[];
+  const pairs = [];
+
+  // 1) 주 N회 → 수가구간
+  const forward = new RegExp(
+    `주\\s*(\\d+)\\s*회(?:(?!주\\s*\\d+\\s*회)[\\s\\S]){0,180}?${FEE_RANGE_PATTERN}`,
+    "g"
+  );
   let m;
-  while ((m=re.exec(source)) !== null) {
-    pairs.push({ count: cleanWeeklyCount(m[1]), fee: cleanFeeRange(m[2]), index: m.index });
+  while ((m = forward.exec(source)) !== null) {
+    pairs.push({
+      count: cleanWeeklyCount(m[1]),
+      fee: cleanFeeRange(m[2]),
+      index: m.index
+    });
   }
-  return pairs;
+
+  // 2) 수가구간 → 주 N회 형태도 지원
+  const reverse = new RegExp(
+    `${FEE_RANGE_PATTERN}(?:(?!${FEE_RANGE_PATTERN})[\\s\\S]){0,100}?주\\s*(\\d+)\\s*회`,
+    "g"
+  );
+  while ((m = reverse.exec(source)) !== null) {
+    pairs.push({
+      count: cleanWeeklyCount(m[2]),
+      fee: cleanFeeRange(m[1]),
+      index: m.index
+    });
+  }
+
+  // 같은 문구가 양쪽 정규식에 동시에 잡히는 경우 제거
+  return pairs
+    .sort((a,b) => a.index - b.index)
+    .filter((p,i,arr) => !arr.slice(0,i).some(x =>
+      x.count === p.count && x.fee === p.fee && Math.abs(x.index-p.index) < 120
+    ));
 }
+
 function extractFeeInfo(opinion) {
-  const text=cellText(opinion).replace(/\r/g, " ").replace(/\n/g, " ").replace(/\s+/g, " ").trim();
-  const result={
+  const text = cellText(opinion)
+    .replace(/\r/g, " ")
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const result = {
     planFee:"", planWeeklyCount:"",
     weekdayFee:"", weekdayWeeklyCount:"",
     weekendFee:"", weekendWeeklyCount:"",
     feeText:""
   };
-  // 종합의견 영역에 실제로 "수가"라는 글자가 전혀 없는 경우에만 수가/횟수를 모두 비웁니다.
-  if (!text || !text.includes("수가")) return result;
 
-  // '명시되어 있으나/계획되어 있으나' 앞은 개인별장기요양이용계획서상의 원래 수가입니다.
-  const splitMatch=text.match(/(?:명시|계획)(?:되어)?\\s*있으나|(?:명시|계획)[^,.]{0,30}?(?:수급자|보호자|욕구)/);
-  const splitIndex=splitMatch ? splitMatch.index + splitMatch[0].length : -1;
-  const beforeText=splitIndex >= 0 ? text.slice(0, splitIndex) : text;
-  const afterText=splitIndex >= 0 ? text.slice(splitIndex) : text;
+  if (!text) return result;
 
-  const planPairs=extractWeeklyFeePairs(beforeText);
-  const planRanges=beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
-  if (planPairs.length) {
-    const p=planPairs[planPairs.length-1];
-    result.planFee=p.fee;
-    result.planWeeklyCount=p.count;
-  } else if (planRanges.length) {
-    result.planFee=cleanFeeRange(planRanges[planRanges.length-1]);
+  // 신양식 종합의견은 표현이 일정하지 않아서 "수가"라는 단어 유무만으로 버리지 않습니다.
+  // "주 N회" + 시간구간이 실제로 존재하면 수가 정보로 인정합니다.
+  const allPairs = extractWeeklyFeePairs(text);
+  const allRanges = text.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
+
+  if (!allPairs.length && !allRanges.length) return result;
+
+  // 개인별장기요양이용계획서상의 원 계획과 실제 제공계획을 나누는 표현
+  const splitMatch = text.match(
+    /(?:명시|계획)(?:되어)?\s*있으나|(?:명시|계획)[^,.]{0,50}?(?:수급자|보호자|욕구)/
+  );
+  const splitIndex = splitMatch ? splitMatch.index + splitMatch[0].length : -1;
+
+  if (splitIndex >= 0) {
+    const beforeText = text.slice(0, splitIndex);
+    const afterText = text.slice(splitIndex);
+
+    const planPairs = extractWeeklyFeePairs(beforeText);
+    const planRanges = beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
+
+    if (planPairs.length) {
+      const p = planPairs[planPairs.length - 1];
+      result.planFee = p.fee;
+      result.planWeeklyCount = p.count;
+    } else if (planRanges.length) {
+      result.planFee = cleanFeeRange(planRanges[planRanges.length - 1]);
+    }
+
+    const actualPairs = extractWeeklyFeePairs(afterText);
+    if (actualPairs[0]) {
+      result.weekdayFee = actualPairs[0].fee;
+      result.weekdayWeeklyCount = actualPairs[0].count;
+    }
+    if (actualPairs[1]) {
+      result.weekendFee = actualPairs[1].fee;
+      result.weekendWeeklyCount = actualPairs[1].count;
+    }
+  } else {
+    // 구분 문구가 없는 신양식:
+    // 종합의견에 하나의 "주 N회 + 시간구간"만 있으면 그 값 자체가 계획서 수가입니다.
+    if (allPairs[0]) {
+      result.planFee = allPairs[0].fee;
+      result.planWeeklyCount = allPairs[0].count;
+    } else if (allRanges.length) {
+      result.planFee = cleanFeeRange(allRanges[allRanges.length - 1]);
+    }
+
+    // 둘 이상 명확하게 존재할 때만 뒤의 값들을 평일/주말로 사용
+    if (allPairs[1]) {
+      result.weekdayFee = allPairs[1].fee;
+      result.weekdayWeeklyCount = allPairs[1].count;
+    }
+    if (allPairs[2]) {
+      result.weekendFee = allPairs[2].fee;
+      result.weekendWeeklyCount = allPairs[2].count;
+    }
   }
 
-  // 실제 이용 수가는 원래 계획서 문구 뒤에 등장하는 순서대로 평일, 주말로 저장합니다.
-  // 주 5회/주 1회로 고정하지 않아 주 3회, 주 2회 등도 그대로 추출합니다.
-  let actualPairs=extractWeeklyFeePairs(afterText);
-  if (!actualPairs.length && splitIndex < 0) {
-    const allPairs=extractWeeklyFeePairs(text);
-    actualPairs=planPairs.length ? allPairs.slice(planPairs.length) : allPairs;
-  }
-  if (actualPairs[0]) {
-    result.weekdayFee=actualPairs[0].fee;
-    result.weekdayWeeklyCount=actualPairs[0].count;
-  }
-  if (actualPairs[1]) {
-    result.weekendFee=actualPairs[1].fee;
-    result.weekendWeeklyCount=actualPairs[1].count;
-  }
-
-  result.feeText=[
+  result.feeText = [
     result.planFee ? `계획서 수가: ${result.planFee}${result.planWeeklyCount ? ` (${result.planWeeklyCount})` : ""}` : "",
     result.weekdayFee ? `평일 수가: ${result.weekdayFee}${result.weekdayWeeklyCount ? ` (${result.weekdayWeeklyCount})` : ""}` : "",
     result.weekendFee ? `주말 수가: ${result.weekendFee}${result.weekendWeeklyCount ? ` (${result.weekendWeeklyCount})` : ""}` : ""
-  ].filter(Boolean).join("\\n");
+  ].filter(Boolean).join("\n");
+
   return result;
 }
+
 function parseNewCarePlanSheet(ws, fileName) {
   const a=sheetRows(ws);
   let recipientName="", longTermNumber="", grade="", applicationPeriod="", writtenDate="", summaryOpinion="";
