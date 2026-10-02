@@ -1,0 +1,915 @@
+let carePlanLibraryCache = [];
+let counselLibraryCache = [];
+let attendanceLibraryCache = [];
+
+// 💡 [영구 조치]: 브라우저 저장 용량을 터트리던 localStorage 구문을 완전히 삭제하고 안전한 메모리 변수 수신 방식으로 리모델링했습니다.
+async function loadCarePlanLibraryFromFirestore(monthValue) {
+  try {
+    carePlanLibraryCache = await window.HanmaumFirestore.carePlans(monthValue);
+    return carePlanLibraryCache;
+  } catch (error) {
+    console.error("Firebase 급여제공계획서 조회 오류:", error);
+    carePlanLibraryCache = [];
+    return [];
+  }
+}
+
+
+async function loadCounselLibraryFromFirestore(monthValue) {
+  try {
+    counselLibraryCache = await window.HanmaumFirestore.counsels(monthValue);
+    return counselLibraryCache;
+  } catch (error) {
+    console.error("Firebase 상담일지 조회 오류:", error);
+    counselLibraryCache = [];
+    return [];
+  }
+}
+
+
+async function loadAttendanceMonthFromFirestore(monthValue) {
+  try {
+    attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
+    return attendanceLibraryCache;
+  } catch (error) {
+    console.error("Firebase 출석관리 조회 오류:", error);
+    attendanceLibraryCache = [];
+    return [];
+  }
+}
+
+
+// 초기 Firebase 데이터 불러오기 가동
+
+function normalizeText(value) {
+  return String(value || "").replace(/\s/g, "").trim();
+}
+
+function normalizeDateText(value) {
+  if (!value) return "";
+  if (value instanceof Date) {
+    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+  }
+  if (typeof value === "number") return excelDateToJSDate(value);
+
+  const text = String(value).trim().replace(/^'/, "").replace(/\s/g, "");
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
+  if (text.includes("T")) return text.split("T")[0];
+
+  const match = text.match(/(\d{4})[.\-/년]*(\d{1,2})[.\-/월]*(\d{1,2})/);
+  if (match) {
+    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  }
+  return "";
+}
+
+function normalizeRecipientName(value) {
+  return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
+}
+
+function isSameRecipient(nameA, nameB) {
+  const cleanA = normalizeRecipientName(nameA);
+  const cleanB = normalizeRecipientName(nameB);
+  if (!cleanA || !cleanB) return false;
+
+  // 김계순 / 김계순A처럼 비슷한 이름이 서로 섞이지 않도록 완전 일치만 허용합니다.
+  return cleanA === cleanB;
+}
+
+// 💡 [안전 장치]: 이름 누락 행이나 빈 데이터가 수집되어도 정렬 시 다운되지 않도록 에러 완충 방어 로직 심음
+function safeCompare(a, b) {
+  const nameA = String(a || "").trim();
+  const nameB = String(b || "").trim();
+  return nameA.localeCompare(nameB, "ko");
+}
+
+function excelDateToJSDate(serial) {
+  const utcDays = Math.floor(serial - 25569);
+  const utcValue = utcDays * 86400;
+  const dateInfo = new Date(utcValue * 1000);
+  return `${dateInfo.getFullYear()}-${String(dateInfo.getMonth() + 1).padStart(2, "0")}-${String(dateInfo.getDate()).padStart(2, "0")}`;
+}
+
+function parseDate(value) {
+  return normalizeDateText(value);
+}
+
+function getMonthEndDate(monthValue) {
+  const [year, month] = monthValue.split("-").map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+}
+
+function getDaysInMonth(monthValue) {
+  const [year, month] = monthValue.split("-").map(Number);
+  const lastDay = new Date(year, month, 0).getDate();
+  const days = [];
+  for (let day = 1; day <= lastDay; day++) {
+    days.push(`${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`);
+  }
+  return days;
+}
+
+function getHolidayList(year) {
+  const holidays = {
+    2024: [
+      "2024-01-01", "2024-02-09", "2024-02-10", "2024-02-11", "2024-02-12",
+      "2024-03-01", "2024-04-10", "2024-05-05", "2024-05-06", "2024-05-15",
+      "2024-06-06", "2024-08-15", "2024-09-16", "2024-09-17", "2024-09-18",
+      "2024-10-03", "2024-10-09", "2024-12-25"
+    ],
+    2025: [
+      "2025-01-01", "2025-01-28", "2025-01-29", "2025-01-30",
+      "2025-03-01", "2025-03-03", "2025-05-05", "2025-05-06",
+      "2025-06-06", "2025-08-15", "2025-10-03", "2025-10-05", "2025-10-06",
+      "2025-10-07", "2025-10-08", "2025-10-09", "2025-12-25"
+    ],
+    2026: [
+      "2026-01-01", "2026-02-16", "2026-02-17", "2026-02-18",
+      "2026-03-01", "2026-03-02", "2026-05-05", "2026-05-24", "2026-05-25",
+      "2026-06-03", "2026-06-06", "2026-08-15", "2026-08-17",
+      "2026-09-24", "2026-09-25", "2026-09-26", "2026-10-03",
+      "2026-10-05", "2026-10-09", "2026-12-25"
+    ]
+  };
+  return holidays[year] || [];
+}
+
+function getDayColorClass(dateText) {
+  const date = new Date(dateText);
+  const weekday = date.getDay();
+  const holidayList = getHolidayList(date.getFullYear());
+  if (weekday === 0 || holidayList.includes(dateText)) return "split-day-red";
+  if (weekday === 6) return "split-day-blue";
+  return "";
+}
+
+function sheetToRowsWithMerges(sheet) {
+  const range = XLSX.utils.decode_range(sheet["!ref"]);
+  const rows = [];
+  for (let r = range.s.r; r <= range.e.r; r++) {
+    const row = [];
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const address = XLSX.utils.encode_cell({ r, c });
+      const cell = sheet[address];
+      row[c] = cell ? cell.v : "";
+    }
+    rows.push(row);
+  }
+  const merges = sheet["!merges"] || [];
+  merges.forEach((merge) => {
+    const startAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
+    const startCell = sheet[startAddress];
+    const value = startCell ? startCell.v : "";
+    for (let r = merge.s.r; r <= merge.e.r; r++) {
+      for (let c = merge.s.c; c <= merge.e.c; c++) {
+        const rowIndex = r - range.s.r;
+        rows[rowIndex][c] = value;
+      }
+    }
+  });
+  return rows;
+}
+
+function findColumn(header, keywords) {
+  return header.findIndex((cell) => {
+    const text = normalizeText(cell);
+    return keywords.some((keyword) => text.includes(normalizeText(keyword)));
+  });
+}
+
+function parseMinutes(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/\d+/);
+  return match ? Number(match[0]) : 0;
+}
+
+function getPlanStartDate(plan) {
+  return normalizeDateText(
+    plan?.startDate ||
+    plan?.applyStartDate ||
+    plan?.effectiveStartDate ||
+    plan?.periodStart ||
+    plan?.serviceStartDate ||
+    plan?.applicationStartDate ||
+    ""
+  );
+}
+
+function getPlanEndDate(plan) {
+  return normalizeDateText(
+    plan?.endDate ||
+    plan?.applyEndDate ||
+    plan?.effectiveEndDate ||
+    plan?.periodEnd ||
+    plan?.serviceEndDate ||
+    plan?.applicationEndDate ||
+    ""
+  );
+}
+
+function getLatestPlansByRecipient(name, checkDate) {
+  const checkDateText = normalizeDateText(checkDate);
+  const library = carePlanLibraryCache || [];
+
+  const sameRecipientPlans = library.filter((plan) =>
+    isSameRecipient(plan.recipientName, name)
+  );
+
+  // 1순위: 계획서 보관함의 적용기간에 해당 날짜가 포함되는 계획서
+  const periodPlans = sameRecipientPlans.filter((plan) => {
+    const startDate = getPlanStartDate(plan);
+    const endDate = getPlanEndDate(plan);
+    if (!startDate) return false;
+    return startDate <= checkDateText && (!endDate || checkDateText <= endDate);
+  });
+
+  if (periodPlans.length) {
+    periodPlans.sort((a, b) => {
+      const startCompare = getPlanStartDate(b).localeCompare(getPlanStartDate(a));
+      if (startCompare !== 0) return startCompare;
+      return normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate));
+    });
+    return periodPlans[0];
+  }
+
+  // 구형 데이터처럼 적용기간 필드가 없는 계획서만 작성일 기준으로 보완
+  const legacyPlans = sameRecipientPlans.filter((plan) => {
+    const hasPeriod = getPlanStartDate(plan) || getPlanEndDate(plan);
+    const writtenDate = normalizeDateText(plan.writtenDate);
+    return !hasPeriod && writtenDate && writtenDate <= checkDateText;
+  });
+
+  legacyPlans.sort((a, b) =>
+    normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate))
+  );
+  return legacyPlans[0] || null;
+}
+
+function tryParseJson(value) {
+  if (typeof value !== "string") return value;
+  const text = value.trim();
+  if (!text) return value;
+
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return value;
+  }
+}
+
+function collectPlanObjects(value, result = []) {
+  const parsed = tryParseJson(value);
+
+  if (Array.isArray(parsed)) {
+    parsed.forEach((item) => collectPlanObjects(item, result));
+    return result;
+  }
+
+  if (parsed && typeof parsed === "object") {
+    result.push(parsed);
+    Object.values(parsed).forEach((item) => {
+      if (Array.isArray(item) || (item && typeof item === "object")) {
+        collectPlanObjects(item, result);
+      }
+    });
+  }
+
+  return result;
+}
+
+function objectToCleanText(obj) {
+  return String(JSON.stringify(obj || ""))
+    .replace(/\s/g, "")
+    .replace(/[^a-zA-Z0-9가-힣]/g, "");
+}
+
+function extractMedicationCountFromObject(obj) {
+  if (!obj || typeof obj !== "object") return null;
+
+  for (const [key, value] of Object.entries(obj)) {
+    const keyText = normalizeText(key);
+    const valueText = normalizeText(value);
+
+    if (
+      keyText.includes("횟수") ||
+      keyText.includes("회수") ||
+      keyText.includes("제공횟수") ||
+      keyText.toLowerCase().includes("count")
+    ) {
+      const numberMatch = String(value).match(/[1-3]/);
+      if (numberMatch) return Number(numberMatch[0]);
+    }
+
+    const combined = `${keyText}${valueText}`;
+    const combinedMatch = combined.match(/(?:횟수|회수|제공횟수)([1-3])/);
+    if (combinedMatch) return Number(combinedMatch[1]);
+  }
+
+  const rawText = JSON.stringify(obj || "");
+  const cleanText = objectToCleanText(obj);
+
+  if (
+    /1\s*일\s*3\s*회/.test(rawText) ||
+    /3\s*회/.test(rawText) ||
+    cleanText.includes("1일3회") ||
+    cleanText.includes("3회") ||
+    cleanText.includes("아침점심저녁")
+  ) {
+    return 3;
+  }
+
+  if (
+    /1\s*일\s*2\s*회/.test(rawText) ||
+    /2\s*회/.test(rawText) ||
+    cleanText.includes("1일2회") ||
+    cleanText.includes("2회") ||
+    cleanText.includes("아침저녁") ||
+    cleanText.includes("점심저녁")
+  ) {
+    return 2;
+  }
+
+  if (
+    /1\s*일\s*1\s*회/.test(rawText) ||
+    /1\s*회/.test(rawText) ||
+    cleanText.includes("1일1회") ||
+    cleanText.includes("1회") ||
+    cleanText.includes("아침") ||
+    cleanText.includes("점심") ||
+    cleanText.includes("저녁")
+  ) {
+    return 1;
+  }
+
+  return null;
+}
+
+function getMedicationCountFromPlan(plan) {
+  if (!plan) return 0;
+
+  // 계획서 보관함에 저장된 rows / rowsJson의 실제 "급여 행"을 기준으로 찾습니다.
+  // 종합의견에 복약 문구가 언급된 것만으로는 복약 대상자로 판정하지 않습니다.
+  const roots = [
+    tryParseJson(plan.rows || []),
+    tryParseJson(plan.rowsJson || [])
+  ];
+
+  const candidates = [];
+
+  function walk(value) {
+    const parsed = tryParseJson(value);
+
+    if (Array.isArray(parsed)) {
+      // 배열 자체가 엑셀 한 행일 수 있으므로 후보로 저장
+      if (parsed.some(v => v !== null && v !== undefined && typeof v !== "object")) {
+        candidates.push(parsed);
+      }
+      parsed.forEach(walk);
+      return;
+    }
+
+    if (parsed && typeof parsed === "object") {
+      candidates.push(parsed);
+      Object.values(parsed).forEach(v => {
+        if (Array.isArray(v) || (v && typeof v === "object")) walk(v);
+      });
+    }
+  }
+
+  roots.forEach(walk);
+
+  function scalarTexts(container) {
+    if (Array.isArray(container)) {
+      return container
+        .filter(v => v !== null && v !== undefined && typeof v !== "object")
+        .map(v => String(v));
+    }
+    if (container && typeof container === "object") {
+      return Object.values(container)
+        .filter(v => v !== null && v !== undefined && typeof v !== "object")
+        .map(v => String(v));
+    }
+    return [];
+  }
+
+  function isMedicationBenefitRow(container) {
+    const values = scalarTexts(container);
+    if (!values.length) return false;
+
+    const cleanValues = values.map(normalizeText);
+    const whole = cleanValues.join("|");
+
+    // 종합의견/비고처럼 다른 급여를 설명하는 긴 문장은 제외
+    if (
+      cleanValues.some(v => v === "종합의견" || v === "종합의견및총평") ||
+      whole.includes("*대체한급여") ||
+      whole.includes("*추가한급여") ||
+      whole.includes("*제외한급여")
+    ) return false;
+
+    // 실제 계획서 급여명:
+    // "정확한 복약도움" 또는 "정확한 복약도움(시간, 용량, 용법 등)"
+    return cleanValues.some(v =>
+      v === "정확한복약도움" ||
+      v.startsWith("정확한복약도움(") ||
+      v.startsWith("정확한복약도움（")
+    );
+  }
+
+  function countFromMedicationRow(container) {
+    const values = scalarTexts(container);
+
+    // 실제 계획서의 "일 1회 / 일 2회 / 일 3회" 형식을 우선 사용
+    for (const value of values) {
+      const t = String(value || "").replace(/\s/g, "");
+      let m = t.match(/(?:일)?([1-3])회/);
+      if (m) return Number(m[1]);
+    }
+
+    // 객체형 저장 데이터라면 횟수 필드도 확인
+    if (container && !Array.isArray(container) && typeof container === "object") {
+      const parsed = extractMedicationCountFromObject(container);
+      if (parsed) return parsed;
+    }
+
+    return 0;
+  }
+
+  let result = 0;
+
+  candidates.forEach(container => {
+    if (!isMedicationBenefitRow(container)) return;
+    const count = countFromMedicationRow(container);
+    if (count > result) result = count;
+  });
+
+  return Math.min(result, 3);
+}
+function getCounselDate(item) {
+  return normalizeDateText(item.reflectionDate || item.reflection || item.consultDate || item.date || item.counselDate || "");
+}
+
+function isRemoveCounsel(counsel) {
+  if (!counsel) return false;
+  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+  return text.includes("제외") || text.includes("중단") || text.includes("미제공") || text.includes("삭제") || text.includes("하지않");
+}
+
+function getMedicationCountFromCounselText(text, fallbackCount) {
+  const cleanText = normalizeText(text);
+
+  if (cleanText.includes("제외") || cleanText.includes("중단") || cleanText.includes("미제공") || cleanText.includes("삭제") || cleanText.includes("하지않")) return 0;
+  if (cleanText.match(/3\s*회/) || cleanText.includes("아침점심저녁")) return 3;
+  if (cleanText.match(/2\s*회/) || cleanText.includes("아침저녁") || cleanText.includes("점심저녁")) return 2;
+  if (cleanText.match(/1\s*회/) || cleanText.includes("아침") || cleanText.includes("점심") || cleanText.includes("저녁")) return 1;
+
+  return fallbackCount;
+}
+
+function getLatestMedicationCounsel(name, targetDate) {
+  const counselLibrary = counselLibraryCache || [];
+  const targetDateText = normalizeDateText(targetDate);
+
+  const counsels = counselLibrary
+    .filter((item) => {
+      const sameName = isSameRecipient(item.recipientName || item.name, name);
+      const counselDate = getCounselDate(item);
+      const text = normalizeText(`${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
+
+      return sameName && counselDate && counselDate <= targetDateText && (
+        text.includes("복약") ||
+        text.includes("투약") ||
+        text.includes("정확한복약도움") ||
+        text.includes("건강관리")
+      );
+    })
+    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
+
+  return counsels[0] || null;
+}
+
+function getMedicationRuleAtDate(plan, name, targetDate) {
+  // 상담일지와 계획서 우선순위도 작성일이 아니라 실제 적용 시작일을 우선 사용합니다.
+  const planDate = plan
+    ? (getPlanStartDate(plan) || normalizeDateText(plan.writtenDate))
+    : "";
+  const planCount = getMedicationCountFromPlan(plan);
+
+  const counsel = getLatestMedicationCounsel(name, targetDate);
+  const counselDate = counsel ? getCounselDate(counsel) : "";
+
+  let count = planCount;
+  let source = "계획서";
+
+  // 상담일지는 계획서의 "작성일"이 아니라 실제 적용 시작일 전까지도 유효합니다.
+  // 중요: getLatestPlansByRecipient()는 targetDate에 유효한 계획서만 반환하므로,
+  // 적용 시작 전 날짜에는 plan이 null일 수 있습니다. 이 경우 그 날짜까지의 최신 상담일지를 그대로 적용합니다.
+  // 적용기간 안에서는 상담일지가 계획 적용 시작일보다 뒤에 반영된 경우에만 상담 내용을 우선합니다.
+  const shouldApplyCounsel = Boolean(
+    counsel && (
+      !plan ||
+      !planDate ||
+      (counselDate && counselDate > planDate)
+    )
+  );
+
+  if (shouldApplyCounsel) {
+    const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
+
+    count = getMedicationCountFromCounselText(text, count);
+    source = "상담";
+  }
+
+  return {
+    count,
+    source
+  };
+}
+
+function getCounselMedicationCount(name, targetDate, fallbackCount) {
+  const plan = getLatestPlansByRecipient(name, targetDate);
+  const rule = getMedicationRuleAtDate(plan, name, targetDate);
+
+  if (!plan && typeof fallbackCount === "number" && rule.source === "계획서") {
+    return fallbackCount;
+  }
+
+  return rule.count;
+}
+
+function buildMedicationRuleSourceHtml(rule) {
+  const count = rule && typeof rule.count === "number" ? rule.count : 0;
+  const source = rule && rule.source ? rule.source : "계획서";
+  const mainColor = count > 0 ? "#2563eb" : "#64748b";
+
+  return `
+    <div style="font-weight: 800; color: ${mainColor};">${count}회</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 3px;">[${source}]</div>
+  `;
+}
+
+function getMedicationCounselTextForMonth(name, monthEndDate) {
+  const counsel = getLatestMedicationCounsel(name, monthEndDate);
+
+  if (!counsel) return "없음";
+  return `${getCounselDate(counsel) || "-"}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
+}
+
+function getAttendanceMonth(monthValue) {
+  return attendanceLibraryCache
+    .filter((item) => item.month === monthValue)
+    .map((item) => ({
+      name: String(item.name || item.recipientName || "").trim(),
+      dates: item.dates || item.attendanceDates || []
+    }))
+    .filter((item) => item.name !== "")
+    .sort((a, b) => safeCompare(a.name, b.name));
+}
+
+function readWorkbook(file) {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const data = new Uint8Array(event.target.result);
+      resolve(XLSX.read(data, { type: "array", cellDates: true }));
+    };
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function applySplitCheckStyle() {
+  if (document.getElementById("splitCheckStyle")) return;
+  const style = document.createElement("style");
+  style.id = "splitCheckStyle";
+  style.textContent = `
+    .split-check-table { min-width: 2200px; table-layout: fixed; }
+    .split-check-table th, .split-check-table td { vertical-align: middle; white-space: normal; text-align: center; padding: 10px 8px; border: 1px solid #e2e8f0; }
+    .split-check-table th:nth-child(1), .split-check-table td:nth-child(1) { min-width: 100px; width: 100px; text-align: center; position: sticky; left: 0; z-index: 4; }
+    .split-check-table th:nth-child(1) { background-color: #eaf0fb; z-index: 6; }
+    .split-check-table th:nth-child(2), .split-check-table td:nth-child(2) { min-width: 115px; width: 115px; }
+    .split-check-table th:nth-child(3), .split-check-table td:nth-child(3) { min-width: 160px; width: 160px; text-align: left; }
+    .split-check-table th:nth-child(4), .split-check-table td:nth-child(4) { min-width: 100px; width: 100px; }
+    .split-day-head, .split-day-cell { min-width: 115px; width: 115px; }
+    .split-check-table th:last-child, .split-check-table td:last-child { min-width: 115px; width: 115px; word-break: keep-all; line-height: 1.5; }
+    .small-cell-text { font-size: 11px; color: #555; margin-top: 4px; line-height: 1.4; word-break: keep-all; }
+    .empty-day { color: #999; background-color: #f8fafc !important; font-weight: 700; }
+    
+    .status-ok { color: #1e293b; font-weight: 700; }
+    .status-danger { color: #e11d48; font-weight: 800; }
+    .split-day-blue { color: #2563eb !important; }
+    .split-day-red { color: #dc2626 !important; }
+    
+    /* 💡 [얼룩 원천 박멸]: 투약 확인 화면도 짝수행을 파랗게 얼룩덜룩 칠하던 구형 템플릿 CSS 속성을 완전 무결한 흰색으로 강제 고정했습니다. */
+    .split-check-table tr:nth-child(even) td { background-color: #ffffff !important; }
+  `;
+  document.head.appendChild(style);
+}
+
+const checkMonthInput = document.getElementById("checkMonth");
+const medicationFileInput = document.getElementById("medicationFile");
+const checkMedicationBtn = document.getElementById("checkMedicationBtn");
+const clearMedicationBtn = document.getElementById("clearMedicationBtn");
+const medicationTableHead = document.getElementById("medicationTableHead");
+const medicationResultBody = document.getElementById("medicationResultBody");
+
+let medicationLastMonthValue = "";
+let medicationLastResults = [];
+let medicationProblemOnly = false;
+
+function ensureMedicationFilterButtons() {
+  if (document.getElementById("medicationResultFilterWrap")) return;
+
+  const table = medicationResultBody ? medicationResultBody.closest("table") : null;
+  if (!table || !table.parentElement) return;
+
+  const wrap = document.createElement("div");
+  wrap.id = "medicationResultFilterWrap";
+  wrap.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin:12px 0;";
+
+  const allBtn = document.createElement("button");
+  allBtn.type = "button";
+  allBtn.id = "medicationShowAllBtn";
+  allBtn.textContent = "전체";
+
+  const problemBtn = document.createElement("button");
+  problemBtn.type = "button";
+  problemBtn.id = "medicationProblemOnlyBtn";
+  problemBtn.textContent = "확인 필요만";
+
+  [allBtn, problemBtn].forEach((btn) => {
+    btn.style.cssText = "padding:8px 16px;border-radius:8px;font-weight:800;cursor:pointer;";
+  });
+
+  function paint() {
+    allBtn.style.background = medicationProblemOnly ? "#fff" : "#1e3a8a";
+    allBtn.style.color = medicationProblemOnly ? "#1e3a8a" : "#fff";
+    allBtn.style.border = "1px solid #1e3a8a";
+
+    problemBtn.style.background = medicationProblemOnly ? "#dc2626" : "#fff";
+    problemBtn.style.color = medicationProblemOnly ? "#fff" : "#dc2626";
+    problemBtn.style.border = "1px solid #dc2626";
+  }
+
+  allBtn.addEventListener("click", () => {
+    medicationProblemOnly = false;
+    paint();
+    renderResults(medicationLastMonthValue, medicationLastResults);
+  });
+
+  problemBtn.addEventListener("click", () => {
+    medicationProblemOnly = true;
+    paint();
+    renderResults(medicationLastMonthValue, medicationLastResults);
+  });
+
+  wrap.appendChild(allBtn);
+  wrap.appendChild(problemBtn);
+  table.parentElement.insertBefore(wrap, table);
+  paint();
+}
+
+function getMedicationProblemCount(monthValue, item) {
+  const days = getDaysInMonth(monthValue);
+  const attendanceSet = new Set(Array.isArray(item.attendanceDates) ? item.attendanceDates : []);
+  let problemCount = 0;
+
+  days.forEach((day) => {
+    if (!attendanceSet.has(day)) return;
+    const dayPlan = getLatestPlansByRecipient(item.name, day);
+    const requiredCount = getMedicationRuleAtDate(dayPlan, item.name, day).count;
+    const realCount = item.medicationMap[`${item.name}_${day}`] || 0;
+    if (checkMedicationDay(requiredCount, realCount).result !== "정상") problemCount += 1;
+  });
+
+  return problemCount;
+}
+
+
+function parseMedicationReport(workbook, monthValue) {
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
+  const rows = sheetToRowsWithMerges(sheet);
+  const headerIndex = rows.findIndex((row) => {
+    const text = normalizeText(row.join(" "));
+    return text.includes("투약일자") && text.includes("수급자명") && text.includes("시간");
+  });
+
+  if (headerIndex === -1) {
+    alert("투약 제공 현황에서 표 머리글을 찾지 못했습니다.");
+    return [];
+  }
+
+  const header = rows[headerIndex] || [];
+  const dateCol = findColumn(header, ["투약일자"]);
+  const nameCol = findColumn(header, ["수급자명"]);
+  const timeCols = header.map((cell, index) => normalizeText(cell).includes("시간") ? index : -1).filter((index) => index >= 0);
+
+  const resultMap = {};
+  let currentDate = "";
+  let currentName = "";
+
+  for (let i = headerIndex + 1; i < rows.length; i++) {
+    const row = rows[i] || [];
+    const parsedDate = parseDate(row[dateCol]);
+    if (parsedDate) currentDate = parsedDate;
+
+    const rawName = String(row[nameCol] || "").trim();
+    if (rawName) currentName = rawName;
+
+    if (!currentDate || !currentDate.startsWith(monthValue)) continue;
+    if (!currentName || currentName === "수급자명") continue;
+
+    const key = `${currentName}_${currentDate}`;
+    if (!resultMap[key]) {
+      resultMap[key] = { name: currentName, date: currentDate, times: new Set() };
+    }
+    timeCols.forEach((col) => {
+      const text = String(row[col] || "");
+      const matches = text.match(/\d{1,2}:\d{2}/g) || [];
+      matches.forEach((time) => resultMap[key].times.add(time));
+    });
+  }
+
+  return Object.values(resultMap).map((item) => ({
+    name: item.name,
+    date: item.date,
+    count: item.times.size
+  }));
+}
+
+function checkMedicationDay(requiredCount, realCount) {
+  if (requiredCount <= 0) {
+    if (realCount > 0) return { result: "오류", details: [`복약도움 없음`, `실제 ${realCount}회`] };
+    return { result: "정상", details: ["복약도움 없음"] };
+  }
+  if (realCount !== requiredCount) return { result: "오류", details: [`${requiredCount}회 필요`, `실제 ${realCount}회`] };
+  return { result: "정상", details: [`${realCount}회`] };
+}
+
+function buildDayCell(isAttendanceDay, requiredCount, realCount) {
+  if (!isAttendanceDay) return `<td class="split-day-cell empty-day">결석</td>`;
+  const checked = checkMedicationDay(requiredCount, realCount);
+  const resultClass = checked.result === "정상" ? "status-ok" : "status-danger";
+  const errorCellBg = checked.result !== "정상" ? "background-color: #fff5f5 !important;" : "background-color: #ffffff !important;";
+
+  return `
+    <td class="split-day-cell" style="${errorCellBg}">
+      <div class="${resultClass}">${checked.result}</div>
+      <div class="small-cell-text">${checked.details.join("<br>")}</div>
+    </td>
+  `;
+}
+
+function buildResults(monthValue, medicationRows) {
+  const monthEndDate = getMonthEndDate(monthValue);
+  const attendanceRows = getAttendanceMonth(monthValue);
+  const days = getDaysInMonth(monthValue);
+
+  // 출석부 기준으로만 대상자를 만들고, 정확한 복약도움 대상자만 표시합니다.
+  // 단, 출석부에 있는 사람이 복약도움 대상자가 아닌데 투약 파일에 기록이 있으면 오류 확인을 위해 표시합니다.
+  return attendanceRows
+    .map((attendance) => {
+      const name = attendance.name;
+      const plan = getLatestPlansByRecipient(name, monthEndDate);
+      const baseMedicationCount = getMedicationCountFromPlan(plan);
+
+      const myMedicationMap = {};
+      medicationRows.forEach((row) => {
+        if (isSameRecipient(row.name, name)) {
+          myMedicationMap[`${name}_${row.date}`] = row.count;
+        }
+      });
+
+      const attendanceSet = new Set(attendance.dates || []);
+      const hasRequiredDay = days.some((day) => {
+        const dayPlan = getLatestPlansByRecipient(name, day);
+        return attendanceSet.has(day) && getMedicationRuleAtDate(dayPlan, name, day).count > 0;
+      });
+      const hasRealMedicationRecord = Object.values(myMedicationMap).some((count) => Number(count) > 0);
+
+      return {
+        name,
+        planDate: plan ? plan.writtenDate : "-",
+        baseMedicationCount,
+        attendanceDates: attendance.dates || [],
+        medicationMap: myMedicationMap,
+        shouldShow: hasRequiredDay || hasRealMedicationRecord
+      };
+    })
+    .filter((item) => item.shouldShow)
+    .sort((a, b) => safeCompare(a.name, b.name));
+}
+
+function renderHeader(monthValue) {
+  const days = getDaysInMonth(monthValue);
+  medicationTableHead.innerHTML = `
+    <tr>
+      <th>수급자명</th>
+      <th>계획서 작성일</th>
+      <th>상담일지 반영</th>
+      <th>복약도움</th>
+      ${days.map((day) => {
+        const dayNum = Number(day.split("-")[2]);
+        const colorClass = getDayColorClass(day);
+        return `<th class="split-day-head ${colorClass}">${dayNum}</th>`;
+      }).join("")}
+      <th>종합 결과</th>
+    </tr>
+  `;
+}
+
+function renderResults(monthValue, results) {
+  renderHeader(monthValue);
+  medicationResultBody.innerHTML = "";
+  const days = getDaysInMonth(monthValue);
+
+  medicationLastMonthValue = monthValue;
+  medicationLastResults = Array.isArray(results) ? results : [];
+  ensureMedicationFilterButtons();
+
+  const visibleResults = medicationProblemOnly
+    ? medicationLastResults.filter((item) => getMedicationProblemCount(monthValue, item) > 0)
+    : medicationLastResults;
+
+  if (!visibleResults || visibleResults.length === 0) {
+    medicationResultBody.innerHTML = `<tr><td colspan="${4 + days.length}">확인할 투약 대상자가 없습니다.</td></tr>`;
+    return;
+  }
+
+  visibleResults.forEach((item) => {
+    const row = document.createElement("tr");
+    
+    // 💡 attendanceDates 유실 방어막 구축
+    const validDates = Array.isArray(item.attendanceDates) ? item.attendanceDates : [];
+    const attendanceSet = new Set(validDates);
+    
+    const monthEndDate = getMonthEndDate(monthValue);
+    const monthEndPlan = getLatestPlansByRecipient(item.name, monthEndDate);
+    const monthEndMedicationRule = getMedicationRuleAtDate(monthEndPlan, item.name, monthEndDate);
+
+    let problemCount = 0;
+    const dayCells = days.map((day) => {
+      const isAttendanceDay = attendanceSet.has(day);
+      const dayPlan = getLatestPlansByRecipient(item.name, day);
+      const requiredCount = getMedicationRuleAtDate(dayPlan, item.name, day).count;
+      const realCount = item.medicationMap[`${item.name}_${day}`] || 0;
+
+      if (isAttendanceDay) {
+        const checked = checkMedicationDay(requiredCount, realCount);
+        if (checked.result !== "정상") problemCount += 1;
+      }
+      return buildDayCell(isAttendanceDay, requiredCount, realCount);
+    }).join("");
+
+    const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
+    const overallClass = problemCount > 0 ? "status-danger" : "status-ok";
+    const errorCellBg = problemCount > 0 ? "background-color: #fff5f5 !important;" : "background-color: #ffffff !important;";
+
+    row.innerHTML = `
+      <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name || "-"}</td>
+      <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
+      <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px; ${errorCellBg}">${getMedicationCounselTextForMonth(item.name, getMonthEndDate(monthValue))}</td>
+      <td style="text-align:center; ${errorCellBg}">${buildMedicationRuleSourceHtml(monthEndMedicationRule)}</td>
+      ${dayCells}
+      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">${overallText}</td>
+    `;
+    medicationResultBody.appendChild(row);
+  });
+}
+
+checkMedicationBtn.addEventListener("click", async () => {
+  const checkMonth = checkMonthInput.value;
+  const medicationFile = medicationFileInput.files[0];
+
+  if (!checkMonth) { alert("확인 월을 선택해주세요."); return; }
+  if (!medicationFile) { alert("투약 제공 현황 파일을 업로드해주세요."); return; }
+  await loadCarePlanLibraryFromFirestore(checkMonth);
+  await loadCounselLibraryFromFirestore(checkMonth); 
+  await loadAttendanceMonthFromFirestore(checkMonth);
+  applySplitCheckStyle();
+
+  const attendanceRows = getAttendanceMonth(checkMonth);
+  if (attendanceRows.length === 0) {
+    alert("출석관리 저장 내역이 없습니다. 먼저 출석관리에서 해당 월 출석을 등록해주세요.");
+  }
+
+  const medicationWorkbook = await readWorkbook(medicationFile);
+  const medicationRows = parseMedicationReport(medicationWorkbook, checkMonth);
+  const results = buildResults(checkMonth, medicationRows);
+  renderResults(checkMonth, results);
+});
+
+clearMedicationBtn.addEventListener("click", () => {
+  medicationProblemOnly = false;
+  medicationLastMonthValue = "";
+  medicationLastResults = [];
+  const filterWrap = document.getElementById("medicationResultFilterWrap");
+  if (filterWrap) filterWrap.remove();
+
+  checkMonthInput.value = "";
+  medicationFileInput.value = "";
+  medicationTableHead.innerHTML = `<tr><th>수급자명</th><th>계획서 작성일</th><th>상담일지 반영</th><th>복약도움</th></tr>`;
+  medicationResultBody.innerHTML = `<tr><td colspan="4">확인 월과 투약 제공 현황 파일을 선택해주세요.</td></tr>`;
+});

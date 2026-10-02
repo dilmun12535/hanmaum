@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+  <link rel="icon" type="image/png" href="../images/logo2.png">
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>물리치료 제공 확인</title>
+<link href="../css/common.css" rel="stylesheet"/>
+<link href="../css/dashboard.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/style.css" rel="stylesheet"/>
+<style>
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+
+    .therapy-table-wrap {
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+    }
+
+    .therapy-check-table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 1400px;
+      table-layout: fixed;
+      background: #ffffff;
+    }
+
+    .therapy-check-table th,
+    .therapy-check-table td {
+      border: 1px solid #e2e8f0 !important;
+      padding: 10px 6px;
+      text-align: center;
+      vertical-align: top;
+      white-space: normal;
+      word-break: keep-all;
+      line-height: 1.42;
+      font-size: 12px;
+    }
+
+    .therapy-check-table th {
+      background-color: #eef4ff;
+      color: #0f3b91;
+      font-weight: 800;
+    }
+
+    .therapy-check-table th:nth-child(1),
+    .therapy-check-table td:nth-child(1) {
+      width: 76px;
+      min-width: 76px;
+    }
+
+    .therapy-check-table th:nth-child(2),
+    .therapy-check-table td:nth-child(2) {
+      width: 98px;
+      min-width: 98px;
+    }
+
+    .therapy-check-table th:nth-child(3),
+    .therapy-check-table td:nth-child(3) {
+      width: 150px;
+      min-width: 150px;
+    }
+
+    .therapy-check-table th:nth-child(4),
+    .therapy-check-table td:nth-child(4) {
+      width: 74px;
+      min-width: 74px;
+    }
+
+    .therapy-check-table th:nth-child(5),
+    .therapy-check-table td:nth-child(5),
+    .therapy-check-table th:nth-child(6),
+    .therapy-check-table td:nth-child(6),
+    .therapy-check-table th:nth-child(7),
+    .therapy-check-table td:nth-child(7),
+    .therapy-check-table th:nth-child(8),
+    .therapy-check-table td:nth-child(8),
+    .therapy-check-table th:nth-child(9),
+    .therapy-check-table td:nth-child(9) {
+      width: 168px;
+      min-width: 168px;
+    }
+
+    .therapy-check-table th:nth-child(10),
+    .therapy-check-table td:nth-child(10) {
+      width: 82px;
+      min-width: 82px;
+      vertical-align: middle;
+    }
+
+    .therapy-check-table tr:nth-child(even) td {
+      background-color: #ffffff !important;
+    }
+
+    .therapy-target-ok {
+      color: #2563eb;
+      font-weight: 800;
+    }
+
+    .therapy-target-no {
+      color: #64748b;
+      font-weight: 700;
+    }
+
+    .status-ok {
+      color: #2563eb;
+      font-weight: 800;
+    }
+
+    .status-absent {
+      color: #64748b;
+      font-weight: 700;
+    }
+
+    .status-danger {
+      color: #e11d48;
+      font-weight: 900;
+    }
+  </style>
+</head>
+<body>
+<div class="topbar">
+<div class="logo-area">
+<img alt="로고" class="logo-img" src="../images/logo.png"/>
+</div>
+<div class="topbar-right">
+<div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
+<div class="icon-btn"><img alt="설정" src="../images/settings.png"/></div>
+<button class="logout-btn" onclick="hanmaumLogout()" type="button">로그아웃</button>
+<div class="user-area">
+<div class="user-badge">사회복지사</div>
+<p class="date-text" id="todayText"></p>
+</div>
+</div>
+</div>
+<div class="main-layout">
+<aside class="sidebar">
+<div class="menu-title">메뉴</div>
+<nav class="menu-list"><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a><a class="submenu-item" href="./outing-library.html">외출 보관함</a></div></details><details class="menu-group"><summary class="menu-parent">요양기록지</summary><div class="submenu"><a class="submenu-item" href="./meal-check.html">식사 제공 확인</a><a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a><a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a><a class="submenu-item" href="./meal-bath-check.html">정량/목욕의자</a></div></details><details class="menu-group"><summary class="menu-parent active">물리치료 기록지</summary><div class="submenu"><a class="submenu-item active" href="./therapy-check.html">물리치료 제공 확인</a></div></details><details class="menu-group"><summary class="menu-parent">간호 기록지</summary><div class="submenu"><a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a><a class="submenu-item" href="./medication-check.html">투약 확인</a></div></details><a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a><a class="menu-item" href="./fee-history.html">수가 변동표</a><a class="menu-item" href="./special-notes-check.html">특이사항 검증</a><a class="menu-item" href="./fee-time-notes-check.html">수가·시간 특이사항</a><a class="menu-item" href="./timely-notice.html">적기통보</a><a class="menu-item" href="./claim.html">청구</a></nav>
+</aside>
+<main class="content-area">
+<div class="content-box">
+<div class="page-header">
+<h2>물리치료 제공 확인</h2>
+<p>계획서와 상담일지 반영 내용을 기준으로 주차별 물리치료 제공 기록을 확인합니다.</p>
+</div>
+<div class="page-actions">
+<div class="date-group">
+<label for="checkMonth">확인 월</label>
+<input autocomplete="off" id="checkMonth" placeholder="예: 2026-05" type="text"/>
+</div>
+<div class="date-group">
+<label for="therapyFile">4-6-2.물리(작업)치료 제공 리포트 출력</label>
+<input accept=".xlsx,.xls" id="therapyFile" type="file"/>
+</div>
+<div class="action-buttons">
+<button class="primary-btn" id="checkTherapyBtn" type="button">물리치료 확인</button>
+<button class="danger-btn" id="clearTherapyBtn" type="button">초기화</button>
+</div>
+</div>
+<div class="unified-notice-box">
+<h5 class="unified-notice-title">💡 물리치료 확인 기준 안내</h5>
+<ul class="unified-notice-list">
+<li><b style="color: #1e293b;">계획서 기준:</b> 계획서에 물리치료(기능회복훈련)가 있는 사람 → 해당 주차에 물리치료 기록이 있어야 <span style="color: #2563eb; font-weight: 600;">정상</span></li>
+<li><b style="color: #1e293b;">상담일지 기준:</b> 상담일지에서 물리치료 제외가 반영된 사람 → 반영일 이후에는 물리치료 기록이 없어야 <span style="color: #2563eb; font-weight: 600;">정상</span></li>
+<li>계획서에 물리치료가 없거나 상담일지로 제외된 사람에게 기록이 있으면 <span style="color: #e11d48; font-weight: 600;">오류</span>로 표시됩니다.</li>
+</ul>
+</div>
+<div class="therapy-table-wrap">
+<table class="therapy-check-table">
+<thead>
+<tr>
+<th>수급자명</th>
+<th>계획서 작성일</th>
+<th>상담일지 반영</th>
+<th>물리치료 대상</th>
+<th>1주차</th>
+<th>2주차</th>
+<th>3주차</th>
+<th>4주차</th>
+<th>5주차</th>
+<th>종합 결과</th>
+</tr>
+</thead>
+<tbody id="therapyResultBody">
+<tr class="empty-row">
+<td colspan="10" style="padding: 20px; text-align: center;">확인 월과 물리치료 기록 파일을 선택해주세요.</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+</main>
+</div>
+<script src="../js/firebase-auth-guard.js" type="module"></script>
+<script src="../js/main.js"></script>
+<script src="../js/firestore-data.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ko.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/plugins/monthSelect/index.js"></script>
+<script>
+    document.addEventListener("DOMContentLoaded", function () {
+      if (document.getElementById("checkMonth") && typeof flatpickr !== "undefined") {
+        flatpickr("#checkMonth", {
+          locale: "ko",
+          plugins: [
+            new monthSelectPlugin({
+              shorthand: false,
+              dateFormat: "Y-m",
+              altFormat: "Y년 m월",
+              theme: "light"
+            })
+          ],
+          dateFormat: "Y-m",
+          altInput: true,
+          allowInput: true,
+          onReady: function(selectedDates, dateStr, instance) {
+            const updateMonths = function() {
+              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
+              months.forEach(function(month, index) {
+                month.textContent = (index + 1) + "월";
+              });
+            };
+            updateMonths();
+            instance.calendarContainer.addEventListener("click", function() {
+              setTimeout(updateMonths, 0);
+            });
+          },
+          onYearChange: function(selectedDates, dateStr, instance) {
+            setTimeout(function() {
+              const months = instance.calendarContainer.querySelectorAll(".flatpickr-monthSelect-month");
+              months.forEach(function(month, index) {
+                month.textContent = (index + 1) + "월";
+              });
+            }, 0);
+          }
+        });
+      }
+    });
+  </script>
+<script src="../js/therapy-check.js"></script>
+<script src="../js/table-export.js"></script>
+</body>
+</html>
