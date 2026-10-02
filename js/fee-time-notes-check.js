@@ -100,6 +100,26 @@ async function run(){
  $('fileStatus').textContent=`이용일 ${records.length}건 · 계획서 ${plans.length}건 · 외출 ${outings.length}건 연동`;render()
 }
 function outingHtml(x){if(!x.outing.items.length)return '<span class="muted">없음</span>';return x.outing.items.map(o=>{const staff=o.staffAccompanied||/직원\s*동행/.test(norm(o.companion||''));return `<div><b>${esc(o.outTime||'')}~${esc(o.returnTime||'')}</b> (${Number(o.durationMinutes)||0}분) ${staff?'<span class="badge ok">직원동행 · 차감 없음</span>':`<span class="badge badge-bad">${Number(o.durationMinutes)||0}분 차감</span>`}<br><span class="muted">${esc(o.purpose||'')} · ${esc(o.companion||'동행 미기재')}</span></div>`}).join('<hr style="border:0;border-top:1px solid #eee">')}
-function render(){let list=filter==='outing'?allResults.filter(x=>x.outing.items.length):results;if(filter==='nonote')list=results.filter(x=>!x.note);$('body').innerHTML=list.length?list.map(x=>`<tr class="${x.mismatch?'bad':''}"><td><b>${esc(x.name)}</b></td><td>${x.date}</td><td>${weekday(x.date)}</td><td><b>${esc(x.expected)}</b></td><td><b>${x.dur}분</b><br><span class="muted">${Math.floor(x.dur/60)}시간 ${x.dur%60}분</span></td><td class="note">${outingHtml(x)}</td><td><b>${x.adjusted}분</b><br><span class="muted">${Math.floor(x.adjusted/60)}시간 ${x.adjusted%60}분</span></td><td>${esc(x.actual)}</td><td>${x.mismatch?'<span class="badge badge-bad">불일치</span>':'<span class="badge ok">일치</span>'}</td><td class="note">${x.note?esc(x.note):'<span class="badge badge-bad">특이사항 없음</span>'}</td><td>${x.plan?`${planStart(x.plan)} ~ ${planEnd(x.plan)}`:'<span class="muted">계획서 없음</span>'}</td></tr>`).join(''):'<tr><td colspan="11" class="empty">해당 결과가 없습니다.</td></tr>'}
-function exportX(){const source=filter==='outing'?allResults.filter(x=>x.outing.items.length):results;if(!source.length){alert('다운로드할 결과가 없습니다.');return}const data=source.map(x=>({'수급자':x.name,'날짜':x.date,'요일':weekday(x.date),'요양급여제공계획서 수가':x.expected,'총 이용시간(분)':x.dur,'외출 차감(분)':x.outing.minutes,'차감 후 이용시간(분)':x.adjusted,'차감 후 시간구간':x.actual,'판정':x.mismatch?'불일치':'일치','외출 내역':x.outing.items.map(o=>`${o.outTime||''}~${o.returnTime||''} ${o.durationMinutes||0}분 / ${o.staffAccompanied?'직원동행':'직원동행 아님'} / ${o.purpose||''} / ${o.companion||''}`).join('\n'),'특이사항':x.note||'특이사항 없음','계획서 적용기간':x.plan?`${planStart(x.plan)} ~ ${planEnd(x.plan)}`:'계획서 없음'}));const ws=XLSX.utils.json_to_sheet(data);ws['!cols']=[12,12,7,25,16,15,18,25,10,55,70,25].map(w=>({wch:w}));const b=XLSX.utils.book_new();XLSX.utils.book_append_sheet(b,ws,'수가시간 외출검증');XLSX.writeFile(b,'수가_이용시간_외출_특이사항_검증.xlsx')}
+function noteType(x){
+  const n=norm(x.note);
+  if(!n)return 'nonote';
+  const c=compact(n);
+  const hasIn=/등원|입실|도착|늦게옴|늦게오|늦은등원|병원.*후.*센터|센터.*도착/.test(c);
+  const hasOut=/하원|퇴실|귀가|일찍감|일찍가|조기하원|병원.*가|병원.*방문/.test(c);
+  if(hasIn && !hasOut)return 'in';
+  if(hasOut && !hasIn)return 'out';
+  if(hasIn && hasOut)return 'both';
+  return 'other';
+}
+function filteredList(){
+  if(filter==='nonote') return results.filter(x=>!norm(x.note));
+  if(filter==='in') return results.filter(x=>['in','both'].includes(noteType(x)));
+  if(filter==='out') return results.filter(x=>['out','both'].includes(noteType(x)));
+  return results;
+}
+function render(){
+  const list=filteredList();
+  $('body').innerHTML=list.length?list.map(x=>`<tr class="${x.mismatch?'bad':''}"><td><b>${esc(x.name)}</b></td><td>${x.date}</td><td>${weekday(x.date)}</td><td><b>${esc(x.expected)}</b></td><td><b>${x.dur}분</b><br><span class="muted">${Math.floor(x.dur/60)}시간 ${x.dur%60}분</span></td><td class="note">${outingHtml(x)}</td><td><b>${x.adjusted}분</b><br><span class="muted">${Math.floor(x.adjusted/60)}시간 ${x.adjusted%60}분</span></td><td>${esc(x.actual)}</td><td>${x.mismatch?'<span class="badge badge-bad">불일치</span>':'<span class="badge ok">일치</span>'}</td><td class="note">${x.note?esc(x.note):'<span class="badge badge-bad">특이사항 없음</span>'}</td><td>${x.plan?`${planStart(x.plan)} ~ ${planEnd(x.plan)}`:'<span class="muted">계획서 없음</span>'}</td></tr>`).join(''):'<tr><td colspan="11" class="empty">해당 결과가 없습니다.</td></tr>'
+}
+function exportX(){const source=filteredList();if(!source.length){alert('다운로드할 결과가 없습니다.');return}const data=source.map(x=>({'수급자':x.name,'날짜':x.date,'요일':weekday(x.date),'요양급여제공계획서 수가':x.expected,'총 이용시간(분)':x.dur,'외출 차감(분)':x.outing.minutes,'차감 후 이용시간(분)':x.adjusted,'차감 후 시간구간':x.actual,'판정':x.mismatch?'불일치':'일치','외출 내역':x.outing.items.map(o=>`${o.outTime||''}~${o.returnTime||''} ${o.durationMinutes||0}분 / ${o.staffAccompanied?'직원동행':'직원동행 아님'} / ${o.purpose||''} / ${o.companion||''}`).join('\n'),'특이사항':x.note||'특이사항 없음','계획서 적용기간':x.plan?`${planStart(x.plan)} ~ ${planEnd(x.plan)}`:'계획서 없음'}));const ws=XLSX.utils.json_to_sheet(data);ws['!cols']=[12,12,7,25,16,15,18,25,10,55,70,25].map(w=>({wch:w}));const b=XLSX.utils.book_new();XLSX.utils.book_append_sheet(b,ws,'수가시간 특이사항검증');XLSX.writeFile(b,'수가_이용시간_특이사항_검증.xlsx')}
 $('file').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;wb=XLSX.read(await f.arrayBuffer(),{type:'array',cellDates:true});$('fileStatus').textContent=`${f.name} 읽기 완료`});$('check').onclick=run;$('download').onclick=exportX;$('reset').onclick=()=>location.reload();document.querySelectorAll('.filters button').forEach(b=>b.onclick=()=>{filter=b.dataset.f;document.querySelectorAll('.filters button').forEach(x=>x.classList.toggle('active',x===b));render()});
