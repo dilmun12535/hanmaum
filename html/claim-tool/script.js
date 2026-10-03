@@ -43,8 +43,8 @@ function parseSecond(book){
    if(!validName(rowName))continue;
    out.push({
      name:rowName,cert:meta.cert||"",key:personKey(rowName,meta.cert),date,start:tr.start,end:tr.end,status:detectStatus(r),grade:meta.grade,copayRate:meta.copayRate||"",sheet:sn,
-     providedDuration:h.duration>=0?parseProvidedDuration(r[h.duration]):null,
-     totalAmount:parseMoney(h.total>=0?r[h.total]:"")
+     totalAmount:parseMoney(h.total>=0?r[h.total]:""),
+     providedDuration:parseProvidedDuration(h.provided>=0?r[h.provided]:"")
    });
   }
  });
@@ -57,24 +57,12 @@ function findHeader(rows){
   const d=r.findIndex(v=>v==="날짜"||v.includes("이용일"));
   const t=r.findIndex(v=>v.includes("서비스시간")||v.includes("이용시간"));
   const n=r.findIndex(v=>v==="수급자명"||v==="고객명"||v==="성명");
-  const duration=r.findIndex(v=>v==="제공시간"||v==="총제공시간"||v==="실제제공시간");
   const total=r.findIndex(v=>v==="급여총액"||v.includes("급여총액"));
-  if(d>=0&&t>=0)return{row:i,date:d,time:t,name:n,duration,total}
+  const provided=r.findIndex(v=>v.includes("제공시간"));
+  if(d>=0&&t>=0)return{row:i,date:d,time:t,name:n,total,provided}
  }
  return null
 }
-
-function parseProvidedDuration(v){
- const t=txt(v).replace(/\s+/g,"");
- if(!t||/결석|미이용/.test(t))return null;
- let m=t.match(/(\d+)시간(?:(\d+)분)?/);
- if(m)return Number(m[1])*60+Number(m[2]||0);
- m=t.match(/^(\d+):(\d+)$/);
- if(m)return Number(m[1])*60+Number(m[2]);
- const n=Number(String(v).replace(/[^\d.]/g,""));
- return Number.isFinite(n)&&n>0?n:null;
-}
-
 function findMeta(rows,sn){
  let name="",grade="",cert="",copayRate="";
  for(let i=0;i<Math.min(rows.length,20);i++){const r=rows[i]||[];for(let j=0;j<r.length;j++){const v=txt(r[j]).replace(/\s+/g,"");
@@ -122,14 +110,16 @@ function combine(first,second){
  [...keys].sort().forEach(k=>{
   const f=fm.get(k),s=sm.get(k),x=s||f;if(!x)return;
   const fd=f?.start&&f?.end?duration(f.start,f.end):null;
-  // 두 번째 파일의 '제공시간'은 외출 차감이 이미 반영된 최종 이용시간이다.
-  // 수가 구간은 이 값을 우선 사용하고, 제공시간이 없는 양식만 서비스 시작~종료시간으로 계산한다.
-  const sd=Number.isFinite(s?.providedDuration)?s.providedDuration:(s?.start&&s?.end?duration(s.start,s.end):null);
+  const serviceDuration=s?.start&&s?.end?duration(s.start,s.end):null;
+  // 예상급여비용의 제공시간은 직원동행 없는 외출 등이 이미 차감된 최종 청구 이용시간이다.
+  // 값이 있으면 서비스 시작~종료 단순 차이보다 제공시간을 우선하여 수가 구간을 판정한다.
+  const sd=s?.providedDuration!=null?s.providedDuration:serviceDuration;
+  const billingEnd=s?.start&&sd!=null?clock(mins(s.start)+sd):(s?.end||"");
   const plannedRate=rate(fd),actualRate=rate(sd),rateMatch=!!(f&&s&&plannedRate&&actualRate&&plannedRate===actualRate);
   const late=s?.status==="출석"&&s?.end&&mins(s.end)>=1080;
   out.push({
    name:x.name,cert:s?.cert||f?.cert||"",key:x.key,date:x.date,grade:s?.grade||"",copayRate:s?.copayRate||"",
-   firstStart:f?.start||"",firstEnd:f?.end||"",secondStart:s?.start||"",secondEnd:s?.end||"",
+   firstStart:f?.start||"",firstEnd:f?.end||"",secondStart:s?.start||"",secondEnd:s?.end||"",billingEnd,
    status:s?.status||"",plannedDuration:fd,actualDuration:sd,plannedRate,actualRate,rateMatch,late,
    suggestion:suggest(f,s,plannedRate,actualRate),totalAmount:s?.totalAmount||0
   });
@@ -255,7 +245,9 @@ function buildBillingPlan(rows){
    planRows.push({
      type:"추가",
      start:sample.secondStart||"",
-     end:sample.secondEnd||"",
+     // 표시 종료시간도 수가 판정에 사용한 최종 제공시간에 맞춘다.
+     // 예: 07:32 시작 + 제공시간 6시간 = 13:32
+     end:sample.billingEnd||sample.secondEnd||"",
      duration:sample.actualDuration,
      rate:rateName,
      dates:new Set(sorted.map(r=>r.date)),
@@ -595,6 +587,18 @@ function pDate(v){if(typeof v==="number"&&v>20000&&v<80000){const p=XLSX.SSF.par
 function pTime(v){if(typeof v==="number"&&v>=0&&v<1)return clock(Math.round(v*1440));const t=txt(v).replace(/\s+/g,""),m=t.match(/^(\d{1,2})[:시](\d{1,2})?$/);if(m)return valid(+m[1],+(m[2]||0));const n=t.match(/^(\d{3,4})$/);if(n){const p=n[1].padStart(4,"0");return valid(+p.slice(0,2),+p.slice(2))}return""}
 function pRange(v){const t=txt(v).replace(/[～〜–—]/g,"~").replace(/\s+/g,""),a=[...t.matchAll(/(\d{1,2})[:시](\d{1,2})?/g)].map(m=>valid(+m[1],+(m[2]||0))).filter(Boolean);return{start:a[0]||"",end:a[1]||""}}
 function valid(h,m){return h>=0&&h<24&&m>=0&&m<60?`${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`:""}
+function parseProvidedDuration(v){
+ const t=txt(v).replace(/\s+/g,"");
+ if(!t)return null;
+ let m=t.match(/(\d+)시간(?:(\d+)분)?/);
+ if(m)return Number(m[1])*60+Number(m[2]||0);
+ m=t.match(/^(\d+)분$/);
+ if(m)return Number(m[1]);
+ // 엑셀 시간이 숫자(하루=1)로 저장된 경우
+ if(typeof v==="number"&&v>=0&&v<2)return Math.round(v*1440);
+ return null;
+}
+
 function duration(a,b){let n=mins(b)-mins(a);if(n<0)n+=1440;return n}function mins(t){const[h,m]=t.split(":").map(Number);return h*60+m}function clock(n){n=((n%1440)+1440)%1440;return`${String(Math.floor(n/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`}
 function weekday(d){const[y,m,dd]=d.split("-").map(Number);return["일","월","화","수","목","금","토"][new Date(y,m-1,dd).getDay()]}
 function cName(v){return txt(v).replace(/\([^)]*\)/g,"").replace(/^(수급자|수급자명|고객명|성명|대상자)\s*[:：]?/g,"").replace(/[^\p{L}\s]/gu,"").replace(/\s+/g,"").trim()}function validName(v){return /^[가-힣]{2,5}$/.test(v)&&!/수급자|서비스|급여|센터/.test(v)}function nName(v){return cName(v).toLowerCase()}function txt(v){return v==null?"":String(v).replace(/\u00a0/g," ").trim()}function unique(a,f){const s=new Set;return a.filter(x=>{const k=f(x);if(s.has(k))return false;s.add(k);return true})}function esc(v){return String(v??"").replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")}
