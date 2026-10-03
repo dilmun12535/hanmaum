@@ -43,6 +43,8 @@ function parseSecond(book){
    if(!validName(rowName))continue;
    out.push({
      name:rowName,cert:meta.cert||"",key:personKey(rowName,meta.cert),date,start:tr.start,end:tr.end,status:detectStatus(r),grade:meta.grade,copayRate:meta.copayRate||"",sheet:sn,
+     // 제공시간을 우선 저장한다. 이 값에는 직원동행 없는 외출 차감이 이미 반영되어 있다.
+     providedDuration:h.provided>=0?parseDurationMinutes(r[h.provided]):null,
      totalAmount:parseMoney(h.total>=0?r[h.total]:"")
    });
   }
@@ -57,7 +59,10 @@ function findHeader(rows){
   const t=r.findIndex(v=>v.includes("서비스시간")||v.includes("이용시간"));
   const n=r.findIndex(v=>v==="수급자명"||v==="고객명"||v==="성명");
   const total=r.findIndex(v=>v==="급여총액"||v.includes("급여총액"));
-  if(d>=0&&t>=0)return{row:i,date:d,time:t,name:n,total}
+  // 예상급여비용 파일의 "제공시간"은 직원동행 없는 외출시간이 이미 차감된
+  // 최종 급여 인정 이용시간이다. 서비스시간(등원~하원)과 별도로 읽는다.
+  const provided=r.findIndex(v=>v==="제공시간"||v==="총이용시간"||v==="총이용시간(분)"||v==="이용시간(분)");
+  if(d>=0&&t>=0)return{row:i,date:d,time:t,name:n,total,provided}
  }
  return null
 }
@@ -107,7 +112,11 @@ function combine(first,second){
  const fm=group(first),sm=group(second),keys=new Set([...fm.keys(),...sm.keys()]),out=[];
  [...keys].sort().forEach(k=>{
   const f=fm.get(k),s=sm.get(k),x=s||f;if(!x)return;
-  const fd=f?.start&&f?.end?duration(f.start,f.end):null,sd=s?.start&&s?.end?duration(s.start,s.end):null;
+  const fd=f?.start&&f?.end?duration(f.start,f.end):null;
+  // 수가 판정은 단순 등원~하원 시각 차이가 아니라 두 번째 파일의 "제공시간"을 최우선 사용한다.
+  // 제공시간에는 직원동행 없는 외출이 이미 차감되어 있으므로 외출시간을 여기서 다시 빼면 안 된다.
+  const rawSpan=s?.start&&s?.end?duration(s.start,s.end):null;
+  const sd=s?.providedDuration!=null?s.providedDuration:rawSpan;
   const plannedRate=rate(fd),actualRate=rate(sd),rateMatch=!!(f&&s&&plannedRate&&actualRate&&plannedRate===actualRate);
   const late=s?.status==="출석"&&s?.end&&mins(s.end)>=1080;
   out.push({
@@ -238,7 +247,9 @@ function buildBillingPlan(rows){
    planRows.push({
      type:"추가",
      start:sample.secondStart||"",
-     end:sample.secondEnd||"",
+     // 외출 차감으로 제공시간이 등원~하원 시각 차이보다 짧을 수 있다.
+     // 청구 입력용 시간은 제공시간과 같은 수가 구간이 되도록 시작시간+제공시간으로 표시한다.
+     end:(sample.secondStart&&sample.actualDuration!=null)?clock(mins(sample.secondStart)+sample.actualDuration):(sample.secondEnd||""),
      duration:sample.actualDuration,
      rate:rateName,
      dates:new Set(sorted.map(r=>r.date)),
@@ -506,8 +517,9 @@ function fmtDur(n){
 function move(x){const i=S.months.indexOf(E.month.value),n=i+x;if(n>=0&&n<S.months.length){E.month.value=S.months[n];renderPeople();renderDetail()}}
 
 function download(){
- const month=E.month.value,person=S.selectedPerson;
- const rows=S.rows.filter(r=>r.name===person&&r.date.startsWith(month));
+ const month=E.month.value,personKeyValue=S.selectedPerson;
+ const rows=S.rows.filter(r=>r.key===personKeyValue&&r.date.startsWith(month));
+ const person=rows[0]?.name||"";
  const billing=buildBillingPlan(rows);
 
  const planRows=[];
@@ -567,6 +579,22 @@ function download(){
 }
 
 function readBook(file){return new Promise((res,rej)=>{const fr=new FileReader();fr.onload=e=>{try{res(XLSX.read(new Uint8Array(e.target.result),{type:"array",cellDates:false}))}catch{rej(new Error(file.name+" 읽기 실패"))}};fr.onerror=()=>rej(new Error(file.name+" 불러오기 실패"));fr.readAsArrayBuffer(file)})}
+
+function parseDurationMinutes(value){
+ if(value===null||value===undefined||value==="")return null;
+ if(typeof value==="number"&&Number.isFinite(value)){
+   // 엑셀 시간값(하루=1)과 분 단위 숫자를 모두 처리
+   if(value>0&&value<1)return Math.round(value*1440);
+   return Math.round(value);
+ }
+ const t=txt(value).replace(/\s+/g,"");
+ let m=t.match(/(\d+)시간(?:(\d+)분)?/);
+ if(m)return Number(m[1])*60+Number(m[2]||0);
+ m=t.match(/^(\d+)분$/);
+ if(m)return Number(m[1]);
+ const n=Number(t.replace(/[^\d.]/g,""));
+ return Number.isFinite(n)&&n>=0?Math.round(n):null;
+}
 
 function parseMoney(value){
  if(value===null||value===undefined||value==="")return 0;
