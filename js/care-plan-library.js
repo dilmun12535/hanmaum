@@ -133,42 +133,20 @@ function cleanWeeklyCount(value) {
   return n ? `주 ${n}회` : "";
 }
 function extractWeeklyFeePairs(text) {
-  const source = cellText(text).replace(/\r?\n/g, " ").replace(/\s+/g, " ").trim();
+  const source = cellText(text)
+    .replace(/\u200e|\u200f|\ufeff/g, "")
+    .replace(/\r?\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const feePattern = "(?:3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
+  const re = new RegExp(`주\\s*(\\d+)\\s*회\\s*(${feePattern})`, "g");
   const pairs = [];
-
-  // 1) 주 N회 → 수가구간
-  const forward = new RegExp(
-    `주\\s*(\\d+)\\s*회(?:(?!주\\s*\\d+\\s*회)[\\s\\S]){0,180}?${FEE_RANGE_PATTERN}`,
-    "g"
-  );
   let m;
-  while ((m = forward.exec(source)) !== null) {
-    pairs.push({
-      count: cleanWeeklyCount(m[1]),
-      fee: cleanFeeRange(m[2]),
-      index: m.index
-    });
+  while ((m = re.exec(source)) !== null) {
+    pairs.push({ count:`주 ${m[1]}회`, fee:cleanFeeRange(m[2]), index:m.index });
   }
-
-  // 2) 수가구간 → 주 N회 형태도 지원
-  const reverse = new RegExp(
-    `${FEE_RANGE_PATTERN}(?:(?!${FEE_RANGE_PATTERN})[\\s\\S]){0,100}?주\\s*(\\d+)\\s*회`,
-    "g"
-  );
-  while ((m = reverse.exec(source)) !== null) {
-    pairs.push({
-      count: cleanWeeklyCount(m[2]),
-      fee: cleanFeeRange(m[1]),
-      index: m.index
-    });
-  }
-
-  // 같은 문구가 양쪽 정규식에 동시에 잡히는 경우 제거
-  return pairs
-    .sort((a,b) => a.index - b.index)
-    .filter((p,i,arr) => !arr.slice(0,i).some(x =>
-      x.count === p.count && x.fee === p.fee && Math.abs(x.index-p.index) < 120
-    ));
+  return pairs;
 }
 
 function extractFeeInfo(opinion) {
@@ -188,50 +166,90 @@ function extractFeeInfo(opinion) {
   if (!text) return result;
 
   /*
-   * 핵심 규칙
-   * - "개인별장기요양이용계획서에는 ... 명시되어있으나" 앞쪽 값은
-   *   공단의 장기요양이용계획 값이므로 요양급여제공계획서 수가로 사용하지 않는다.
-   * - 반드시 "수급자 및 보호자 욕구 반영하여" 이후의 실제 제공 문구만 읽는다.
-   *
-   * 예) 윤선이
-   *   장기요양이용계획: 주 5회 / 8~10시간  ← 버림
-   *   실제 제공계획:     주 6회 / 10~13시간 ← 사용
+   * 중요:
+   * 1) 개인별장기요양이용계획서에 적힌 기존 계획은 planFee/planWeeklyCount로 보존한다.
+   * 2) "욕구 반영하여" 이후의 실제 요양급여제공계획은 weekday/weekend에 별도로 넣는다.
+   * 즉 기존 계획을 버리지 않는다.
    */
-  let actualText = text;
-  const desireMatch = text.match(/수급자\s*및\s*보호자\s*욕구\s*반영하여|보호자\s*욕구\s*반영하여|욕구\s*반영하여/);
-  if (desireMatch && desireMatch.index != null) {
-    actualText = text.slice(desireMatch.index + desireMatch[0].length);
-  } else {
-    // 욕구반영 문구가 없는 경우에도 '있으나' 뒤쪽을 실제 제공계획으로 본다.
-    const however = text.match(/(?:명시|계획)(?:되어)?\s*있으나|되어\s*있으나/);
-    if (however && however.index != null) {
-      actualText = text.slice(however.index + however[0].length);
+  const anchors = [
+    /수급자\s*및\s*보호자\s*욕구\s*반영하여/,
+    /수급자\s*및\s*보호자\s*욕구반영하여/,
+    /보호자\s*욕구\s*반영하여/,
+    /욕구\s*반영하여/,
+    /욕구반영하여/,
+    /반영하여/
+  ];
+
+  let splitIndex = -1;
+  let anchorLength = 0;
+  for (const re of anchors) {
+    const m = re.exec(text);
+    if (m && m.index != null) {
+      splitIndex = m.index;
+      anchorLength = m[0].length;
+      break;
     }
   }
 
-  const actualPairs = extractWeeklyFeePairs(actualText);
-  const actualRanges = actualText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
+  const allPairs = extractWeeklyFeePairs(text);
+  const allRanges = text.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
 
-  if (actualPairs.length === 1) {
-    // 실제 제공 수가가 하나뿐인 계획서: '계획서 횟수/수가'에 저장
-    result.planWeeklyCount = actualPairs[0].count;
-    result.planFee = actualPairs[0].fee;
-  } else if (actualPairs.length >= 2) {
-    // 실제 제공 수가가 둘 이상이면 첫 번째를 평일, 두 번째를 주말로 저장
-    // (현재 센터 계획서 작성 방식: 평일 주5회 + 주말 주1회 형태)
-    result.weekdayWeeklyCount = actualPairs[0].count;
-    result.weekdayFee = actualPairs[0].fee;
-    result.weekendWeeklyCount = actualPairs[1].count;
-    result.weekendFee = actualPairs[1].fee;
-  } else if (actualRanges.length === 1) {
-    result.planFee = cleanFeeRange(actualRanges[0]);
+  if (splitIndex >= 0) {
+    const beforeText = text.slice(0, splitIndex);
+    const afterText = text.slice(splitIndex + anchorLength);
+
+    // 앞부분 = 개인별장기요양이용계획서(기존 계획)
+    const planPairs = extractWeeklyFeePairs(beforeText);
+    const planRanges = beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
+
+    if (planPairs.length) {
+      const p = planPairs[planPairs.length - 1];
+      result.planWeeklyCount = p.count;
+      result.planFee = p.fee;
+    } else if (planRanges.length) {
+      result.planFee = cleanFeeRange(planRanges[planRanges.length - 1]);
+    }
+
+    // 뒷부분 = 실제 요양급여제공계획
+    const actualPairs = extractWeeklyFeePairs(afterText);
+    if (actualPairs[0]) {
+      result.weekdayWeeklyCount = actualPairs[0].count;
+      result.weekdayFee = actualPairs[0].fee;
+    }
+    if (actualPairs[1]) {
+      result.weekendWeeklyCount = actualPairs[1].count;
+      result.weekendFee = actualPairs[1].fee;
+    }
+
+    // 앞부분 파싱이 실패했을 때 전체 첫 값을 기존 계획으로 복구
+    if (!result.planFee && allPairs[0]) {
+      result.planWeeklyCount = allPairs[0].count;
+      result.planFee = allPairs[0].fee;
+    }
+  } else {
+    // 구분 문구가 없는 문서는 기존 동작 유지:
+    // 첫 값=계획서, 두 번째=평일, 세 번째=주말
+    if (allPairs[0]) {
+      result.planWeeklyCount = allPairs[0].count;
+      result.planFee = allPairs[0].fee;
+    } else if (allRanges.length) {
+      result.planFee = cleanFeeRange(allRanges[0]);
+    }
+    if (allPairs[1]) {
+      result.weekdayWeeklyCount = allPairs[1].count;
+      result.weekdayFee = allPairs[1].fee;
+    }
+    if (allPairs[2]) {
+      result.weekendWeeklyCount = allPairs[2].count;
+      result.weekendFee = allPairs[2].fee;
+    }
   }
 
   result.feeText = [
     result.planFee ? `계획서 수가: ${result.planFee}${result.planWeeklyCount ? ` (${result.planWeeklyCount})` : ""}` : "",
     result.weekdayFee ? `평일 수가: ${result.weekdayFee}${result.weekdayWeeklyCount ? ` (${result.weekdayWeeklyCount})` : ""}` : "",
     result.weekendFee ? `주말 수가: ${result.weekendFee}${result.weekendWeeklyCount ? ` (${result.weekendWeeklyCount})` : ""}` : ""
-  ].filter(Boolean).join("\n");
+  ].filter(Boolean).join("\\n");
 
   return result;
 }
