@@ -138,7 +138,7 @@ function isRecipientNameValue(value) {
 }
 function isLongTermNumberValue(value) { return /^L\d{8,}$/i.test(cellText(value).replace(/\s/g,"")); }
 function isGradeValue(value) { return /^(?:[1-5]등급|인지지원등급)$/i.test(cellText(value).replace(/\s/g,"")); }
-const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
+const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
 const FEE_RANGE_RE = new RegExp(FEE_RANGE_PATTERN, "g");
 function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
 function cleanWeeklyCount(value) {
@@ -152,7 +152,7 @@ function extractWeeklyFeePairs(text) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const feePattern = "(?:3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
+  const feePattern = "(?:3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
   const re = new RegExp(`주\\s*(\\d+)\\s*(?:회|일)\\s*(${feePattern})`, "g");
   const pairs = [];
   let m;
