@@ -261,11 +261,25 @@ function parseNewCarePlanSheet(ws, fileName) {
     const row=a[r]||[];
     for (let c=0;c<row.length;c++) {
       const t=normalizeText(row[c]);
-      // 신양식의 제목 셀 자체가 병합되어 있어 sheetRows() 복원 후
-      // '성명' 등이 오른쪽 칸에도 반복됩니다. 실제 값 형태를 검증해 찾아갑니다.
-      if (t==="성명" && !recipientName) recipientName=findValidatedValueRight(a,r,c,isRecipientNameValue,10);
-      if (t.includes("장기요양등급") && !grade) grade=findValidatedValueRight(a,r,c,isGradeValue,10);
-      if (t.includes("장기요양인정번호") && !longTermNumber) longTermNumber=findValidatedValueRight(a,r,c,isLongTermNumberValue,10).replace(/\s/g,"");
+      // 수급자 정보는 반드시 ①수급자 영역에서만 읽습니다.
+      // ②동의자의 성명(예: 박태환)이 수급자명으로 잘못 저장되는 것을 방지합니다.
+      const rowContext = normalizeText(row.join(" "));
+      let recipientSection = false;
+      for (let rr = Math.max(0, r - 4); rr <= r; rr++) {
+        const contextText = normalizeText((a[rr] || []).join(" "));
+        if (contextText.includes("①수급자")) recipientSection = true;
+        if (contextText.includes("②동의자")) recipientSection = false;
+      }
+
+      if (t==="성명" && !recipientName && recipientSection) {
+        recipientName=findValidatedValueRight(a,r,c,isRecipientNameValue,10);
+      }
+      if (t.includes("장기요양등급") && !grade && recipientSection) {
+        grade=findValidatedValueRight(a,r,c,isGradeValue,10);
+      }
+      if (t.includes("장기요양인정번호") && !longTermNumber && recipientSection) {
+        longTermNumber=findValidatedValueRight(a,r,c,isLongTermNumberValue,10).replace(/\s/g,"");
+      }
       if (t.includes("장기요양급여제공계획서적용기간") && !applicationPeriod) applicationPeriod=firstNonEmpty(a[r+1]||[],c);
       if (t==="작성일" && !writtenDate) writtenDate=firstNonEmpty(a[r+1]||[],c);
       if (t==="종합의견" && !summaryOpinion) {
