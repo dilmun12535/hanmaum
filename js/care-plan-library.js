@@ -153,7 +153,7 @@ function extractWeeklyFeePairs(text) {
     .trim();
 
   const feePattern = "(?:3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
-  const re = new RegExp(`주\\s*(\\d+)\\s*(?:회|일)\\s*(${feePattern})`, "g");
+  const re = new RegExp(`주\\s*(\\d+)\\s*(?:(?:회|일)\\s*)?(${feePattern})`, "g");
   const pairs = [];
   let m;
   while ((m = re.exec(source)) !== null) {
