@@ -45,15 +45,28 @@ function normalizeDateString(value) {
 }
 function formatDateValue(value) { return normalizeDateString(value) || "-"; }
 function extractInfoFromFileName(fileName) {
-  const nameOnly = fileName.replace(/\.(xlsx|xls)$/i, "").trim();
-  // 구버전: L240... 홍길동 수급자 급여제공계획 / 신버전: 장기요양급여 제공 계획서_홍길동_20250224
+  const nameOnly = String(fileName || "").replace(/\.(xlsx|xls)$/i, "").trim();
+
   const legacy = nameOnly.match(/^(L\d+)\s+(.+?)\s+수급자\s+급여제공계획/i);
-  if (legacy) return { longTermNumber: legacy[1], recipientName: legacy[2].trim() };
-  const newer = nameOnly.match(/장기요양급여\s*제공\s*계획서[_\s-]+([가-힣]{2,5})(?:[_\s-]+\d{8})?$/i);
-  if (newer) return { longTermNumber: "", recipientName: newer[1].trim() };
+  if (legacy) {
+    return { longTermNumber: legacy[1].trim(), recipientName: legacy[2].trim() };
+  }
+
+  // 신버전: 파일명에 들어 있는 이름을 수급자명으로 최우선 사용
+  // 예) 장기요양급여 제공 계획서_김무연a_20260430.xls
+  let recipientName = "";
+  const parts = nameOnly.split("_").map(v => v.trim()).filter(Boolean);
+  if (parts.length >= 2 && /장기요양급여\s*제공\s*계획서/i.test(parts[0])) {
+    if (!/^\d{8}$/.test(parts[1])) recipientName = parts[1];
+  }
+
+  if (!recipientName) {
+    const m = nameOnly.match(/장기요양급여\s*제공\s*계획서[\s_-]+([가-힣]{2,5}(?:[A-Za-z])?)/i);
+    if (m) recipientName = m[1].trim();
+  }
+
   const cert = nameOnly.match(/L\d{8,}/i)?.[0] || "";
-  const korean = nameOnly.match(/(?:^|[_\s-])([가-힣]{2,5})(?=[_\s-]|$)/)?.[1] || "";
-  return { longTermNumber: cert, recipientName: korean };
+  return { longTermNumber: cert, recipientName };
 }
 function getCareItemCount(rows) {
   return rows.filter(row => normalizeText(JSON.stringify(row)).length > 0).length;
@@ -304,7 +317,9 @@ function parseNewCarePlanSheet(ws, fileName) {
   if (!isRecipientNameValue(recipientName)) recipientName="";
   if (!isLongTermNumberValue(longTermNumber)) longTermNumber="";
   if (!isGradeValue(grade)) grade="";
-  recipientName ||= fileInfo.recipientName;
+  // 파일명에 수급자명이 있으면 무조건 그 이름을 우선합니다.
+  // 엑셀 내부의 동의자/작성자/제공 문구가 수급자명으로 오인되는 문제 방지.
+  if (fileInfo.recipientName) recipientName = fileInfo.recipientName;
   longTermNumber ||= fileInfo.longTermNumber;
   const period=parseDateRange(applicationPeriod);
   writtenDate=normalizeDateString(writtenDate) || period.start;
