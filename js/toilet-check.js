@@ -237,15 +237,17 @@ function hasDiaperPlan(plan) {
     try { rows = JSON.parse(rows); } catch (_) { return false; }
   }
   if (!Array.isArray(rows)) return false;
-  return rows.some((row) => {
+  // 실제 급여 항목(장기요양필요내용)만 판단한다.
+  // 종합의견, 필요영역, 세부제공내용에 언급된 기저귀는 급여로 판단하지 않는다.
+  return rows.some(row => {
     if (!row || typeof row !== "object") return false;
-    const fields = Array.isArray(row) ? row.slice(0, 4) : Object.entries(row)
-      .filter(([key]) => /급여|서비스|항목|내용|명칭|code|item|service|benefit/i.test(key) && !/종합의견|비고|사유|상담|욕구|remark|opinion/i.test(key))
-      .map(([, value]) => value);
-    const text = normalizeText(fields.filter(v => typeof v === "string").join(" "));
-    if (!(/기저귀교환|기저귀갈기|B63/i.test(text))) return false;
-    const status = normalizeText(String(row.status || row.provided || row.useYn || ""));
-    return !/제외|미제공|삭제|중단|없음|미실시/.test(status);
+    const value = Array.isArray(row)
+      ? "" // 배열은 열 의미가 확인되지 않아 기저귀 급여로 단정하지 않음
+      : (row["장기요양필요내용"] || row["필요내용"] || "");
+    const name = normalizeText(String(value));
+    if (!/기저귀(교환|갈기|교체)(도움)?/.test(name)) return false;
+    const state = normalizeText(String(row.status || row.provided || row.useYn || ""));
+    return !/제외|미제공|삭제|중단|없음|미실시/.test(state);
   });
 }
 
