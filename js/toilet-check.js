@@ -236,19 +236,23 @@ function hasDiaperPlan(plan) {
   if (typeof rows === "string") {
     try { rows = JSON.parse(rows); } catch (_) { return false; }
   }
+  if (rows && !Array.isArray(rows) && Array.isArray(rows.rows)) rows = rows.rows;
   if (!Array.isArray(rows)) return false;
-  // 실제 급여 항목(장기요양필요내용)만 판단한다.
-  // 종합의견, 필요영역, 세부제공내용에 언급된 기저귀는 급여로 판단하지 않는다.
-  return rows.some(row => {
-    if (!row || typeof row !== "object") return false;
-    const value = Array.isArray(row)
-      ? "" // 배열은 열 의미가 확인되지 않아 기저귀 급여로 단정하지 않음
-      : (row["장기요양필요내용"] || row["필요내용"] || "");
-    const name = normalizeText(String(value));
-    if (!/기저귀(교환|갈기|교체)(도움)?/.test(name)) return false;
-    const state = normalizeText(String(row.status || row.provided || row.useYn || ""));
-    return !/제외|미제공|삭제|중단|없음|미실시/.test(state);
+
+  // 실제 급여목록의 항목명만 검사한다. 종합의견/세부내용/참고문구는 제외.
+  const nameKeys = ["장기요양필요내용", "필요내용", "급여내용", "급여항목", "serviceName", "itemName"];
+  const excludeKeys = ["제공여부", "급여여부", "적용여부", "status", "provided", "useYn", "isExcluded", "excluded"];
+  const matched = rows.filter((row) => {
+    if (!row || typeof row !== "object" || Array.isArray(row)) return false;
+    const names = nameKeys.map(k => String(row[k] ?? "").trim()).filter(Boolean);
+    if (!names.some(v => /^기저귀(교환|교체|갈기)(도움)?$/.test(normalizeText(v)))) return false;
+    const states = excludeKeys.map(k => row[k]).filter(v => v !== undefined && v !== null && v !== "");
+    if (states.some(v => v === false || v === 0 || /^(false|0|n|no)$/i.test(String(v).trim()) || /제외|미제공|삭제|중단|없음|미실시|미적용/.test(normalizeText(v)))) return false;
+    return true;
   });
+  // 저장된 실제 급여행을 콘솔에서 확인 가능하게 하여 잘못된 원본 데이터 식별
+  if (matched.length) console.debug("[화장실 검증] 기저귀 급여로 판정된 원본 행", plan.recipientName || plan.name, plan.writtenDate, matched);
+  return matched.length > 0;
 }
 
 function getCounselDate(counsel) {
