@@ -847,58 +847,44 @@ function findWeekColumns(rows, headerIndex, weekNumber) {
 }
 
 function parseBathReport(workbook) {
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-
+  const sheet = workbook.Sheets[workbook.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
-  const headerIndex = rows.findIndex((row) => {
-    return row.some((cell) => normalizeText(cell).includes("수급자명"));
-  });
-
-  if (headerIndex === -1) {
-    alert("목욕 리포트에서 수급자명 열을 찾지 못했습니다.");
-    return [];
+  const headerIndex = rows.findIndex(row => row.some(cell => normalizeText(cell) === "수급자명"));
+  if (headerIndex < 0) {
+    alert("목욕 기록지에서 수급자명 머리글을 찾지 못했습니다. 3-5 목욕도움 리포트를 선택해주세요.");
+    return null;
   }
-
   const header = rows[headerIndex];
-  const nameCol = header.findIndex((cell) => normalizeText(cell).includes("수급자명"));
-  const genderCol = header.findIndex((cell) => normalizeText(cell).includes("성별"));
-  const gradeCol = header.findIndex((cell) => normalizeText(cell).includes("등급"));
-
-  const weekRanges = {
-    week1: findWeekColumns(rows, headerIndex, 1),
-    week2: findWeekColumns(rows, headerIndex, 2),
-    week3: findWeekColumns(rows, headerIndex, 3),
-    week4: findWeekColumns(rows, headerIndex, 4),
-    week5: findWeekColumns(rows, headerIndex, 5)
-  };
-
+  const nameCol = header.findIndex(cell => normalizeText(cell) === "수급자명");
+  const genderCol = header.findIndex(cell => normalizeText(cell) === "성별");
+  const gradeCol = header.findIndex(cell => normalizeText(cell) === "등급");
+  const weekRanges = Object.fromEntries([1,2,3,4,5].map(n => [`week${n}`, findWeekColumns(rows, headerIndex, n)]));
+  // 다른 종류의 리포트에서는 숫자 순번 열이 수급자명으로 잘못 인식될 수 있습니다.
+  const sample = rows.slice(headerIndex + 1, headerIndex + 30)
+    .map(row => String(row[nameCol] ?? "").trim()).filter(Boolean);
+  const numericCount = sample.filter(v => /^\d+$/.test(v)).length;
+  if (sample.length && numericCount >= Math.max(3, Math.ceil(sample.length * 0.5))) {
+    alert("수급자명 열에서 숫자 순번이 감지되었습니다. 목욕 리포트 양식을 확인해주세요. 잘못된 결과를 표시하지 않습니다.");
+    return null;
+  }
   const result = [];
   for (let i = headerIndex + 1; i < rows.length; i++) {
     const row = rows[i];
-    const name = String(row[nameCol] || "").trim();
-    if (!name || name === "수급자명") continue;
-
-    const gender = genderCol >= 0 ? String(row[genderCol] || "").trim() : "";
-    const grade = gradeCol >= 0 ? String(row[gradeCol] || "").trim() : "";
-
+    const name = String(row[nameCol] ?? "").trim();
+    if (!name || name === "수급자명" || /^\d+$/.test(name)) continue;
+    const gender = genderCol >= 0 ? String(row[genderCol] ?? "").trim() : "";
+    const grade = gradeCol >= 0 ? String(row[gradeCol] ?? "").trim() : "";
     const weeks = {};
     Object.entries(weekRanges).forEach(([weekKey, range]) => {
       const cells = row.slice(range.start, range.end + 1);
-      const records = cells.map(parseBathCell).filter((item) => item !== null);
-
-      const hasRealBath = records.some(item => item.hasRecord === true);
-      const hasGreyBlockTag = records.some(item => item.isGreyBlock === true);
-      const hasAbsentTag = records.some(item => item.isAbsent === true);
-
+      const records = cells.map(parseBathCell).filter(Boolean);
       weeks[weekKey] = {
-        hasBathRecord: hasRealBath,
-        isGreyBlock: hasGreyBlockTag,
-        isAbsent: hasAbsentTag,
-        recordText: records.length > 0 ? records.map((item) => item.label).join("<br/>") : "-"
+        hasBathRecord: records.some(item => item.hasRecord === true),
+        isGreyBlock: records.some(item => item.isGreyBlock === true),
+        isAbsent: records.some(item => item.isAbsent === true),
+        recordText: records.length ? records.map(item => item.label).join("<br/>") : "-"
       };
     });
-
     result.push({ name, gender, grade, personKey: makePersonKey(name, gender, grade), weeks });
   }
   return result;
@@ -1275,6 +1261,7 @@ checkBathBtn.addEventListener("click", async () => {
     const workbook = XLSX.read(data, { type: "array" });
 
     const bathRows = parseBathReport(workbook);
+    if (bathRows === null) return;
     const results = buildResults(checkMonth, bathRows);
     renderResults(results);
     updateWeekHeaders(checkMonth);
