@@ -231,9 +231,22 @@ function getLatestPlanForRecipientAtDate(name, targetDate) {
 }
 
 function hasDiaperPlan(plan) {
-  if (!plan || !plan.rows) return false;
-  const text = normalizeText(JSON.stringify(plan.rows));
-  return text.includes("기저귀교환도움") || text.includes("기저귀교환") || text.includes("기저귀") || text.includes("B63");
+  if (!plan) return false;
+  let rows = plan.rows || plan.rowsJson || [];
+  if (typeof rows === "string") {
+    try { rows = JSON.parse(rows); } catch (_) { return false; }
+  }
+  if (!Array.isArray(rows)) return false;
+  return rows.some((row) => {
+    if (!row || typeof row !== "object") return false;
+    const fields = Array.isArray(row) ? row.slice(0, 4) : Object.entries(row)
+      .filter(([key]) => /급여|서비스|항목|내용|명칭|code|item|service|benefit/i.test(key) && !/종합의견|비고|사유|상담|욕구|remark|opinion/i.test(key))
+      .map(([, value]) => value);
+    const text = normalizeText(fields.filter(v => typeof v === "string").join(" "));
+    if (!(/기저귀교환|기저귀갈기|B63/i.test(text))) return false;
+    const status = normalizeText(String(row.status || row.provided || row.useYn || ""));
+    return !/제외|미제공|삭제|중단|없음|미실시/.test(status);
+  });
 }
 
 function getCounselDate(counsel) {
