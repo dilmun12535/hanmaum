@@ -4,7 +4,9 @@ let attendanceLibraryCache = [];
 
 async function loadCarePlanLibraryFromFirestore(monthValue) {
   try {
-    carePlanLibraryCache = await window.HanmaumFirestore.carePlans(monthValue);
+    const response = await window.HanmaumFirestore.carePlans(monthValue);
+    carePlanLibraryCache = Array.isArray(response) ? response : (response?.items || response?.data || response?.rows || []);
+    console.log("[목욕] 계획서 로드", carePlanLibraryCache.length, carePlanLibraryCache[0] || null);
     return carePlanLibraryCache;
   } catch (error) {
     console.error("Firebase 급여제공계획서 조회 오류:", error);
@@ -16,7 +18,9 @@ async function loadCarePlanLibraryFromFirestore(monthValue) {
 
 async function loadCounselLibraryFromFirestore(monthValue) {
   try {
-    counselLibraryCache = await window.HanmaumFirestore.counsels(monthValue);
+    const response = await window.HanmaumFirestore.counsels(monthValue);
+    counselLibraryCache = Array.isArray(response) ? response : (response?.items || response?.data || response?.rows || []);
+    console.log("[목욕] 상담일지 로드", counselLibraryCache.length, counselLibraryCache[0] || null);
     return counselLibraryCache;
   } catch (error) {
     console.error("Firebase 상담일지 조회 오류:", error);
@@ -28,7 +32,9 @@ async function loadCounselLibraryFromFirestore(monthValue) {
 
 async function loadAttendanceMonthFromFirestore(monthValue) {
   try {
-    attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
+    const response = await window.HanmaumFirestore.attendance(monthValue);
+    attendanceLibraryCache = Array.isArray(response) ? response : (response?.items || response?.data || response?.rows || []);
+    console.log("[목욕] 출석 로드", attendanceLibraryCache.length, attendanceLibraryCache[0] || null);
     return attendanceLibraryCache;
   } catch (error) {
     console.error("Firebase 출석관리 조회 오류:", error);
@@ -38,61 +44,125 @@ async function loadAttendanceMonthFromFirestore(monthValue) {
 }
 
 
-// 초기 Firebase 데이터 불러오기
-
 const checkMonthInput = document.getElementById("checkMonth");
-const therapyFileInput = document.getElementById("therapyFile");
-const checkTherapyBtn = document.getElementById("checkTherapyBtn");
-const clearTherapyBtn = document.getElementById("clearTherapyBtn");
-const therapyResultBody = document.getElementById("therapyResultBody");
+const bathFileInput = document.getElementById("bathFile");
+const checkBathBtn = document.getElementById("checkBathBtn");
+const clearBathBtn = document.getElementById("clearBathBtn");
+const bathResultBody = document.getElementById("bathResultBody");
 
-let therapyLatestResults = [];
-let therapyResultFilterMode = "all";
+function getRecipientName(item) {
+  if (!item) return "";
+  return String(item.recipientName || item.name || item.recipient || item.userName || item["수급자명"] || item["성명"] || "").trim();
+}
 
+function getPlanWrittenDate(plan) {
+  if (!plan) return "";
+  return normalizeDateText(plan.writtenDate || plan.writeDate || plan.planDate || plan.createdDate || plan["작성일"] || plan["계획서작성일"] || "");
+}
 
 function normalizeText(value) {
-  return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
+  return String(value || "").replace(/\s/g, "").trim();
 }
 
-function normalizeDateText(value) {
-  const parsed = parseDate(value);
-  return parsed || String(value || "").substring(0, 10);
+function normalizeGrade(value) {
+  const text = normalizeText(value);
+  const match = text.match(/(인지지원등급|\d등급)/);
+  return match ? match[1] : "";
 }
 
-function isSameRecipient(nameA, nameB) {
+function isSameRecipientExact(nameA, nameB) {
   const cleanA = normalizeText(nameA);
   const cleanB = normalizeText(nameB);
   if (!cleanA || !cleanB) return false;
+
+  // 김계순 / 김계순A처럼 이름이 포함되는 경우를 서로 같은 사람으로 보지 않기 위해
+  // includes 매칭을 사용하지 않고 완전 일치만 사용합니다.
   return cleanA === cleanB;
 }
 
-function safeCompare(a, b) {
-  const nameA = String(a || "").trim();
-  const nameB = String(b || "").trim();
-  return nameA.localeCompare(nameB, "ko");
+function makeNameGradeKey(name, grade = "") {
+  return `${normalizeText(name)}__${normalizeGrade(grade)}`;
 }
 
-function excelDateToJSDate(serial) {
-  const utcDays = Math.floor(serial - 25569);
-  const utcValue = utcDays * 86400;
-  const dateInfo = new Date(utcValue * 1000);
-  return `${dateInfo.getFullYear()}-${String(dateInfo.getMonth() + 1).padStart(2, "0")}-${String(dateInfo.getDate()).padStart(2, "0")}`;
+function makePersonKey(name, gender = "", grade = "") {
+  return `${normalizeText(name)}__${normalizeText(gender)}__${normalizeGrade(grade)}`;
 }
 
-function parseDate(value) {
+function makePlanPersonKey(name, longTermNumber = "") {
+  return `${normalizeText(name)}__${normalizeText(longTermNumber)}`;
+}
+
+function getLongTermNumberFromItem(item) {
+  if (!item) return "";
+  return normalizeText(
+    item.longTermNumber ||
+    item.longTermNo ||
+    item.certNumber ||
+    item.recipientNo ||
+    item.recipientNumber ||
+    item.ltcNumber ||
+    item.LNumber ||
+    ""
+  );
+}
+
+function getAttendanceGrade(item) {
+  if (!item) return "";
+  return normalizeGrade(
+    item.grade ||
+    item.level ||
+    item.recipientGrade ||
+    item.longTermGrade ||
+    item.careGrade ||
+    item["등급"] ||
+    ""
+  );
+}
+
+function getPlanGrade(plan) {
+  if (!plan) return "";
+  const directGrade = normalizeGrade(plan.grade || plan.level || plan.recipientGrade || plan.longTermGrade || "");
+  if (directGrade) return directGrade;
+
+  const text = normalizeText(JSON.stringify(plan.rows || plan.rowsJson || ""));
+  const match = text.match(/(인지지원등급|\d등급)/);
+  return match ? match[1] : "";
+}
+
+function normalizeDateText(value) {
   if (!value) return "";
-  if (value instanceof Date) {
-    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
-  }
-  if (typeof value === "number") return excelDateToJSDate(value);
 
-  const text = String(value).replace(/\s/g, "").replace(/^'/, "");
+  // 출석 데이터가 {date:"2024-04-01"}, {attendanceDate:"..."} 같은 객체로 오는 경우도 날짜로 변환합니다.
+  if (typeof value === "object") {
+    return normalizeDateText(
+      value.date ||
+      value.attendanceDate ||
+      value.serviceDate ||
+      value.day ||
+      value.value ||
+      value.text ||
+      ""
+    );
+  }
+
+  // 엑셀 날짜 시리얼 숫자 대응
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+    const converted = new Date(excelEpoch.getTime() + value * 86400000);
+    return `${converted.getUTCFullYear()}-${String(converted.getUTCMonth() + 1).padStart(2, "0")}-${String(converted.getUTCDate()).padStart(2, "0")}`;
+  }
+
+  const text = String(value).trim().replace(/^'/, "");
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
   if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
+  if (text.includes("T")) return text.split("T")[0];
 
   const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
-  if (!match) return "";
-  return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  if (match) {
+    return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+  }
+  return text;
 }
 
 function getMonthEndDate(monthValue) {
@@ -101,774 +171,1137 @@ function getMonthEndDate(monthValue) {
   return `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
 }
 
+function getAttendanceMonth(monthValue) {
+  return attendanceLibraryCache
+    .filter((item) => item.month === monthValue)
+    .map((item) => ({
+      name: item.recipientName || item.name || "",
+      gender: item.gender || item.sex || item["성별"] || "",
+      grade: getAttendanceGrade(item),
+      longTermNumber: getLongTermNumberFromItem(item),
+      dates: Array.isArray(item.attendanceDates)
+        ? item.attendanceDates
+        : Array.isArray(item.dates)
+          ? item.dates
+          : []
+    }))
+    .filter((item) => String(item.name || "").trim());
+}
+
+function cloneWeeks(weeks) {
+  const source = weeks || {};
+  return {
+    week1: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week1 || {}) },
+    week2: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week2 || {}) },
+    week3: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week3 || {}) },
+    week4: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week4 || {}) },
+    week5: { hasBathRecord: false, isGreyBlock: false, recordText: "-", ...(source.week5 || {}) }
+  };
+}
+
+function getAttendanceDateList(attendance) {
+  if (!attendance) return [];
+
+  const rawDates = Array.isArray(attendance.dates)
+    ? attendance.dates
+    : Array.isArray(attendance.attendanceDates)
+      ? attendance.attendanceDates
+      : typeof attendance.dates === "string"
+        ? attendance.dates.split(/[,.\s]+/).filter(Boolean)
+        : typeof attendance.attendanceDates === "string"
+          ? attendance.attendanceDates.split(/[,.\s]+/).filter(Boolean)
+          : [];
+
+  return rawDates
+    .map((date) => normalizeDateText(date))
+    .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date));
+}
+
+function hasAttendanceBetween(attendance, startDate, endDate) {
+  const start = normalizeDateText(startDate);
+  const end = normalizeDateText(endDate);
+  if (!start || !end) return true;
+
+  return getAttendanceDateList(attendance).some((date) => date >= start && date <= end);
+}
+
+function applyAbsenceByAttendance(weeks, attendance, weekStartDates, weekEndDates) {
+  const result = cloneWeeks(weeks);
+
+  // 출석 데이터가 매칭되지 않은 사람은 결석 여부를 확정할 수 없으므로 기존 판정을 유지합니다.
+  if (!attendance) return result;
+
+  ["week1", "week2", "week3", "week4", "week5"].forEach((weekKey) => {
+    const week = result[weekKey];
+    if (!week || week.hasBathRecord || week.isGreyBlock) return;
+
+    const attendedThisWeek = hasAttendanceBetween(attendance, weekStartDates[weekKey], weekEndDates[weekKey]);
+    if (!attendedThisWeek) {
+      result[weekKey] = {
+        ...week,
+        hasBathRecord: false,
+        isGreyBlock: true,
+        isAbsent: true,
+        recordText: "결석"
+      };
+    }
+  });
+
+  return result;
+}
+
 function getWeekEndDates(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
-  const daysFromMonday = (monthStart.getDay() + 6) % 7;
-  const anchorMonday = new Date(monthStart);
-  anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
+  const monthEnd = new Date(year, month, 0);
 
-  const ranges = {};
+  const firstDay = monthStart.getDay();
+  const mondayOffset = (firstDay + 6) % 7;
+
+  const firstMonday = new Date(monthStart);
+  firstMonday.setDate(monthStart.getDate() - mondayOffset);
+
+  const result = {};
   for (let i = 0; i < 5; i++) {
-    const weekFriday = new Date(anchorMonday);
-    weekFriday.setDate(anchorMonday.getDate() + i * 7 + 4);
-    ranges[`week${i + 1}`] =
-      `${weekFriday.getFullYear()}-${String(weekFriday.getMonth()+1).padStart(2,"0")}-${String(weekFriday.getDate()).padStart(2,"0")}`;
+    const weekStart = new Date(firstMonday);
+    weekStart.setDate(firstMonday.getDate() + i * 7);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 5);
+
+    const targetDate = new Date(Math.min(weekEnd.getTime(), monthEnd.getTime()));
+    result[`week${i + 1}`] =
+      `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}-${String(targetDate.getDate()).padStart(2, "0")}`;
   }
-  return ranges;
+  return result;
 }
 
-function getDaysInWeekRange(monthValue, weekKey) {
+function getWeekStartDates(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const monthStart = new Date(year, month - 1, 1);
-  const daysFromMonday = (monthStart.getDay() + 6) % 7;
-  const anchorMonday = new Date(monthStart);
-  anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
-  const weekIdx = parseInt(weekKey.replace("week", ""), 10) - 1;
-  const weekStart = new Date(anchorMonday);
-  weekStart.setDate(anchorMonday.getDate() + weekIdx * 7);
+  const firstDay = monthStart.getDay();
+  const mondayOffset = (firstDay + 6) % 7;
 
-  const days = [];
+  const firstMonday = new Date(monthStart);
+  firstMonday.setDate(monthStart.getDate() - mondayOffset);
+
+  const result = {};
   for (let i = 0; i < 5; i++) {
-    const current = new Date(weekStart);
-    current.setDate(weekStart.getDate() + i);
-    days.push(`${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,"0")}-${String(current.getDate()).padStart(2,"0")}`);
+    const weekStart = new Date(firstMonday);
+    weekStart.setDate(firstMonday.getDate() + i * 7);
+
+    const targetDate = new Date(Math.max(weekStart.getTime(), monthStart.getTime()));
+    result[`week${i + 1}`] =
+      `${targetDate.getFullYear()}-${String(targetDate.getMonth() + 1).padStart(2, "0")}-${String(targetDate.getDate()).padStart(2, "0")}`;
   }
-  return days;
+  return result;
 }
 
-function getWeekKeyForMonth(dateText, monthValue) {
-  const [year, month] = monthValue.split("-").map(Number);
-  const monthStart = new Date(year, month - 1, 1);
-  const daysFromMonday = (monthStart.getDay() + 6) % 7;
-  const anchorMonday = new Date(monthStart);
-  anchorMonday.setDate(monthStart.getDate() - daysFromMonday);
 
-  const [dy, dm, dd] = dateText.split("-").map(Number);
-  const targetDate = new Date(dy, dm - 1, dd);
-  const diffDays = Math.floor((targetDate - anchorMonday) / 86400000);
-  const weekNumber = Math.floor(diffDays / 7) + 1;
-  if (weekNumber < 1 || weekNumber > 5) return "";
-  return `week${weekNumber}`;
+function formatWeekRangeDate(dateText) {
+  const normalized = normalizeDateText(dateText);
+  if (!normalized || normalized.length < 10) return "-";
+  const [, month, day] = normalized.split("-");
+  return `${month}.${day}`;
 }
 
-function isDateInDisplayedWeeks(dateText, monthValue) {
-  return !!getWeekKeyForMonth(dateText, monthValue);
-}
-
-function readPlanRows(plan) {
-  if (!plan) return [];
-
-  if (Array.isArray(plan.rows)) return plan.rows;
-
-  if (typeof plan.rows === "string") {
-    try {
-      const parsed = JSON.parse(plan.rows);
-      return Array.isArray(parsed) ? parsed : [parsed];
-    } catch (error) {
-      return [plan.rows];
-    }
-  }
-
-  if (plan.rowsJson) {
-    try {
-      const parsed = typeof plan.rowsJson === "string" ? JSON.parse(plan.rowsJson) : plan.rowsJson;
-      return Array.isArray(parsed) ? parsed : [parsed];
-    } catch (error) {
-      return [plan.rowsJson];
-    }
-  }
-
-  return [];
-}
-
-function getLatestPlansByRecipient(name, checkDate) {
-  const library = carePlanLibraryCache || [];
-  const targetDate = new Date(checkDate);
-
-  const validPlans = library.filter((plan) => {
-    const planDate = parseDate(plan.writtenDate) || String(plan.writtenDate || "").substring(0, 10);
-    return planDate && new Date(planDate) <= targetDate && isSameRecipient(plan.recipientName || plan.name, name);
-  });
-
-  validPlans.sort((a, b) => {
-    const dateA = new Date(parseDate(a.writtenDate) || a.writtenDate || "1900-01-01");
-    const dateB = new Date(parseDate(b.writtenDate) || b.writtenDate || "1900-01-01");
-    return dateB - dateA;
-  });
-
-  return validPlans[0] || null;
-}
-
-function hasTherapyPlan(plan) {
-  if (!plan) return false;
-
-  const rows = readPlanRows(plan);
-
-  // 중요:
-  // 계획서 전체에서 "물리치료"라는 단어를 찾으면
-  // 목표/종합의견/세부제공내용의 설명 문구까지 잡혀 오판할 수 있습니다.
-  // 따라서 실제 급여목록의 "장기요양 필요내용(서비스명)" 계열 필드만 판정합니다.
-  const therapyKeywords = [
-    "물리치료",
-    "재활치료",
-    "운동치료",
-    "작업치료"
-  ].map(normalizeText);
-
-  const serviceKeyKeywords = [
-    "장기요양필요내용",
-    "필요내용",
-    "급여항목",
-    "서비스명",
-    "급여명",
-    "항목명",
-    "필요서비스"
-  ].map(normalizeText);
-
-  const excludedKeyKeywords = [
-    "세부제공내용",
-    "제공내용",
-    "종합의견",
-    "목표",
-    "판단근거",
-    "사유",
-    "비고",
-    "설명"
-  ].map(normalizeText);
-
-  const containsTherapy = (value) => {
-    const text = normalizeText(value);
-    if (!text) return false;
-    return therapyKeywords.some((keyword) => text.includes(keyword));
-  };
-
-  const isServiceKey = (keyName) => {
-    const key = normalizeText(keyName);
-    if (!key) return false;
-    if (excludedKeyKeywords.some((word) => key.includes(word))) return false;
-    return serviceKeyKeywords.some((word) => key.includes(word));
-  };
-
-  const inspectServiceFields = (value) => {
-    if (value == null) return false;
-
-    if (Array.isArray(value)) {
-      return value.some((item) => inspectServiceFields(item));
-    }
-
-    if (typeof value !== "object") return false;
-
-    return Object.entries(value).some(([key, childValue]) => {
-      if (isServiceKey(key) && containsTherapy(childValue)) return true;
-
-      // 중첩된 급여행/목록은 계속 내려가되,
-      // 일반 문자열 값 자체는 전역 검색하지 않습니다.
-      if (childValue && typeof childValue === "object") {
-        return inspectServiceFields(childValue);
-      }
-
-      return false;
-    });
-  };
-
-  return rows.some((row) => inspectServiceFields(row));
-}
-
-function getLatestTherapyCounsel(name, targetDate) {
-  const counselLibrary = counselLibraryCache || [];
-  const target = new Date(targetDate);
-
-  const counsels = counselLibrary
-    .filter((item) => {
-      const sameName = isSameRecipient(item.recipientName || item.name, name);
-      const reflectionDateText = parseDate(item.reflectionDate) || String(item.reflectionDate || "").substring(0, 10);
-      const reflectionDate = new Date(reflectionDateText);
-      const text = normalizeText(`${item.category || ""} ${item.careContent || ""} ${item.reason || ""} ${item.changeType || ""}`);
-
-      const isTherapyText =
-        text.includes("물리치료") ||
-        text.includes("물이치료") ||
-        text.includes("기능회복") ||
-        text.includes("재활훈련") ||
-        text.includes("운동치료") ||
-        text.includes("작업치료");
-
-      return sameName && isTherapyText && reflectionDateText && reflectionDate <= target;
-    })
-    .sort((a, b) => {
-      const dateA = new Date(parseDate(a.reflectionDate) || a.reflectionDate || "1900-01-01");
-      const dateB = new Date(parseDate(b.reflectionDate) || b.reflectionDate || "1900-01-01");
-      return dateB - dateA;
-    });
-
-  return counsels[0] || null;
-}
-
-function isRemoveCounsel(counsel) {
-  if (!counsel) return false;
-  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-  return (
-    text.includes("제외") ||
-    text.includes("중단") ||
-    text.includes("삭제") ||
-    text.includes("미제공") ||
-    text.includes("미실시") ||
-    text.includes("하지않") ||
-    text.includes("제공하지않")
-  );
-}
-
-function isAddCounsel(counsel) {
-  if (!counsel) return false;
-  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-
-  if (isRemoveCounsel(counsel)) return false;
-
-  return (
-    text.includes("추가") ||
-    text.includes("시작") ||
-    text.includes("제공") ||
-    text.includes("반영") ||
-    text.includes("실시") ||
-    text.includes("물리치료") ||
-    text.includes("기능회복")
-  );
-}
-
-function getTherapyRuleAtDate(plan, name, targetDate) {
-  const planDate = plan ? normalizeDateText(plan.writtenDate) : "";
-  const counsel = getLatestTherapyCounsel(name, targetDate);
-  const counselDate = counsel
-    ? normalizeDateText(counsel.reflectionDate || counsel.reflection || counsel.date)
-    : "";
-
-  let required = hasTherapyPlan(plan);
-  let source = "계획서";
-
-  const shouldApplyCounsel =
-    counsel && (!planDate || !counselDate || counselDate > planDate);
-
-  if (shouldApplyCounsel) {
-    if (isRemoveCounsel(counsel)) required = false;
-    else if (isAddCounsel(counsel)) required = true;
-    source = "상담";
-  }
-
-  return { required, source };
-}
-
-function isTherapyRequiredAtDate(plan, name, targetDate) {
-  return getTherapyRuleAtDate(plan, name, targetDate).required;
-}
-
-function buildTherapySourceHtml(hasTarget, source) {
+function buildWeekHeaderHtml(weekNumber, startDate, endDate) {
   return `
-    <div style="font-weight:800;color:${hasTarget ? "#2563eb" : "#64748b"};">
-      ${hasTarget ? "있음" : "없음"}
-    </div>
-    <div style="font-size:11px;color:#64748b;margin-top:3px;">
-      [${source || "계획서"}]
+    <div style="font-weight: 800; color: #0f3a8a;">${weekNumber}주차</div>
+    <div style="font-size: 11px; color: #64748b; font-weight: 600; margin-top: 4px; line-height: 1.2;">
+      ${formatWeekRangeDate(startDate)} ~ ${formatWeekRangeDate(endDate)}
     </div>
   `;
 }
 
+function updateWeekHeaders(monthValue) {
+  if (!monthValue || !bathResultBody) return;
+
+  const table = bathResultBody.closest("table");
+  if (!table) return;
+
+  const weekStartDates = getWeekStartDates(monthValue);
+  const weekEndDates = getWeekEndDates(monthValue);
+
+  // 1) id가 있는 경우 우선 적용
+  for (let i = 1; i <= 5; i++) {
+    const weekKey = `week${i}`;
+    const byId = document.getElementById(`week${i}Header`) || document.getElementById(`week${i}Th`);
+    if (byId) {
+      byId.innerHTML = buildWeekHeaderHtml(i, weekStartDates[weekKey], weekEndDates[weekKey]);
+    }
+  }
+
+  // 2) th/td 구분 없이 헤더 행에서 '1주차~5주차' 텍스트를 찾아 적용
+  const headerRows = Array.from(table.querySelectorAll("thead tr, tr"));
+  for (let i = 1; i <= 5; i++) {
+    const weekKey = `week${i}`;
+    let headerCell = null;
+
+    for (const tr of headerRows) {
+      const cells = Array.from(tr.children || []);
+      headerCell = cells.find((cell) => {
+        const text = normalizeText(cell.textContent || "");
+        return text === `${i}주차` || text === `${i}주` || text.includes(`${i}주차`);
+      });
+      if (headerCell) break;
+    }
+
+    if (headerCell) {
+      headerCell.innerHTML = buildWeekHeaderHtml(i, weekStartDates[weekKey], weekEndDates[weekKey]);
+    }
+  }
+}
+
+function extractFirstDateFromBathWeek(weekData) {
+  if (!weekData || !weekData.recordText) return "";
+  const text = String(weekData.recordText || "");
+
+  const match = text.match(/(\d{4})[.\-/년\s]*(\d{1,2})[.\-/월\s]*(\d{1,2})/);
+  if (!match) return "";
+
+  return `${match[1]}-${String(match[2]).padStart(2, "0")}-${String(match[3]).padStart(2, "0")}`;
+}
+
+function getWeekJudgeDate(monthValue, weekKey, weekData, weekStartDates, weekEndDates) {
+  const recordDate = extractFirstDateFromBathWeek(weekData);
+
+  // 실제 목욕 기록이 있는 주차는 기록일 기준으로 계획서/상담일지를 비교합니다.
+  // 예: 2024-01-01 목욕 기록은 2024-01-18 계획서보다 앞이므로 상담일지 기준이 적용되어야 합니다.
+  if (recordDate) return recordDate;
+
+  // 기록이 없는 경우에는 해당 주차 종료일 기준으로 누락 여부를 판단합니다.
+  // 단, 이 날짜는 월말이 아니라 주차별 날짜라서 새 계획서가 월 전체에 소급 적용되지 않습니다.
+  return weekEndDates[weekKey] || weekStartDates[weekKey] || getMonthEndDate(monthValue);
+}
+
+function getLatestPlansByRecipient(checkDate) {
+  const checkDateText = normalizeDateText(checkDate);
+  const validPlans = carePlanLibraryCache.filter((plan) => {
+    const writtenDate = getPlanWrittenDate(plan);
+    return writtenDate && writtenDate <= checkDateText;
+  });
+
+  const latestByName = {};
+  validPlans.forEach((plan) => {
+    const name = getRecipientName(plan);
+    if (!name) return;
+
+    const current = latestByName[name];
+    const writtenDate = getPlanWrittenDate(plan);
+    const currentDate = current ? getPlanWrittenDate(current) : "";
+
+    if (!current || writtenDate > currentDate) {
+      latestByName[name] = { ...plan, writtenDate };
+    }
+  });
+  return latestByName;
+}
+
+function getLatestPlanForRecipientAtDate(name, targetDate, grade = "", longTermNumber = "") {
+  const date = normalizeDateText(targetDate);
+  const targetName = normalizeText(name);
+  const number = normalizeText(longTermNumber);
+  if (!targetName && !number) return null;
+  const candidates = carePlanLibraryCache.filter(plan => {
+    const written = getPlanWrittenDate(plan);
+    if (!written || written > date) return false;
+    const planName = normalizeText(getRecipientName(plan));
+    const planNumber = getLongTermNumberFromItem(plan);
+    // 번호가 양쪽에 있으면 번호가 일치해야 하며, 서로 다른 이름은 섞지 않습니다.
+    if (number && planNumber) return number === planNumber && (!targetName || !planName || targetName === planName);
+    // 이름으로 대체할 때도 a/b 접미사를 제거하지 않습니다.
+    return !!targetName && planName === targetName;
+  }).sort((a,b) => getPlanWrittenDate(b).localeCompare(getPlanWrittenDate(a)));
+  if (number) {
+    const exact = candidates.find(p => getLongTermNumberFromItem(p) === number);
+    if (exact) return exact;
+    // 번호가 있는 대상자를 다른 번호의 계획서로 연결하지 않습니다.
+    return candidates.find(p => !getLongTermNumberFromItem(p)) || null;
+  }
+  // 같은 이름에 서로 다른 인정번호가 있다면 임의로 선택하지 않습니다.
+  if (new Set(candidates.map(getLongTermNumberFromItem).filter(Boolean)).size > 1) return null;
+  return candidates[0] || null;
+}
+
+function hasBathPlan(plan) {
+  if (!plan) return false;
+
+  let rawRows = plan.rows || plan.rowsJson || plan.items || plan.benefits || [];
+  if (typeof rawRows === "string") {
+    try { rawRows = JSON.parse(rawRows); } catch (e) { rawRows = []; }
+  }
+  if (!Array.isArray(rawRows)) {
+    rawRows = rawRows && typeof rawRows === "object" ? Object.values(rawRows) : [];
+  }
+
+  const clean = (v) => String(v ?? "")
+    .replace(/\s+/g, "")
+    .replace(/[·ㆍ]/g, "")
+    .trim();
+
+  // 실제 급여 행에서 인정할 몸씻기 항목
+  // 예: "몸씻기 지시 및 지켜보기", "부분적인 도움받아 몸씻기", "전적인 도움받아 몸씻기"
+  const isBathNeed = (v) => {
+    const t = clean(v);
+    if (!t) return false;
+
+    if (t === "몸씻기" || t === "몸씻기도움" || t === "몸씻기도움받기") return true;
+
+    return (
+      t.includes("몸씻기지시및지켜보기") ||
+      t.includes("몸씻기지켜보기") ||
+      t.includes("몸씻기도움") ||
+      t.includes("도움받아몸씻기") ||
+      t.includes("부분적인도움받아몸씻기") ||
+      t.includes("전적인도움받아몸씻기")
+    );
+  };
+
+  const isBathCode = (v) => {
+    const t = clean(v).toUpperCase();
+    return t === "B52" || /^B52[-_]/.test(t);
+  };
+
+  // 종합의견의 "*제외", "급여 제외" 문장을 실제 급여행으로 오인하지 않도록 차단
+  const looksLikeNarrativeOrExcluded = (value) => {
+    const t = clean(value);
+    if (!t) return false;
+
+    return (
+      t.includes("종합의견") ||
+      t.includes("개인별장기요양이용계획서와다른내용") ||
+      t.includes("*제외") ||
+      t.includes("급여제외") ||
+      t.includes("서비스이므로제외") ||
+      t.includes("제외하여제공")
+    );
+  };
+
+  return rawRows.some((row) => {
+    if (!row) return false;
+
+    if (Array.isArray(row)) {
+      const rowText = row.map(clean).filter(Boolean).join("|");
+
+      // 배분남처럼 종합의견의 제외 문장에
+      // "전적인 도움받아 몸씻기"가 적힌 경우는 목욕 급여로 인정하지 않음
+      if (looksLikeNarrativeOrExcluded(rowText)) return false;
+
+      return row.some((cell) => {
+        const t = clean(cell);
+        if (!t) return false;
+        return isBathCode(t) || (t.length <= 60 && isBathNeed(t));
+      });
+    }
+
+    if (typeof row !== "object") return false;
+
+    const entries = Object.entries(row);
+    const wholeRowText = entries
+      .map(([key, value]) => `${clean(key)}:${clean(value)}`)
+      .join("|");
+
+    // 종합의견/제외 설명 행 자체는 급여 선택행이 아님
+    if (looksLikeNarrativeOrExcluded(wholeRowText)) return false;
+
+    const itemCandidates = [
+      row.needContent, row.careNeed, row.longTermCareNeed,
+      row.benefitName, row.serviceName, row.itemName, row.careItem,
+      row.needName, row.needItem, row.detailNeed, row.longTermNeed,
+      row["장기요양 필요내용"], row["장기요양필요내용"],
+      row["급여항목"], row["급여 항목"], row["서비스명"], row["항목명"],
+      row["필요내용"], row["선택된 장기요양 필요내용"]
+    ];
+
+    const codeCandidates = [
+      row.code, row.serviceCode, row.benefitCode,
+      row["급여코드"], row["서비스코드"]
+    ];
+
+    if (itemCandidates.some((value) => {
+      const t = clean(value);
+      return t && t.length <= 60 && isBathNeed(t);
+    })) return true;
+
+    if (codeCandidates.some(isBathCode)) return true;
+
+    // Firestore 이관 시 원래 엑셀의 열명이 보존되지 않은 경우 보정.
+    // 단, 목표/세부제공내용/종합의견 등 설명 필드는 제외한다.
+    const excludedKeys =
+      /목표|goal|세부제공|detail|종합|overall|판단근거|reason|필요영역|needarea|의견|비고|remark|memo/i;
+
+    return entries.some(([key, value]) => {
+      if (excludedKeys.test(String(key))) return false;
+      if (typeof value !== "string" && typeof value !== "number") return false;
+
+      const t = clean(value);
+      if (!t || looksLikeNarrativeOrExcluded(t)) return false;
+
+      return isBathCode(t) || (t.length <= 60 && isBathNeed(t));
+    });
+  });
+}
+
+function getCounselDate(counsel) {
+  if (!counsel) return "";
+
+  // 상담 작성일이 아니라 실제 반영일을 우선 적용합니다.
+  return normalizeDateText(
+    counsel.reflectionDate ||
+    counsel.reflection ||
+    counsel.applyDate ||
+    counsel.changeDate ||
+    counsel.effectiveDate ||
+    counsel.startDate ||
+    counsel.consultDate ||
+    counsel.date ||
+    counsel.counselDate ||
+    counsel.writtenDate ||
+    counsel.writeDate ||
+    counsel.createdDate ||
+    counsel["반영일"] ||
+    counsel["변경일"] ||
+    counsel["상담일"] ||
+    ""
+  );
+}
+
+function isPureBathCounsel(item) {
+  const categoryText = normalizeText(item.category || item.type || item.serviceType || item["구분"] || "");
+  const contentText = normalizeText(item.careContent || item.content || item.counselContent || item.memo || item["내용"] || "");
+  const reasonText = normalizeText(item.reason || item.note || item.remark || item["사유"] || "");
+  const changeText = normalizeText(item.changeType || item.change || item.action || item["변경구분"] || "");
+  const totalContent = categoryText + changeText + contentText + reasonText;
+
+  // 옷입기/기저귀 등 다른 급여가 목욕으로 오인되지 않도록 제외
+  if (totalContent.includes("기저귀")) return false;
+  if (totalContent.includes("옷입기") || totalContent.includes("의복")) return false;
+
+  return (
+    totalContent.includes("목욕") ||
+    totalContent.includes("몸씻기") ||
+    totalContent.includes("몸씻기도움") ||
+    totalContent.includes("세신") ||
+    totalContent.includes("샤워")
+  );
+}
+
+function hasBathAction(item) {
+  const actionText = normalizeText(`${item.changeType || item.change || item.action || ""} ${item.careContent || item.content || item.counselContent || ""} ${item.reason || item.note || item.remark || ""}`);
+  return (
+    actionText.includes("추가") || actionText.includes("제외") || actionText.includes("중단") ||
+    actionText.includes("삭제") || actionText.includes("미제공") || actionText.includes("반영") ||
+    actionText.includes("시작") || actionText.includes("제공")
+  );
+}
+
+function getLatestBathCounsel(name, targetDate) {
+  const targetDateText = normalizeDateText(targetDate);
+  const targetName = normalizeText(name);
+
+  const bathCounsels = counselLibraryCache
+    .filter((item) => {
+      const itemName = normalizeText(getRecipientName(item));
+      const sameName = itemName === targetName;
+      if (!sameName) return false;
+
+      const counselDate = getCounselDate(item);
+      if (counselDate && targetDateText && counselDate > targetDateText) return false;
+
+      return isPureBathCounsel(item);
+    })
+    .sort((a, b) => {
+      const dateA = getCounselDate(a) || "0000-00-00";
+      const dateB = getCounselDate(b) || "0000-00-00";
+      return dateB.localeCompare(dateA);
+    });
+
+  return bathCounsels[0] || null;
+}
+
+function isRemoveCounsel(counsel) {
+  if (!counsel) return false;
+  const text = normalizeText(`${counsel.changeType || counsel.change || counsel.action || ""} ${counsel.careContent || counsel.content || counsel.counselContent || ""} ${counsel.reason || counsel.note || counsel.remark || ""}`);
+  return text.includes("제외") || text.includes("중단") || text.includes("삭제") || text.includes("미제공");
+}
+
+function isAddCounsel(counsel) {
+  if (!counsel) return false;
+  const text = normalizeText(`${counsel.changeType || counsel.change || counsel.action || ""} ${counsel.careContent || counsel.content || counsel.counselContent || ""} ${counsel.reason || counsel.note || counsel.remark || ""}`);
+  return text.includes("추가") || text.includes("시작") || text.includes("제공") || text.includes("반영");
+}
+
+function getBathBenefitAtDate(plan, name, targetDate, grade = "", longTermNumber = "") {
+  const targetDateText = normalizeDateText(targetDate);
+
+  let latestPlan = plan || getLatestPlanForRecipientAtDate(name, targetDateText, grade, longTermNumber);
+  let planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
+
+  // 방어 로직: 혹시 미래 계획서가 들어오면 해당 날짜 판정에서 제외
+  if (planDate && targetDateText && planDate > targetDateText) {
+    latestPlan = getLatestPlanForRecipientAtDate(name, targetDateText, grade, longTermNumber);
+    planDate = latestPlan ? normalizeDateText(latestPlan.writtenDate) : "";
+  }
+
+  const planRequired = hasBathPlan(latestPlan);
+  const counsel = getLatestBathCounsel(name, targetDateText);
+  const counselDate = counsel ? getCounselDate(counsel) : "";
+
+  if (!counsel || (counselDate && targetDateText && counselDate > targetDateText)) {
+    return {
+      required: planRequired,
+      source: "계획서"
+    };
+  }
+
+  // 핵심 기준:
+  // 상담일지 반영일이 해당 날짜 기준 최신 계획서보다 같거나 최신이면 상담 기준
+  // 해당 날짜보다 뒤에 작성된 계획서는 과거 주차에 소급 적용하지 않습니다.
+  const counselIsLatest = !planDate || counselDate >= planDate;
+
+  if (counselIsLatest) {
+    if (isRemoveCounsel(counsel)) {
+      return {
+        required: false,
+        source: "상담"
+      };
+    }
+
+    if (isAddCounsel(counsel)) {
+      return {
+        required: true,
+        source: "상담"
+      };
+    }
+  }
+
+  return {
+    required: planRequired,
+    source: "계획서"
+  };
+}
+
+function isBathRequiredAtDate(plan, name, targetDate, grade = "", longTermNumber = "") {
+  return getBathBenefitAtDate(plan, name, targetDate, grade, longTermNumber).required;
+}
+
+function getBathBenefitForWeek(plan, name, targetDate, grade = "", monthPlan = null, longTermNumber = "") {
+  const targetDateText = normalizeDateText(targetDate);
+  const monthPlanDate = monthPlan ? normalizeDateText(monthPlan.writtenDate) : "";
+
+  const counsel = getLatestBathCounsel(name, targetDateText);
+  const counselDate = counsel ? getCounselDate(counsel) : "";
+
+  /*
+    핵심 보정:
+    확인월 최종 계획서가 상담일지보다 나중에 작성된 경우,
+    상담일지 반영일 ~ 그 계획서 작성일 전날까지는 상담일지 기준으로 봅니다.
+
+    예)
+    2023-12-11 상담일지 [추가]
+    2024-01-27 계획서 작성
+
+    2023-12-11 ~ 2024-01-26 : 상담 기준
+    2024-01-27부터 : 계획서 기준
+  */
+  if (
+    counsel &&
+    counselDate &&
+    targetDateText &&
+    targetDateText >= counselDate &&
+    monthPlanDate &&
+    monthPlanDate > counselDate &&
+    targetDateText < monthPlanDate
+  ) {
+    if (isRemoveCounsel(counsel)) {
+      return {
+        required: false,
+        source: "상담"
+      };
+    }
+
+    if (isAddCounsel(counsel)) {
+      return {
+        required: true,
+        source: "상담"
+      };
+    }
+  }
+
+  return getBathBenefitAtDate(plan, name, targetDateText, grade, longTermNumber);
+}
+
+
+function buildBenefitSourceHtml(benefit) {
+  const requiredText = benefit && benefit.required ? "있음" : "없음";
+  const sourceText = benefit && benefit.source ? benefit.source : "계획서";
+  const mainColor = benefit && benefit.required ? "#2563eb" : "#64748b";
+
+  return `
+    <div style="font-weight: 800; color: ${mainColor};">${requiredText}</div>
+    <div style="font-size: 11px; color: #64748b; margin-top: 3px;">[${sourceText}]</div>
+  `;
+}
+
 function getCounselTextForMonth(name, monthEndDate) {
-  const counsel = getLatestTherapyCounsel(name, monthEndDate);
+  const counsel = getLatestBathCounsel(name, monthEndDate);
   if (!counsel) return "없음";
 
-  const rawDate = counsel.reflectionDate ? normalizeDateText(counsel.reflectionDate) : "-";
-  const changeType = counsel.changeType || "-";
-  let content = counsel.careContent || counsel.reason || "-";
-
-  if (content.includes("물리치료") && content.includes("작업치료")) {
-    content = content.replace(", 작업치료", "<br>작업치료").replace("), 작업치료", ")<br>작업치료");
+  const counselDate = getCounselDate(counsel);
+  let content = counsel.careContent || counsel.content || counsel.counselContent || counsel.reason || counsel.note || "-";
+  if (content.length > 15) {
+    content = content.substring(0, 15) + "...";
   }
-
-  return `<span style="font-weight: 700; color: #1e293b;">${rawDate} [${changeType}]</span><br>${content}`;
+  return `${counselDate || "-"} / [${counsel.changeType || counsel.change || counsel.action || "-"}] <br/> ${content}`;
 }
 
-function getAttendanceMonth(monthValue) {
-  return (attendanceLibraryCache || [])
-    .filter((item) => item.month === monthValue)
-    .map((item) => ({
-      name: String(item.name || item.recipientName || "").trim(),
-      dates: Array.isArray(item.dates) ? item.dates : (Array.isArray(item.attendanceDates) ? item.attendanceDates : [])
-    }))
-    .filter((item) => item.name !== "");
-}
+function parseBathCell(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
 
-function sheetToRowsWithMerges(sheet) {
-  if (!sheet || !sheet["!ref"]) return [];
-  const range = XLSX.utils.decode_range(sheet["!ref"]);
-  const rows = [];
+  const cleanText = normalizeText(text);
 
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    const row = [];
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const address = XLSX.utils.encode_cell({ r, c });
-      const cell = sheet[address];
-      row[c] = cell ? cell.v : "";
+  // 일정없음, 급여개시전, 급여개시, 퇴소, 결석은 누락/오류가 아니라 사유가 있는 주차로 처리합니다.
+  if (
+    cleanText.includes("일정없음") ||
+    cleanText.includes("급여개시전") ||
+    cleanText.includes("급여개시") ||
+    cleanText.includes("퇴소") ||
+    cleanText.includes("결석")
+  ) {
+    const isAbsent = cleanText.includes("결석");
+    let formattedLabel = text;
+    
+    if (isAbsent) {
+      formattedLabel = "결석";
+    } else if (text.includes("급여개시 전") && text.replace("급여개시 전", "").trim().length > 0) {
+      formattedLabel = "급여개시 전<br/>" + text.replace("급여개시 전", "").trim();
+    } else if (text.includes("급여개시") && !text.includes("전") && text.replace("급여개시", "").trim().length > 0) {
+      formattedLabel = "급여개시<br/>" + text.replace("급여개시", "").trim();
+    } else if (text.includes("퇴소") && text.replace("퇴소", "").trim().length > 0) {
+      formattedLabel = "퇴소<br/>" + text.replace("퇴소", "").trim();
+    } else if (text.includes("일정없음") && text.replace("일정없음", "").trim().length > 0) {
+      formattedLabel = "일정없음<br/>" + text.replace("일정없음", "").trim();
     }
-    rows.push(row);
+
+    return {
+      hasRecord: false,
+      isGreyBlock: true,
+      isAbsent,
+      label: formattedLabel
+    };
   }
 
-  const merges = sheet["!merges"] || [];
-  merges.forEach((merge) => {
-    const startAddress = XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c });
-    const startCell = sheet[startAddress];
-    const value = startCell ? startCell.v : "";
+  if (cleanText.includes("목욕거부")) {
+    return {
+      hasRecord: true,
+      label: "목욕거부"
+    };
+  }
 
-    for (let r = merge.s.r; r <= merge.e.r; r++) {
-      for (let c = merge.s.c; c <= merge.e.c; c++) {
-        rows[r - range.s.r][c] = value;
+  const hasTime = /\d{1,2}:\d{2}\s*~\s*\d{1,2}:\d{2}/.test(text);
+  const hasDate = /\d{4}[.-]\d{2}[.-]\d{2}/.test(text);
+
+  if (hasTime || hasDate) {
+    return {
+      hasRecord: true,
+      label: text.replace(/\n/g, " ")
+    };
+  }
+  return null;
+}
+
+function findWeekColumns(rows, headerIndex, weekNumber) {
+  const targetTexts = [`${weekNumber}주`, `${weekNumber}주차`];
+  const columns = [];
+
+  for (let r = Math.max(0, headerIndex - 5); r <= headerIndex + 5; r++) {
+    const row = rows[r] || [];
+    row.forEach((cell, colIndex) => {
+      const text = normalizeText(cell);
+      if (targetTexts.some((target) => text.includes(target))) {
+        columns.push(colIndex);
       }
-    }
-  });
+    });
+  }
 
-  return rows;
+  if (columns.length > 0) {
+    return { start: Math.min(...columns), end: Math.max(...columns) };
+  }
+  const fallbackCol = 6 + (weekNumber - 1);
+  return { start: fallbackCol, end: fallbackCol };
 }
 
-function findHeaderIndex(rows) {
-  return rows.findIndex((row) => {
-    const text = normalizeText(row.join(" "));
-    return text.includes("연번") && text.includes("수급자명") && text.includes("제공일") && text.includes("제공시간");
-  });
-}
-
-function parseTherapyReport(workbook, monthValue) {
+function parseBathReport(workbook) {
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-  const rows = sheetToRowsWithMerges(sheet);
-  const headerIndex = findHeaderIndex(rows);
+
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+  const headerIndex = rows.findIndex((row) => {
+    return row.some((cell) => normalizeText(cell).includes("수급자명"));
+  });
 
   if (headerIndex === -1) {
-    alert("물리치료 기록에서 표 머리글을 찾지 못했습니다.");
+    alert("목욕 리포트에서 수급자명 열을 찾지 못했습니다.");
     return [];
   }
 
   const header = rows[headerIndex];
   const nameCol = header.findIndex((cell) => normalizeText(cell).includes("수급자명"));
-  const dateCol = header.findIndex((cell) => normalizeText(cell).includes("제공일"));
-  const timeCol = header.findIndex((cell) => normalizeText(cell).includes("제공시간"));
-  const noteCol = header.findIndex((cell) => normalizeText(cell).includes("특이사항"));
+  const genderCol = header.findIndex((cell) => normalizeText(cell).includes("성별"));
+  const gradeCol = header.findIndex((cell) => normalizeText(cell).includes("등급"));
 
-  const therapyMap = {};
+  const weekRanges = {
+    week1: findWeekColumns(rows, headerIndex, 1),
+    week2: findWeekColumns(rows, headerIndex, 2),
+    week3: findWeekColumns(rows, headerIndex, 3),
+    week4: findWeekColumns(rows, headerIndex, 4),
+    week5: findWeekColumns(rows, headerIndex, 5)
+  };
 
+  const result = [];
   for (let i = headerIndex + 1; i < rows.length; i++) {
-    const row = rows[i] || [];
+    const row = rows[i];
     const name = String(row[nameCol] || "").trim();
     if (!name || name === "수급자명") continue;
 
-    const dateText = parseDate(row[dateCol]);
-    if (!dateText || !isDateInDisplayedWeeks(dateText, monthValue)) continue;
+    const gender = genderCol >= 0 ? String(row[genderCol] || "").trim() : "";
+    const grade = gradeCol >= 0 ? String(row[gradeCol] || "").trim() : "";
 
-    const weekKey = getWeekKeyForMonth(dateText, monthValue);
-    if (!weekKey) continue;
-    const timeText = String(row[timeCol] || "").trim();
-    const noteText = noteCol >= 0 ? String(row[noteCol] || "").trim() : "";
+    const weeks = {};
+    Object.entries(weekRanges).forEach(([weekKey, range]) => {
+      const cells = row.slice(range.start, range.end + 1);
+      const records = cells.map(parseBathCell).filter((item) => item !== null);
 
-    if (!therapyMap[name]) {
-      therapyMap[name] = {
-        name,
-        weeks: {
-          week1: { hasRecord: false, recordText: "-" },
-          week2: { hasRecord: false, recordText: "-" },
-          week3: { hasRecord: false, recordText: "-" },
-          week4: { hasRecord: false, recordText: "-" },
-          week5: { hasRecord: false, recordText: "-" }
-        }
+      const hasRealBath = records.some(item => item.hasRecord === true);
+      const hasGreyBlockTag = records.some(item => item.isGreyBlock === true);
+      const hasAbsentTag = records.some(item => item.isAbsent === true);
+
+      weeks[weekKey] = {
+        hasBathRecord: hasRealBath,
+        isGreyBlock: hasGreyBlockTag,
+        isAbsent: hasAbsentTag,
+        recordText: records.length > 0 ? records.map((item) => item.label).join("<br/>") : "-"
       };
-    }
+    });
 
-    const label = `${dateText} ${timeText}${noteText ? " / " + noteText : ""}`;
-    const oldText = therapyMap[name].weeks[weekKey].recordText;
-
-    therapyMap[name].weeks[weekKey] = {
-      hasRecord: true,
-      recordText: oldText && oldText !== "-" ? `${oldText} / ${label}` : label
-    };
+    result.push({ name, gender, grade, personKey: makePersonKey(name, gender, grade), weeks });
   }
-
-  return Object.values(therapyMap);
+  return result;
 }
 
-function getWeekResult(required, weekData, hasAttendanceInWeek) {
-  if (!hasAttendanceInWeek) return "결석";
+function getWeekResult(required, weekData) {
+  // 결석은 별도 표시
+  if (weekData && weekData.isAbsent) return "결석";
 
-  const hasRecord = weekData && weekData.hasRecord;
+  // 일정없음, 급여개시전, 퇴소 등은 정상 처리
+  if (weekData && weekData.isGreyBlock) return "정상";
+
+  const recordText = normalizeText(weekData ? weekData.recordText : "");
+
+  // ★ 목욕거부는 목욕기록으로 인정하며 오류가 아니라 정상 처리
+  if (
+    recordText.includes("목욕거부") ||
+    recordText.includes("목욕거절") ||
+    recordText.includes("서비스거부") ||
+    recordText === "거부" ||
+    recordText.includes("거부")
+  ) {
+    return "정상";
+  }
+
+  const hasRecord = weekData && weekData.hasBathRecord;
+
   if (required && hasRecord) return "정상";
   if (required && !hasRecord) return "누락";
   if (!required && hasRecord) return "오류";
+
   return "정상";
 }
 
-function makeResultClass(result) {
-  if (result === "정상") return "status-ok";
-  if (result === "결석") return "status-absent";
-  return "status-danger";
-}
+function buildWeekTdHtml(required, weekData) {
+  const result = getWeekResult(required, weekData);
+  const recordText = weekData ? weekData.recordText : "-";
+  const isGreyBlock = weekData ? weekData.isGreyBlock : false;
+  const isAbsent = weekData ? weekData.isAbsent : false;
 
-function buildWeekCell(result, weekData) {
-  const resultClass = makeResultClass(result);
-
-  let recordText = "";
-  if (weekData && weekData.recordText && result !== "결석") {
-    recordText = weekData.recordText.replaceAll(" / ", "<br>").replaceAll("~", " ~ ");
+  if (isAbsent) {
+    return `
+      <td style="background-color: #f8fafc; color: #f59e0b; font-weight: 800; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 14px; line-height: 1.4; border: 1px solid #e2e8f0;">
+        결석
+      </td>
+    `;
   }
 
+  if (isGreyBlock) {
+    return `
+      <td style="background-color: #f8fafc; color: #334155; font-weight: 600; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; line-height: 1.4; border: 1px solid #e2e8f0;">
+        ${recordText}
+      </td>
+    `;
+  }
+
+  let color = "#1e293b";
+  if (result === "정상") color = "#2563eb";
+  if (result === "누락" || result === "오류") color = "#e11d48";
+
   return `
-    <div class="${resultClass}">${result}</div>
-    ${recordText ? `<div style="font-size:10.5px; color:#555; margin-top:4px; white-space:normal; word-break:keep-all; line-height:1.45;">${recordText}</div>` : ""}
+    <td style="text-align: center; vertical-align: middle; padding: 12px 6px; border: 1px solid #e2e8f0;">
+      <div style="color:${color}; font-weight:800; font-size:14px; margin-bottom: 4px;">${result}</div>
+      <div style="font-size:12px; color:#64748b; line-height: 1.3;">${recordText}</div>
+    </td>
   `;
 }
 
 function buildOverallResult(weekResults) {
-  const hasRealError = weekResults.some((r) => r === "누락" || r === "오류");
-  return hasRealError ? "확인 필요" : "정상";
+  const hasError = weekResults.some((result) => result === "누락" || result === "오류");
+  return hasError ? "확인 필요" : "정상";
 }
 
-function addRecipientName(map, name) {
-  const cleanName = String(name || "").trim();
-  const key = normalizeText(cleanName);
-  if (key && !map[key]) map[key] = cleanName;
-}
-
-function collectTherapyTargetNames(monthEndDate) {
-  const targetMap = {};
-
-  (carePlanLibraryCache || []).forEach((plan) => {
-    const name = plan.recipientName || plan.name;
-    const planDate = parseDate(plan.writtenDate) || String(plan.writtenDate || "").substring(0, 10);
-
-    if (name && planDate && new Date(planDate) <= new Date(monthEndDate) && hasTherapyPlan(plan)) {
-      addRecipientName(targetMap, name);
-    }
-  });
-
-  (counselLibraryCache || []).forEach((counsel) => {
-    const name = counsel.recipientName || counsel.name;
-    const reflectionDate = parseDate(counsel.reflectionDate) || String(counsel.reflectionDate || "").substring(0, 10);
-    const text = normalizeText(`${counsel.category || ""} ${counsel.careContent || ""} ${counsel.reason || ""} ${counsel.changeType || ""}`);
-
-    const isTherapy =
-      text.includes("물리치료") ||
-      text.includes("물이치료") ||
-      text.includes("기능회복") ||
-      text.includes("재활훈련") ||
-      text.includes("운동치료") ||
-      text.includes("작업치료");
-
-    if (name && reflectionDate && new Date(reflectionDate) <= new Date(monthEndDate) && isTherapy && !isRemoveCounsel(counsel)) {
-      addRecipientName(targetMap, name);
-    }
-  });
-
-  return Object.values(targetMap);
-}
-
-function buildResults(monthValue, therapyRows) {
+function buildResults(monthValue, bathRows) {
   const monthEndDate = getMonthEndDate(monthValue);
   const weekEndDates = getWeekEndDates(monthValue);
+  const weekStartDates = getWeekStartDates(monthValue);
   const attendanceRows = getAttendanceMonth(monthValue);
 
-  const attendanceMap = {};
-  attendanceRows.forEach((attendance) => {
-    const key = normalizeText(attendance.name);
-    if (key) attendanceMap[key] = attendance;
-  });
-
-  const recipientMap = {};
-
-  // 1) 해당 월 출석자
-  attendanceRows.forEach((attendance) => addRecipientName(recipientMap, attendance.name));
-
-  // 2) 물리치료 기록 파일에 실제 기록이 있는 사람
-  therapyRows.forEach((therapy) => addRecipientName(recipientMap, therapy.name));
-
-  // 3) 급여제공계획서 또는 상담일지상 물리치료 대상자
-  collectTherapyTargetNames(monthEndDate).forEach((name) => addRecipientName(recipientMap, name));
-
-  const defaultWeeks = {
-    week1: { hasRecord: false, recordText: "-" },
-    week2: { hasRecord: false, recordText: "-" },
-    week3: { hasRecord: false, recordText: "-" },
-    week4: { hasRecord: false, recordText: "-" },
-    week5: { hasRecord: false, recordText: "-" }
+  const emptyWeeks = {
+    week1: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" },
+    week2: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" },
+    week3: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" },
+    week4: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" },
+    week5: { hasBathRecord: false, isGreyBlock: false, isAbsent: false, recordText: "-" }
   };
 
-  const weekKeys = ["week1", "week2", "week3", "week4", "week5"];
+  const bathMapByPersonKey = {};
+  const bathRowsByName = new Map();
+  const bathMapByNameGrade = {};
+  const bathNameCount = {};
 
-  const results = Object.values(recipientMap).map((name) => {
-    const plan = getLatestPlansByRecipient(name, monthEndDate);
-    const attendance = attendanceRows.find((item) => isSameRecipient(item.name, name));
-    const attendDatesSet = new Set(attendance && Array.isArray(attendance.dates) ? attendance.dates : []);
+  bathRows.forEach((row) => {
+    const name = String(row.name || "").trim();
+    if (!name) return;
 
-    const therapy = therapyRows.find((item) => isSameRecipient(item.name, name));
-    const weeks = therapy && therapy.weeks ? therapy.weeks : defaultWeeks;
+    const personKey = row.personKey || makePersonKey(row.name, row.gender, row.grade);
+    const nameGradeKey = makeNameGradeKey(row.name, row.grade);
 
-    const weekRequired = {};
-    const weekResultsMap = {};
+    bathMapByPersonKey[personKey] = row;
+    const existing = bathRowsByName.get(normalizeText(name)) || [];
+    existing.push(row);
+    bathRowsByName.set(normalizeText(name), existing);
+    if (normalizeGrade(row.grade)) {
+      bathMapByNameGrade[nameGradeKey] = row;
+    }
 
-    weekKeys.forEach((wk) => {
-      if (!weekEndDates[wk]) {
-        weekRequired[wk] = false;
-        weekResultsMap[wk] = "정상";
-        return;
-      }
+    const cleanName = normalizeText(name);
+    bathNameCount[cleanName] = (bathNameCount[cleanName] || 0) + 1;
+  });
 
-      const weekDays = getDaysInWeekRange(monthValue, wk);
-      const hasAttend = weekDays.some((d) => attendDatesSet.has(d));
-      const weekPlan = getLatestPlansByRecipient(name, weekEndDates[wk]);
-      const req = getTherapyRuleAtDate(weekPlan, name, weekEndDates[wk]).required;
+  const attendanceMapByNameGrade = {};
+  const attendanceByName = new Map();
+  const attendanceNameCount = {};
 
-      weekRequired[wk] = req;
-      weekResultsMap[wk] = getWeekResult(req, weeks[wk], hasAttend);
-    });
+  attendanceRows.forEach((attendance) => {
+    const name = String(attendance.name || "").trim();
+    if (!name) return;
 
-    const weekResultsArray = weekKeys.map((wk) => weekResultsMap[wk]);
+    const grade = normalizeGrade(attendance.grade);
+    const nameGradeKey = makeNameGradeKey(name, grade);
+    const existing = attendanceByName.get(normalizeText(name)) || [];
+    existing.push(attendance);
+    attendanceByName.set(normalizeText(name), existing);
+    if (!attendanceMapByNameGrade[nameGradeKey]) attendanceMapByNameGrade[nameGradeKey] = attendance;
 
-    return {
+    const cleanName = normalizeText(name);
+    attendanceNameCount[cleanName] = (attendanceNameCount[cleanName] || 0) + 1;
+  });
+
+  const personMap = {};
+
+  // 1) 출석관리 명단을 우선 기준으로 사용합니다.
+  // 출석관리에는 등급이 있으므로 동명이인 구분용 기준이 됩니다.
+  attendanceRows.forEach((attendance) => {
+    const name = String(attendance.name || "").trim();
+    if (!name) return;
+
+    const grade = normalizeGrade(attendance.grade);
+    const longTermNumber = getLongTermNumberFromItem(attendance);
+    const key = longTermNumber ? makePlanPersonKey(name, longTermNumber) : `${makeNameGradeKey(name, grade)}__출석_${Object.keys(personMap).length}`;
+
+    personMap[key] = {
+      key,
       name,
-      planDate: plan ? normalizeDateText(plan.writtenDate) : "-",
-      counselText: getCounselTextForMonth(name, monthEndDate),
-      weekRequired,
-      weeks,
-      weekResultsMap,
-      therapyRule: getTherapyRuleAtDate(
-        getLatestPlansByRecipient(name, monthEndDate),
-        name,
-        monthEndDate
-      ),
-      overallResult: buildOverallResult(weekResultsArray)
+      gender: attendance.gender || "",
+      grade,
+      longTermNumber
     };
   });
 
-  return results.sort((a, b) => safeCompare(a.name, b.name));
+  // 2) 목욕 리포트에만 있는 명단도 빠지지 않게 추가합니다.
+  bathRows.forEach((row) => {
+    const name = String(row.name || "").trim();
+    if (!name) return;
+
+    const grade = normalizeGrade(row.grade);
+    const matches = (attendanceByName.get(normalizeText(name)) || []).filter(a => !grade || !a.grade || normalizeGrade(a.grade) === grade);
+    const matchedAttendance = matches.length === 1 ? matches[0] : null;
+    const longTermNumber = matchedAttendance ? getLongTermNumberFromItem(matchedAttendance) : "";
+    const key = matchedAttendance && getLongTermNumberFromItem(matchedAttendance)
+      ? makePlanPersonKey(name, getLongTermNumberFromItem(matchedAttendance))
+      : `${makeNameGradeKey(name, grade)}__리포트_${bathRows.indexOf(row)}`;
+
+    if (!personMap[key]) {
+      personMap[key] = {
+        key,
+        name,
+        gender: row.gender || "",
+        grade,
+        longTermNumber
+      };
+    }
+  });
+
+  const results = [];
+
+  Object.values(personMap).forEach((person) => {
+    const name = person.name;
+    const grade = normalizeGrade(person.grade);
+    const longTermNumber = normalizeText(person.longTermNumber);
+    const cleanName = normalizeText(name);
+
+    let bath = null;
+    const attendanceCandidates = (attendanceByName.get(cleanName) || []).filter(a =>
+      (!longTermNumber || !getLongTermNumberFromItem(a) || getLongTermNumberFromItem(a) === longTermNumber) &&
+      (!grade || !a.grade || normalizeGrade(a.grade) === grade));
+    const matchedAttendance = attendanceCandidates.length === 1 ? attendanceCandidates[0] : null;
+    const identityAmbiguous = attendanceCandidates.length > 1 ||
+      ((attendanceNameCount[cleanName] || 0) > 1 && !longTermNumber);
+
+    // 목욕 리포트에 등급이 있으면 이름+등급으로 매칭합니다.
+    if (grade) {
+      const reportCandidates = (bathRowsByName.get(cleanName) || []).filter(r => normalizeGrade(r.grade) === grade);
+      if (reportCandidates.length === 1 && !identityAmbiguous) bath = reportCandidates[0];
+    }
+
+    // 등급이 없는 경우에만 기존 personKey로 찾습니다.
+    if (!bath) {
+      const reportCandidates = bathRowsByName.get(cleanName) || [];
+      if (reportCandidates.length === 1 && !identityAmbiguous) bath = reportCandidates[0];
+    }
+
+    // 동명이인이 아닌 경우에만 이름 단독 매칭을 허용합니다.
+    // 같은 이름이 여러 명이면 이름만으로 목욕 기록을 붙이지 않습니다.
+    if (!bath && (bathNameCount[cleanName] || 0) === 1 && (attendanceNameCount[cleanName] || 0) <= 1) {
+      bath = bathRows.find((item) => isSameRecipientExact(item.name, name)) || null;
+    }
+
+    const rawWeeks = bath ? bath.weeks : emptyWeeks;
+    const attendanceForAbsence = matchedAttendance || attendanceRows.find((item) => {
+      if (!isSameRecipientExact(item.name, name)) return false;
+      const itemGrade = normalizeGrade(item.grade);
+      return !grade || !itemGrade || itemGrade === grade;
+    }) || null;
+    const weeks = applyAbsenceByAttendance(rawWeeks, attendanceForAbsence, weekStartDates, weekEndDates);
+
+    const weekJudgeDates = {
+      week1: getWeekJudgeDate(monthValue, "week1", weeks.week1, weekStartDates, weekEndDates),
+      week2: getWeekJudgeDate(monthValue, "week2", weeks.week2, weekStartDates, weekEndDates),
+      week3: getWeekJudgeDate(monthValue, "week3", weeks.week3, weekStartDates, weekEndDates),
+      week4: getWeekJudgeDate(monthValue, "week4", weeks.week4, weekStartDates, weekEndDates),
+      week5: getWeekJudgeDate(monthValue, "week5", weeks.week5, weekStartDates, weekEndDates)
+    };
+
+    const monthPlan = getLatestPlanForRecipientAtDate(name, monthEndDate, grade, longTermNumber);
+    const hasSimilarNamedPlan = carePlanLibraryCache.some(p => {
+      const pn = normalizeText(getRecipientName(p));
+      return pn !== cleanName && pn.replace(/[a-zA-ZＡ-Ｚａ-ｚ]$/, "") === cleanName;
+    });
+    const unresolvedIdentity = !monthPlan && hasSimilarNamedPlan && !longTermNumber;
+
+    const weekBenefit = {
+      week1: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week1, grade, longTermNumber), name, weekJudgeDates.week1, grade, monthPlan, longTermNumber),
+      week2: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week2, grade, longTermNumber), name, weekJudgeDates.week2, grade, monthPlan, longTermNumber),
+      week3: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week3, grade, longTermNumber), name, weekJudgeDates.week3, grade, monthPlan, longTermNumber),
+      week4: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week4, grade, longTermNumber), name, weekJudgeDates.week4, grade, monthPlan, longTermNumber),
+      week5: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week5, grade, longTermNumber), name, weekJudgeDates.week5, grade, monthPlan, longTermNumber)
+    };
+
+    const weekRequired = {
+      week1: weekBenefit.week1.required,
+      week2: weekBenefit.week2.required,
+      week3: weekBenefit.week3.required,
+      week4: weekBenefit.week4.required,
+      week5: weekBenefit.week5.required
+    };
+
+    const weekResults = [
+      getWeekResult(weekRequired.week1, weeks.week1),
+      getWeekResult(weekRequired.week2, weeks.week2),
+      getWeekResult(weekRequired.week3, weeks.week3),
+      getWeekResult(weekRequired.week4, weeks.week4),
+      getWeekResult(weekRequired.week5, weeks.week5)
+    ];
+
+    const monthBathBenefit = getBathBenefitAtDate(monthPlan, name, monthEndDate, grade, longTermNumber);
+    const displayCounselDate = Object.values(weekJudgeDates)
+      .filter(Boolean)
+      .sort()
+      .slice(-1)[0] || monthEndDate;
+
+    const duplicateNameNeedsCheck = identityAmbiguous ||
+      ((bathNameCount[cleanName] || 0) > 1 && !bath) ||
+      ((attendanceNameCount[cleanName] || 0) > 1 && !matchedAttendance);
+    const overallResult = (duplicateNameNeedsCheck || unresolvedIdentity) ? "확인 필요" : buildOverallResult(weekResults);
+
+    results.push({
+      name,
+      gender: person.gender || "",
+      grade,
+      longTermNumber,
+      planDate: monthPlan ? getPlanWrittenDate(monthPlan) : "-",
+      counselText: getCounselTextForMonth(name, displayCounselDate),
+      requiredText: monthBathBenefit.required ? "있음" : "없음",
+      bathBenefit: monthBathBenefit,
+      weekBenefit,
+      weekJudgeDates,
+      weekRequired,
+      weeks,
+      duplicateNameNeedsCheck: duplicateNameNeedsCheck || unresolvedIdentity,
+      overallResult
+    });
+  });
+
+  return results.sort((a, b) => {
+    const nameCompare = a.name.localeCompare(b.name, "ko");
+    if (nameCompare !== 0) return nameCompare;
+    return normalizeGrade(a.grade).localeCompare(normalizeGrade(b.grade), "ko");
+  });
 }
 
-function applyTherapyReadableStyle() {
-  if (document.getElementById("therapyReadableStyle")) return;
+let bathLatestResults = [];
+let bathResultFilterMode = "all";
 
-  const style = document.createElement("style");
-  style.id = "therapyReadableStyle";
-  style.textContent = `
-    .therapy-check-table th, .therapy-check-table td,
-    .info-table th, .info-table td {
-      vertical-align: top;
-      white-space: normal;
-      border: 1px solid #e2e8f0 !important;
-      padding: 10px 6px;
-      word-break: keep-all;
-      line-height: 1.42;
-      font-size: 12px;
-    }
-
-    .therapy-check-table th,
-    .info-table th {
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    .therapy-check-table th:nth-child(1), .therapy-check-table td:nth-child(1),
-    .info-table th:nth-child(1), .info-table td:nth-child(1) { min-width: 76px; width: 76px; text-align: center; }
-
-    .therapy-check-table th:nth-child(2), .therapy-check-table td:nth-child(2),
-    .info-table th:nth-child(2), .info-table td:nth-child(2) { min-width: 98px; width: 98px; text-align: center; }
-
-    .therapy-check-table th:nth-child(3), .therapy-check-table td:nth-child(3),
-    .info-table th:nth-child(3), .info-table td:nth-child(3) { min-width: 150px; width: 150px; text-align: left; }
-
-    .therapy-check-table th:nth-child(4), .therapy-check-table td:nth-child(4),
-    .info-table th:nth-child(4), .info-table td:nth-child(4) { min-width: 74px; width: 74px; text-align: center; vertical-align: middle; }
-
-    .therapy-check-table th:nth-child(n+5):nth-child(-n+9), .therapy-check-table td:nth-child(n+5):nth-child(-n+9),
-    .info-table th:nth-child(n+5):nth-child(-n+9), .info-table td:nth-child(n+5):nth-child(-n+9) {
-      min-width: 168px;
-      width: 168px;
-      text-align: center;
-    }
-
-    .therapy-check-table th:nth-child(10), .therapy-check-table td:nth-child(10),
-    .info-table th:nth-child(10), .info-table td:nth-child(10) {
-      min-width: 82px;
-      width: 82px;
-      text-align: center;
-      vertical-align: middle;
-    }
-
-    .therapy-check-table tr:nth-child(even) td,
-    .info-table tr:nth-child(even) td { background-color: #ffffff !important; }
-
-    .therapy-target-ok { color: #2563eb; font-weight: 800; }
-    .therapy-target-no { color: #64748b; font-weight: 700; }
-    .status-ok { color: #2563eb; font-weight: 800; }
-    .status-absent { color: #64748b; font-weight: 700; }
-    .status-danger { color: #e11d48; font-weight: 900; }
-  `;
-
-  document.head.appendChild(style);
-}
-
-function ensureTherapyResultFilterButtons() {
-  if (!therapyResultBody) return;
-
-  const table = therapyResultBody.closest("table");
-  if (!table || document.getElementById("therapyResultFilterBar")) return;
+function ensureBathResultFilterButtons() {
+  if (!bathResultBody) return;
+  const table = bathResultBody.closest("table");
+  if (!table || document.getElementById("bathResultFilterBar")) return;
 
   const bar = document.createElement("div");
-  bar.id = "therapyResultFilterBar";
+  bar.id = "bathResultFilterBar";
   bar.style.cssText = "display:flex;justify-content:flex-end;gap:8px;margin:0 0 10px 0;";
-
   bar.innerHTML = `
-    <button type="button" id="therapyFilterAllBtn"
-      style="border:1px solid #1e40af;background:#1e40af;color:#fff;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">
-      전체
-    </button>
-    <button type="button" id="therapyFilterCheckBtn"
-      style="border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">
-      확인 필요만
-    </button>
+    <button type="button" id="bathFilterAllBtn" style="border:1px solid #1e40af;background:#1e40af;color:#fff;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">전체</button>
+    <button type="button" id="bathFilterCheckBtn" style="border:1px solid #fecaca;background:#fff;color:#dc2626;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;">확인 필요만</button>
   `;
-
   table.parentNode.insertBefore(bar, table);
 
-  document.getElementById("therapyFilterAllBtn").addEventListener("click", () => {
-    therapyResultFilterMode = "all";
-    updateTherapyFilterButtonStyle();
-    renderResults(checkMonthInput.value, therapyLatestResults, true);
+  document.getElementById("bathFilterAllBtn").addEventListener("click", () => {
+    bathResultFilterMode = "all";
+    updateBathFilterButtonStyle();
+    renderResults(bathLatestResults, true);
   });
 
-  document.getElementById("therapyFilterCheckBtn").addEventListener("click", () => {
-    therapyResultFilterMode = "check";
-    updateTherapyFilterButtonStyle();
-    renderResults(checkMonthInput.value, therapyLatestResults, true);
+  document.getElementById("bathFilterCheckBtn").addEventListener("click", () => {
+    bathResultFilterMode = "check";
+    updateBathFilterButtonStyle();
+    renderResults(bathLatestResults, true);
   });
 }
 
-function updateTherapyFilterButtonStyle() {
-  const allBtn = document.getElementById("therapyFilterAllBtn");
-  const checkBtn = document.getElementById("therapyFilterCheckBtn");
+function updateBathFilterButtonStyle() {
+  const allBtn = document.getElementById("bathFilterAllBtn");
+  const checkBtn = document.getElementById("bathFilterCheckBtn");
   if (!allBtn || !checkBtn) return;
 
-  const allActive = therapyResultFilterMode === "all";
-
+  const allActive = bathResultFilterMode === "all";
   allBtn.style.background = allActive ? "#1e40af" : "#fff";
   allBtn.style.color = allActive ? "#fff" : "#1e40af";
-
   checkBtn.style.background = allActive ? "#fff" : "#dc2626";
   checkBtn.style.color = allActive ? "#dc2626" : "#fff";
 }
 
-function renderResults(monthValue, results, fromFilter = false) {
-  applyTherapyReadableStyle();
-
-  if (!fromFilter) {
-    therapyLatestResults = Array.isArray(results) ? results : [];
-  }
-
-  ensureTherapyResultFilterButtons();
-  updateTherapyFilterButtonStyle();
+function renderResults(results, fromFilter = false) {
+  if (!fromFilter) bathLatestResults = Array.isArray(results) ? results : [];
+  ensureBathResultFilterButtons();
+  updateBathFilterButtonStyle();
 
   const sourceResults = Array.isArray(results) ? results : [];
-  const visibleResults = therapyResultFilterMode === "check"
+  const visibleResults = bathResultFilterMode === "check"
     ? sourceResults.filter((item) => item.overallResult === "확인 필요")
     : sourceResults;
 
-  therapyResultBody.innerHTML = "";
-
+  bathResultBody.innerHTML = "";
   if (visibleResults.length === 0) {
-    const emptyText = therapyResultFilterMode === "check"
-      ? "확인 필요한 대상자가 없습니다."
-      : "확인할 데이터가 없습니다.";
-
-    therapyResultBody.innerHTML = `<tr><td colspan="10">${emptyText}</td></tr>`;
+    const emptyText = bathResultFilterMode === "check" ? "확인 필요한 대상자가 없습니다." : "확인할 데이터가 없습니다.";
+    bathResultBody.innerHTML = `<tr class="empty-row"><td colspan="10">${emptyText}</td></tr>`;
     return;
   }
-
   visibleResults.forEach((item) => {
     const row = document.createElement("tr");
-    const overallClass = item.overallResult === "정상" ? "status-ok" : "status-danger";
-
-    const errorCellBg = item.overallResult !== "정상"
-      ? "background-color: #fff5f5 !important;"
-      : "background-color: #ffffff !important;";
-
-    const getCellBgColor = (result) => {
-      if (result === "결석") return "background-color: #f8fafc !important;";
-      if (result !== "정상") return "background-color: #fff5f5 !important;";
-      return "background-color: #ffffff !important;";
-    };
+    
+    if (item.overallResult === "확인 필요") {
+      row.style.backgroundColor = "#fff5f5"; 
+    } else {
+      row.style.backgroundColor = "#ffffff";
+    }
 
     row.innerHTML = `
-      <td style="font-weight:600; text-align:center; ${errorCellBg}">${item.name}</td>
-      <td style="text-align:center; ${errorCellBg}">${item.planDate || "-"}</td>
-      <td style="font-size:12px; line-height:1.4; ${errorCellBg}">${item.counselText}</td>
-      <td style="text-align:center; vertical-align:middle; ${errorCellBg}">
-        ${buildTherapySourceHtml(
-          Object.values(item.weekRequired || {}).some(Boolean),
-          item.therapyRule?.source
-        )}
+      <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">
+        <div>${item.name}</div>
+        ${item.grade ? `<div style="font-size:11px; color:#64748b; margin-top:3px;">${item.grade}</div>` : ""}
+        ${item.duplicateNameNeedsCheck ? `<div style="font-size:11px; color:#e11d48; margin-top:3px;">수급자 식별 확인</div>` : ""}
       </td>
-
-      <td style="${getCellBgColor(item.weekResultsMap.week1)}">${buildWeekCell(item.weekResultsMap.week1, item.weeks.week1)}</td>
-      <td style="${getCellBgColor(item.weekResultsMap.week2)}">${buildWeekCell(item.weekResultsMap.week2, item.weeks.week2)}</td>
-      <td style="${getCellBgColor(item.weekResultsMap.week3)}">${buildWeekCell(item.weekResultsMap.week3, item.weeks.week3)}</td>
-      <td style="${getCellBgColor(item.weekResultsMap.week4)}">${buildWeekCell(item.weekResultsMap.week4, item.weeks.week4)}</td>
-      <td style="${getCellBgColor(item.weekResultsMap.week5)}">${buildWeekCell(item.weekResultsMap.week5, item.weeks.week5)}</td>
-
-      <td class="${overallClass}" style="text-align:center; font-weight:800; vertical-align:middle; ${errorCellBg}">
-        ${item.overallResult}
-      </td>
+      <td style="vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
+      <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0;">${item.counselText || "없음"}</td>
+      <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${buildBenefitSourceHtml(item.bathBenefit)}</td>
+      ${buildWeekTdHtml(item.weekRequired.week1, item.weeks.week1)}
+      ${buildWeekTdHtml(item.weekRequired.week2, item.weeks.week2)}
+      ${buildWeekTdHtml(item.weekRequired.week3, item.weeks.week3)}
+      ${buildWeekTdHtml(item.weekRequired.week4, item.weeks.week4)}
+      ${buildWeekTdHtml(item.weekRequired.week5, item.weeks.week5)}
+      <td style="color:${item.overallResult === "정상" ? "#2563eb" : "#e11d48"}; font-weight:800; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.overallResult}</td>
     `;
-
-    therapyResultBody.appendChild(row);
+    bathResultBody.appendChild(row);
   });
 }
 
-checkTherapyBtn.addEventListener("click", async () => {
+checkBathBtn.addEventListener("click", async () => {
   const checkMonth = checkMonthInput.value;
-  const file = therapyFileInput.files[0];
+  const file = bathFileInput.files[0];
 
   if (!checkMonth) {
     alert("확인 월을 선택해주세요.");
     return;
   }
-
   if (!file) {
-    alert("물리치료 기록 파일을 업로드해주세요.");
+    alert("목욕 리포트 파일을 업로드해주세요.");
     return;
   }
-
   await loadCarePlanLibraryFromFirestore(checkMonth);
   await loadCounselLibraryFromFirestore(checkMonth);
   await loadAttendanceMonthFromFirestore(checkMonth);
-  applyTherapyReadableStyle();
-
-  const attendanceRows = getAttendanceMonth(checkMonth);
-  if (attendanceRows.length === 0) {
-    alert("출석관리 저장 내역이 없습니다. 먼저 출석관리에서 해당 월 출석을 등록해주세요.");
-  }
 
   const reader = new FileReader();
-
   reader.onload = (event) => {
     const data = new Uint8Array(event.target.result);
-    const workbook = XLSX.read(data, { type: "array", cellDates: true });
-    const therapyRows = parseTherapyReport(workbook, checkMonth);
-    const results = buildResults(checkMonth, therapyRows);
-    renderResults(checkMonth, results);
-  };
+    const workbook = XLSX.read(data, { type: "array" });
 
+    const bathRows = parseBathReport(workbook);
+    const results = buildResults(checkMonth, bathRows);
+    renderResults(results);
+    updateWeekHeaders(checkMonth);
+  };
   reader.readAsArrayBuffer(file);
 });
 
-clearTherapyBtn.addEventListener("click", () => {
+clearBathBtn.addEventListener("click", () => {
   checkMonthInput.value = "";
-  therapyFileInput.value = "";
-  therapyLatestResults = [];
-  therapyResultFilterMode = "all";
-  updateTherapyFilterButtonStyle();
-  therapyResultBody.innerHTML = `<tr><td colspan="10">확인 월과 물리치료 기록 파일을 선택해주세요.</td></tr>`;
+  bathFileInput.value = "";
+  bathLatestResults = [];
+  bathResultFilterMode = "all";
+  updateBathFilterButtonStyle();
+  bathResultBody.innerHTML = `<tr class="empty-row"><td colspan="10">확인 월과 목욕 리포트 파일을 선택해주세요.</td></tr>`;
 });
+
+localStorage.removeItem("counselLibrary");
+localStorage.removeItem("carePlanLibrary");
