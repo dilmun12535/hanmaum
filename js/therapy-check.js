@@ -686,8 +686,34 @@ function updateTherapyFilterButtonStyle() {
   checkBtn.style.color = allActive ? "#dc2626" : "#fff";
 }
 
+
+// 선택한 확인 월을 기준으로 주차별 날짜를 표 머리글에 표시합니다.
+function updateTherapyWeekHeaders(monthValue) {
+  if (!monthValue || !therapyResultBody) return;
+  const table = therapyResultBody.closest("table");
+  if (!table) return;
+  const [year, month] = monthValue.split("-").map(Number);
+  const first = new Date(year, month - 1, 1);
+  const monday = new Date(year, month - 1, 1 - ((first.getDay() + 6) % 7));
+  const last = new Date(year, month, 0);
+  const fmt = d => `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+  const headerCells = Array.from(table.querySelectorAll("thead th, thead td"));
+  for (let i = 1; i <= 5; i++) {
+    const start = new Date(monday);
+    start.setDate(monday.getDate() + (i - 1) * 7);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 5); // 월~토 기준
+    const clippedStart = new Date(Math.max(start.getTime(), first.getTime()));
+    const clippedEnd = new Date(Math.min(end.getTime(), last.getTime()));
+    const cell = headerCells.find(el => new RegExp(`^${i}주차`).test(el.textContent.trim().replace(/\s/g, "")));
+    if (!cell) continue;
+    cell.innerHTML = `<div style="font-weight:800">${i}주차</div><div style="font-size:11px;color:#64748b;font-weight:600;margin-top:4px;white-space:nowrap">${clippedStart <= clippedEnd ? `${fmt(clippedStart)} ~ ${fmt(clippedEnd)}` : "해당 월 없음"}</div>`;
+  }
+}
+
 function renderResults(monthValue, results, fromFilter = false) {
   applyTherapyReadableStyle();
+  updateTherapyWeekHeaders(monthValue);
 
   if (!fromFilter) {
     therapyLatestResults = Array.isArray(results) ? results : [];
