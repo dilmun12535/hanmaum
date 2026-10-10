@@ -399,42 +399,29 @@ function getLatestPlansByRecipient(checkDate) {
 }
 
 function getLatestPlanForRecipientAtDate(name, targetDate, grade = "", longTermNumber = "") {
-  const targetDateText = normalizeDateText(targetDate);
+  const date = normalizeDateText(targetDate);
   const targetName = normalizeText(name);
-  const targetGrade = normalizeGrade(grade);
-  const targetLongTermNumber = normalizeText(longTermNumber);
-
-  const validPlans = carePlanLibraryCache
-    .filter((plan) => {
-      const writtenDate = getPlanWrittenDate(plan);
-      if (!writtenDate || writtenDate > targetDateText) return false;
-
-      const planName = normalizeText(getRecipientName(plan));
-      const planLongTermNumber = getLongTermNumberFromItem(plan);
-
-      // 출석관리에서 인정번호를 가져올 수 있으면 인정번호로 먼저 정확히 구분합니다.
-      if (targetLongTermNumber && planLongTermNumber) {
-        return planLongTermNumber === targetLongTermNumber;
-      }
-
-      return planName === targetName;
-    })
-    .sort((a, b) => getPlanWrittenDate(b).localeCompare(getPlanWrittenDate(a)));
-
-  if (targetLongTermNumber) {
-    const numberMatched = validPlans.find((plan) => getLongTermNumberFromItem(plan) === targetLongTermNumber);
-    if (numberMatched) return numberMatched;
+  const number = normalizeText(longTermNumber);
+  if (!targetName && !number) return null;
+  const candidates = carePlanLibraryCache.filter(plan => {
+    const written = getPlanWrittenDate(plan);
+    if (!written || written > date) return false;
+    const planName = normalizeText(getRecipientName(plan));
+    const planNumber = getLongTermNumberFromItem(plan);
+    // 번호가 양쪽에 있으면 번호가 일치해야 하며, 서로 다른 이름은 섞지 않습니다.
+    if (number && planNumber) return number === planNumber && (!targetName || !planName || targetName === planName);
+    // 이름으로 대체할 때도 a/b 접미사를 제거하지 않습니다.
+    return !!targetName && planName === targetName;
+  }).sort((a,b) => getPlanWrittenDate(b).localeCompare(getPlanWrittenDate(a)));
+  if (number) {
+    const exact = candidates.find(p => getLongTermNumberFromItem(p) === number);
+    if (exact) return exact;
+    // 번호가 있는 대상자를 다른 번호의 계획서로 연결하지 않습니다.
+    return candidates.find(p => !getLongTermNumberFromItem(p)) || null;
   }
-
-  if (targetGrade) {
-    const gradeMatched = validPlans.find((plan) => {
-      const planGrade = getPlanGrade(plan);
-      return !planGrade || planGrade === targetGrade;
-    });
-    if (gradeMatched) return gradeMatched;
-  }
-
-  return validPlans[0] || null;
+  // 같은 이름에 서로 다른 인정번호가 있다면 임의로 선택하지 않습니다.
+  if (new Set(candidates.map(getLongTermNumberFromItem).filter(Boolean)).size > 1) return null;
+  return candidates[0] || null;
 }
 
 function hasBathPlan(plan) {
@@ -1107,6 +1094,11 @@ function buildResults(monthValue, bathRows) {
     };
 
     const monthPlan = getLatestPlanForRecipientAtDate(name, monthEndDate, grade, longTermNumber);
+    const hasSimilarNamedPlan = carePlanLibraryCache.some(p => {
+      const pn = normalizeText(getRecipientName(p));
+      return pn !== cleanName && pn.replace(/[a-zA-ZＡ-Ｚａ-ｚ]$/, "") === cleanName;
+    });
+    const unresolvedIdentity = !monthPlan && hasSimilarNamedPlan;
 
     const weekBenefit = {
       week1: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week1, grade, longTermNumber), name, weekJudgeDates.week1, grade, monthPlan, longTermNumber),
@@ -1139,7 +1131,7 @@ function buildResults(monthValue, bathRows) {
       .slice(-1)[0] || monthEndDate;
 
     const duplicateNameNeedsCheck = !grade && ((bathNameCount[cleanName] || 0) > 1 || (attendanceNameCount[cleanName] || 0) > 1);
-    const overallResult = duplicateNameNeedsCheck ? "확인 필요" : buildOverallResult(weekResults);
+    const overallResult = (duplicateNameNeedsCheck || unresolvedIdentity) ? "확인 필요" : buildOverallResult(weekResults);
 
     results.push({
       name,
@@ -1154,7 +1146,7 @@ function buildResults(monthValue, bathRows) {
       weekJudgeDates,
       weekRequired,
       weeks,
-      duplicateNameNeedsCheck,
+      duplicateNameNeedsCheck: duplicateNameNeedsCheck || unresolvedIdentity,
       overallResult
     });
   });
@@ -1237,7 +1229,7 @@ function renderResults(results, fromFilter = false) {
       <td style="font-weight: 600; color: #1e293b; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">
         <div>${item.name}</div>
         ${item.grade ? `<div style="font-size:11px; color:#64748b; margin-top:3px;">${item.grade}</div>` : ""}
-        ${item.duplicateNameNeedsCheck ? `<div style="font-size:11px; color:#e11d48; margin-top:3px;">동명이인 확인</div>` : ""}
+        ${item.duplicateNameNeedsCheck ? `<div style="font-size:11px; color:#e11d48; margin-top:3px;">수급자 식별 확인</div>` : ""}
       </td>
       <td style="vertical-align: middle; border: 1px solid #e2e8f0; text-align: center;">${item.planDate ? String(item.planDate).substring(0, 10) : "-"}</td>
       <td style="text-align: left; line-height: 1.4; padding: 8px; vertical-align: middle; border: 1px solid #e2e8f0;">${item.counselText || "없음"}</td>
