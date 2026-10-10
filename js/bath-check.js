@@ -1016,11 +1016,22 @@ function buildResults(monthValue, bathRows) {
     attendanceNameCount[cleanName] = (attendanceNameCount[cleanName] || 0) + 1;
   });
 
+  // 같은 인정번호로 중복 저장된 출석 행은 동명이인으로 세지 않습니다.
+  const uniqueAttendance = (rows) => {
+    const seen = new Set();
+    return rows.filter(a => {
+      const no = getLongTermNumberFromItem(a);
+      const key = no ? `NO:${no}` : `NAME:${normalizeText(a.name)}|${normalizeGrade(a.grade)}|${normalizeText(a.gender)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
   const personMap = {};
 
   // 1) 출석관리 명단을 우선 기준으로 사용합니다.
   // 출석관리에는 등급이 있으므로 동명이인 구분용 기준이 됩니다.
-  attendanceRows.forEach((attendance) => {
+  uniqueAttendance(attendanceRows).forEach((attendance) => {
     const name = String(attendance.name || "").trim();
     if (!name) return;
 
@@ -1073,9 +1084,9 @@ function buildResults(monthValue, bathRows) {
     const attendanceCandidates = (attendanceByName.get(cleanName) || []).filter(a =>
       (!longTermNumber || !getLongTermNumberFromItem(a) || getLongTermNumberFromItem(a) === longTermNumber) &&
       (!grade || !a.grade || normalizeGrade(a.grade) === grade));
-    const matchedAttendance = attendanceCandidates.length === 1 ? attendanceCandidates[0] : null;
-    const identityAmbiguous = attendanceCandidates.length > 1 ||
-      ((attendanceNameCount[cleanName] || 0) > 1 && !longTermNumber);
+    const uniqueCandidates = uniqueAttendance(attendanceCandidates);
+    const matchedAttendance = uniqueCandidates.length === 1 ? uniqueCandidates[0] : null;
+    const identityAmbiguous = uniqueCandidates.length > 1;
 
     // 목욕 리포트에 등급이 있으면 이름+등급으로 매칭합니다.
     if (grade) {
@@ -1116,7 +1127,8 @@ function buildResults(monthValue, bathRows) {
       const pn = normalizeText(getRecipientName(p));
       return pn !== cleanName && pn.replace(/[a-zA-ZＡ-Ｚａ-ｚ]$/, "") === cleanName;
     });
-    const unresolvedIdentity = !monthPlan && hasSimilarNamedPlan && !longTermNumber;
+    // 김무연과 김무연a/b는 별도 수급자입니다. 유사 이름만으로 오류를 만들지 않습니다.
+    const unresolvedIdentity = false;
 
     const weekBenefit = {
       week1: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week1, grade, longTermNumber), name, weekJudgeDates.week1, grade, monthPlan, longTermNumber),
@@ -1148,9 +1160,13 @@ function buildResults(monthValue, bathRows) {
       .sort()
       .slice(-1)[0] || monthEndDate;
 
+    // 실제 서로 다른 대상자가 구분되지 않을 때만 식별 확인.
+    // 동일인 중복 출석 저장이나 비슷한 이름의 계획서는 판정에 영향을 주지 않습니다.
+    const distinctNumbers = new Set((attendanceByName.get(cleanName) || [])
+      .map(getLongTermNumberFromItem).filter(Boolean));
     const duplicateNameNeedsCheck = identityAmbiguous ||
-      ((bathNameCount[cleanName] || 0) > 1 && !bath) ||
-      ((attendanceNameCount[cleanName] || 0) > 1 && !matchedAttendance);
+      (distinctNumbers.size > 1 && !longTermNumber) ||
+      ((bathNameCount[cleanName] || 0) > 1 && !bath && distinctNumbers.size > 1);
     const overallResult = (duplicateNameNeedsCheck || unresolvedIdentity) ? "확인 필요" : buildOverallResult(weekResults);
 
     results.push({
