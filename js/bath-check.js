@@ -974,6 +974,7 @@ function buildResults(monthValue, bathRows) {
   };
 
   const bathMapByPersonKey = {};
+  const bathRowsByName = new Map();
   const bathMapByNameGrade = {};
   const bathNameCount = {};
 
@@ -985,6 +986,9 @@ function buildResults(monthValue, bathRows) {
     const nameGradeKey = makeNameGradeKey(row.name, row.grade);
 
     bathMapByPersonKey[personKey] = row;
+    const existing = bathRowsByName.get(normalizeText(name)) || [];
+    existing.push(row);
+    bathRowsByName.set(normalizeText(name), existing);
     if (normalizeGrade(row.grade)) {
       bathMapByNameGrade[nameGradeKey] = row;
     }
@@ -994,6 +998,7 @@ function buildResults(monthValue, bathRows) {
   });
 
   const attendanceMapByNameGrade = {};
+  const attendanceByName = new Map();
   const attendanceNameCount = {};
 
   attendanceRows.forEach((attendance) => {
@@ -1002,7 +1007,10 @@ function buildResults(monthValue, bathRows) {
 
     const grade = normalizeGrade(attendance.grade);
     const nameGradeKey = makeNameGradeKey(name, grade);
-    attendanceMapByNameGrade[nameGradeKey] = attendance;
+    const existing = attendanceByName.get(normalizeText(name)) || [];
+    existing.push(attendance);
+    attendanceByName.set(normalizeText(name), existing);
+    if (!attendanceMapByNameGrade[nameGradeKey]) attendanceMapByNameGrade[nameGradeKey] = attendance;
 
     const cleanName = normalizeText(name);
     attendanceNameCount[cleanName] = (attendanceNameCount[cleanName] || 0) + 1;
@@ -1018,7 +1026,7 @@ function buildResults(monthValue, bathRows) {
 
     const grade = normalizeGrade(attendance.grade);
     const longTermNumber = getLongTermNumberFromItem(attendance);
-    const key = grade ? makeNameGradeKey(name, grade) : makePlanPersonKey(name, longTermNumber || "attendance");
+    const key = longTermNumber ? makePlanPersonKey(name, longTermNumber) : `${makeNameGradeKey(name, grade)}__출석_${Object.keys(personMap).length}`;
 
     personMap[key] = {
       key,
@@ -1035,9 +1043,12 @@ function buildResults(monthValue, bathRows) {
     if (!name) return;
 
     const grade = normalizeGrade(row.grade);
-    const matchedAttendance = grade ? attendanceMapByNameGrade[makeNameGradeKey(name, grade)] : null;
+    const matches = (attendanceByName.get(normalizeText(name)) || []).filter(a => !grade || !a.grade || normalizeGrade(a.grade) === grade);
+    const matchedAttendance = matches.length === 1 ? matches[0] : null;
     const longTermNumber = matchedAttendance ? getLongTermNumberFromItem(matchedAttendance) : "";
-    const key = grade ? makeNameGradeKey(name, grade) : (row.personKey || makePersonKey(row.name, row.gender, row.grade));
+    const key = matchedAttendance && getLongTermNumberFromItem(matchedAttendance)
+      ? makePlanPersonKey(name, getLongTermNumberFromItem(matchedAttendance))
+      : `${makeNameGradeKey(name, grade)}__리포트_${bathRows.indexOf(row)}`;
 
     if (!personMap[key]) {
       personMap[key] = {
@@ -1059,16 +1070,23 @@ function buildResults(monthValue, bathRows) {
     const cleanName = normalizeText(name);
 
     let bath = null;
-    const matchedAttendance = grade ? attendanceMapByNameGrade[makeNameGradeKey(name, grade)] || null : null;
+    const attendanceCandidates = (attendanceByName.get(cleanName) || []).filter(a =>
+      (!longTermNumber || !getLongTermNumberFromItem(a) || getLongTermNumberFromItem(a) === longTermNumber) &&
+      (!grade || !a.grade || normalizeGrade(a.grade) === grade));
+    const matchedAttendance = attendanceCandidates.length === 1 ? attendanceCandidates[0] : null;
+    const identityAmbiguous = attendanceCandidates.length > 1 ||
+      ((attendanceNameCount[cleanName] || 0) > 1 && !longTermNumber);
 
     // 목욕 리포트에 등급이 있으면 이름+등급으로 매칭합니다.
     if (grade) {
-      bath = bathMapByNameGrade[makeNameGradeKey(name, grade)] || null;
+      const reportCandidates = (bathRowsByName.get(cleanName) || []).filter(r => normalizeGrade(r.grade) === grade);
+      if (reportCandidates.length === 1 && !identityAmbiguous) bath = reportCandidates[0];
     }
 
     // 등급이 없는 경우에만 기존 personKey로 찾습니다.
     if (!bath) {
-      bath = bathMapByPersonKey[person.key] || null;
+      const reportCandidates = bathRowsByName.get(cleanName) || [];
+      if (reportCandidates.length === 1 && !identityAmbiguous) bath = reportCandidates[0];
     }
 
     // 동명이인이 아닌 경우에만 이름 단독 매칭을 허용합니다.
@@ -1098,7 +1116,7 @@ function buildResults(monthValue, bathRows) {
       const pn = normalizeText(getRecipientName(p));
       return pn !== cleanName && pn.replace(/[a-zA-ZＡ-Ｚａ-ｚ]$/, "") === cleanName;
     });
-    const unresolvedIdentity = !monthPlan && hasSimilarNamedPlan;
+    const unresolvedIdentity = !monthPlan && hasSimilarNamedPlan && !longTermNumber;
 
     const weekBenefit = {
       week1: getBathBenefitForWeek(getLatestPlanForRecipientAtDate(name, weekJudgeDates.week1, grade, longTermNumber), name, weekJudgeDates.week1, grade, monthPlan, longTermNumber),
@@ -1130,7 +1148,9 @@ function buildResults(monthValue, bathRows) {
       .sort()
       .slice(-1)[0] || monthEndDate;
 
-    const duplicateNameNeedsCheck = !grade && ((bathNameCount[cleanName] || 0) > 1 || (attendanceNameCount[cleanName] || 0) > 1);
+    const duplicateNameNeedsCheck = identityAmbiguous ||
+      ((bathNameCount[cleanName] || 0) > 1 && !bath) ||
+      ((attendanceNameCount[cleanName] || 0) > 1 && !matchedAttendance);
     const overallResult = (duplicateNameNeedsCheck || unresolvedIdentity) ? "확인 필요" : buildOverallResult(weekResults);
 
     results.push({
