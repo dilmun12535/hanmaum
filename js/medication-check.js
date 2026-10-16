@@ -449,84 +449,73 @@ function getMedicationCountFromPlan(plan) {
   return Math.min(result, 3);
 }
 function getCounselDate(item) {
-  return normalizeDateText(item.reflectionDate || item.reflection || item.consultDate || item.date || item.counselDate || "");
+  if (!item) return "";
+  return normalizeDateText(
+    item.reflectionDate || item.reflection || item.applyDate ||
+    item.changeDate || item.effectiveDate || item.startDate ||
+    item["반영일"] || item["변경일"] ||
+    item.consultDate || item.counselDate || item.date ||
+    item.writtenDate || item.writeDate || item["상담일"] || ""
+  );
+}
+
+function getMedicationCounselActionText(counsel) {
+  return normalizeText([
+    counsel?.changeType, counsel?.change, counsel?.action,
+    counsel?.careContent, counsel?.content, counsel?.counselContent,
+    counsel?.reason, counsel?.note, counsel?.remark,
+    counsel?.["변경구분"], counsel?.["내용"], counsel?.["사유"]
+  ].filter(Boolean).join(" "));
 }
 
 function isRemoveCounsel(counsel) {
   if (!counsel) return false;
-  const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-  return text.includes("제외") || text.includes("중단") || text.includes("미제공") || text.includes("삭제") || text.includes("하지않");
+  const text = getMedicationCounselActionText(counsel);
+  return /제외|중단|미제공|삭제|하지않|제공안함/.test(text);
 }
 
 function getMedicationCountFromCounselText(text, fallbackCount) {
   const cleanText = normalizeText(text);
-
-  if (cleanText.includes("제외") || cleanText.includes("중단") || cleanText.includes("미제공") || cleanText.includes("삭제") || cleanText.includes("하지않")) return 0;
-  if (cleanText.match(/3\s*회/) || cleanText.includes("아침점심저녁")) return 3;
-  if (cleanText.match(/2\s*회/) || cleanText.includes("아침저녁") || cleanText.includes("점심저녁")) return 2;
-  if (cleanText.match(/1\s*회/) || cleanText.includes("아침") || cleanText.includes("점심") || cleanText.includes("저녁")) return 1;
-
+  if (/제외|중단|미제공|삭제|하지않|제공안함/.test(cleanText)) return 0;
+  if (/3회|아침점심저녁/.test(cleanText)) return 3;
+  if (/2회|아침저녁|점심저녁/.test(cleanText)) return 2;
+  if (/1회|아침|점심|저녁/.test(cleanText)) return 1;
   return fallbackCount;
 }
 
 function getLatestMedicationCounsel(name, targetDate) {
-  const counselLibrary = counselLibraryCache || [];
   const targetDateText = normalizeDateText(targetDate);
-
-  const counsels = counselLibrary
-    .filter((item) => {
-      const sameName = isSameRecipient(item.recipientName || item.name, name);
-      const counselDate = getCounselDate(item);
-      const text = normalizeText(`${item.category || ""} ${item.changeType || ""} ${item.careContent || ""} ${item.reason || ""}`);
-
-      return sameName && counselDate && counselDate <= targetDateText && (
-        text.includes("복약") ||
-        text.includes("투약") ||
-        text.includes("정확한복약도움") ||
-        text.includes("건강관리")
-      );
+  return (Array.isArray(counselLibraryCache) ? counselLibraryCache : [])
+    .filter(item => {
+      const sameName = isSameRecipient(item.recipientName || item.name || item["수급자명"] || item["성명"], name);
+      const date = getCounselDate(item);
+      const text = normalizeText([
+        item.category, item.type, item.serviceType, item["구분"],
+        getMedicationCounselActionText(item)
+      ].filter(Boolean).join(" "));
+      // 건강관리 전체의 변경이 복약 제외로 오인되지 않도록 복약 관련 기록만 사용
+      return sameName && date && date <= targetDateText && /복약|투약|약복용|약물/.test(text);
     })
-    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)));
-
-  return counsels[0] || null;
+    .sort((a, b) => getCounselDate(b).localeCompare(getCounselDate(a)))[0] || null;
 }
 
 function getMedicationRuleAtDate(plan, name, targetDate) {
-  // 상담일지와 계획서 우선순위도 작성일이 아니라 실제 적용 시작일을 우선 사용합니다.
-  const planDate = plan
-    ? (getPlanStartDate(plan) || normalizeDateText(plan.writtenDate))
-    : "";
+  const target = normalizeDateText(targetDate);
+  const planDate = plan ? (getPlanStartDate(plan) || normalizeDateText(plan.writtenDate)) : "";
   const planCount = getMedicationCountFromPlan(plan);
-
-  const counsel = getLatestMedicationCounsel(name, targetDate);
+  const counsel = getLatestMedicationCounsel(name, target);
   const counselDate = counsel ? getCounselDate(counsel) : "";
 
-  let count = planCount;
-  let source = "계획서";
-
-  // 상담일지는 계획서의 "작성일"이 아니라 실제 적용 시작일 전까지도 유효합니다.
-  // 중요: getLatestPlansByRecipient()는 targetDate에 유효한 계획서만 반환하므로,
-  // 적용 시작 전 날짜에는 plan이 null일 수 있습니다. 이 경우 그 날짜까지의 최신 상담일지를 그대로 적용합니다.
-  // 적용기간 안에서는 상담일지가 계획 적용 시작일보다 뒤에 반영된 경우에만 상담 내용을 우선합니다.
-  const shouldApplyCounsel = Boolean(
-    counsel && (
-      !plan ||
-      !planDate ||
-      (counselDate && counselDate > planDate)
-    )
-  );
-
-  if (shouldApplyCounsel) {
-    const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
-
-    count = getMedicationCountFromCounselText(text, count);
-    source = "상담";
+  // 계획서 적용 전의 상담일지는 이후 계획서가 시행되면 종료됩니다.
+  // 같은 날짜에 반영된 상담일지는 해당 날짜부터 우선합니다.
+  if (counsel && (!plan || !planDate || counselDate >= planDate)) {
+    const actionText = getMedicationCounselActionText(counsel);
+    return {
+      count: isRemoveCounsel(counsel) ? 0 : getMedicationCountFromCounselText(actionText, planCount),
+      source: "상담"
+    };
   }
-
-  return {
-    count,
-    source
-  };
+  return { count: planCount, source: "계획서" };
 }
 
 function getCounselMedicationCount(name, targetDate, fallbackCount) {
@@ -555,7 +544,7 @@ function getMedicationCounselTextForMonth(name, monthEndDate) {
   const counsel = getLatestMedicationCounsel(name, monthEndDate);
 
   if (!counsel) return "없음";
-  return `${getCounselDate(counsel) || "-"}<br>${counsel.changeType || "-"}<br>${counsel.careContent || "-"}`;
+  return `${getCounselDate(counsel) || "-"}<br>${counsel.changeType || counsel.change || counsel.action || counsel["변경구분"] || "-"}<br>${counsel.careContent || counsel.content || counsel.counselContent || counsel["내용"] || "-"}`;
 }
 
 function getAttendanceMonth(monthValue) {
