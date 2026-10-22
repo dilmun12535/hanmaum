@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyozq26f-v_aBKD-hSMRAMhpPuVYCQRDmsXFl9m_AkgeWGBwOeXcE1CPZrfE3FFiEsK/exec";
+// 상담일지 데이터는 Firebase Firestore(counsels)에서 관리합니다.
 
 const counselFileInput = document.getElementById("counselFile");
 const uploadCounselBtn = document.getElementById("uploadCounselBtn");
@@ -376,51 +376,7 @@ deleteSelectedCounselBtn.addEventListener("click", async () => {
   catch(e){ console.error(e); alert("삭제 중 오류가 발생했습니다.\n"+(e.message||e)); }
 });
 
-// 기존 Google Sheets DB 엑셀의 '상담일지' 시트를 Firebase로 1회 이전
-const legacyFile = document.getElementById("legacyCounselDbFile");
-const migrateBtn = document.getElementById("migrateCounselBtn");
-const migrateStatus = document.getElementById("counselMigrationStatus");
-function migrationStatus(t, err=false){ if(migrateStatus){ migrateStatus.textContent=t; migrateStatus.style.color=err?"#b91c1c":"#334155"; } }
-function parseMaybeJson(v){ if(Array.isArray(v)||(v&&typeof v==='object')) return v; if(typeof v!=="string"||!v.trim()) return v; try{return JSON.parse(v)}catch{return v} }
-
-migrateBtn?.addEventListener("click", async () => {
-  const file = legacyFile?.files?.[0];
-  const user = auth.currentUser;
-  if (!file) return alert("기존 Google Sheets DB 엑셀 파일을 선택해주세요.");
-  if (!user) return alert("로그인 후 이용해주세요.");
-  if (!confirm("기존 DB 엑셀의 상담일지 시트를 Firebase로 이전할까요? 기존 Firebase 자료는 삭제하지 않습니다.")) return;
-  migrateBtn.disabled = true;
-  try {
-    migrationStatus("상담일지 시트를 읽는 중...");
-    const wb = XLSX.read(new Uint8Array(await file.arrayBuffer()), {type:"array", cellDates:true});
-    const ws = wb.Sheets["상담일지"];
-    if (!ws) throw new Error("엑셀에서 '상담일지' 시트를 찾지 못했습니다.");
-    const rows = XLSX.utils.sheet_to_json(ws, {defval:"", raw:false});
-    let saved = 0;
-    for (let start=0; start<rows.length; start+=400) {
-      const batch = writeBatch(db);
-      rows.slice(start,start+400).forEach((raw, idx) => {
-        if (!Object.values(raw).some(v => String(v ?? "").trim())) return;
-        const data = {};
-        Object.entries(raw).forEach(([k,v]) => data[k] = ["row","rows","rowsJson"].includes(k) ? parseMaybeJson(v) : v);
-        data.recipientName = data.recipientName || data.name || data["수급자명"] || data["수급자"] || "";
-        data.consultDate = normalizeDateText(data.consultDate || data.reflectionDate || data.counselDate || data.writtenDate || data["상담일자"] || data["반영일"] || "");
-        data.reflectionDate = normalizeDateText(data.reflectionDate || data.consultDate || data["반영일"] || "");
-        data.ownerUid = user.uid; data.migratedFrom = "googleSheets"; data.storage = "firestore";
-        const rowNo = start + idx + 2;
-        // 행번호까지 포함해 같은 사람의 여러 상담일지가 서로 덮어쓰이지 않게 저장
-        const fid = safeDocId(`${data.id || 'counsel'}__${data.longTermNumber || data.certNumber || ''}__${data.consultDate || data.reflectionDate || ''}__row${rowNo}`);
-        batch.set(doc(db, COUNSEL_COLLECTION, fid), firestoreSafe(data), {merge:true}); saved++;
-      });
-      await batch.commit();
-      migrationStatus(`Firebase 이전 중... ${Math.min(start+400,rows.length)}/${rows.length}`);
-    }
-    migrationStatus(`이전 완료 · 상담일지 ${saved}건`);
-    alert(`상담일지 ${saved}건을 Firebase로 이전했습니다.`);
-    await loadCounselLibrary();
-  } catch(e) {
-    console.error(e); migrationStatus("이전 실패: "+(e.message||e), true); alert("상담일지 이전 중 오류가 발생했습니다.\n"+(e.message||e));
-  } finally { migrateBtn.disabled = false; }
-});
+// 기존 Google Sheets → Firebase 1회 이전 기능은 이전 완료에 따라 비활성화했습니다.
+// Firestore의 기존 counsels 문서는 삭제하거나 변경하지 않습니다.
 
 loadCounselLibrary();
