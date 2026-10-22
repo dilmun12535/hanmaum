@@ -60,7 +60,7 @@ function detectCareCategory(text) {
 
   if (clean.includes("목욕") || clean.includes("몸씻기") || clean.includes("옷갈아입기")) return "목욕";
   if (clean.includes("물리치료")) return "물리치료";
-  if (clean.includes("균형잡힌식단관리") || clean.includes("식사")) return "식사";
+  if (clean.includes("균형잡힌식단관리") || clean.includes("식사") || clean.includes("기능상태에맞는음식준비") || clean.includes("음식준비") || clean.includes("다진식") || clean.includes("죽식")) return "식사";
   if (clean.includes("기저귀")) return "기저귀";
   if (clean.includes("정확한복약도움") || clean.includes("복약") || clean.includes("건강관리")) return "간호";
   if (clean.includes("인지활동") || clean.includes("인지지원") || clean.includes("인지")) return "인지활동";
