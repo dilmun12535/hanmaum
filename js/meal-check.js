@@ -621,34 +621,32 @@ function getMealCountFromPlan(plan) {
 
 function hasFoodPrepPlan(plan) {
   if (!plan) return false;
-
-  // 종합의견에서 단어를 언급한 것과 실제 급여 항목을 구분합니다.
-  // 서비스명 셀에는 항목명과 짧은 횟수/시간 표기만 허용합니다.
-  const normalize = (v) => String(v ?? "").replace(/\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
-  const isServiceLabel = (v) => {
-    const t = normalize(v);
-    return /^기능상태에맞는음식준비(?:일[0-9]+회|주[0-9]+회|[0-9]+회|[0-9]+분)?$/.test(t);
-  };
-  const excluded = /opinion|summary|reason|description|remark|종합의견|총평|사유|비고|설명|특이사항/i;
-  const serviceKeys = /^(?:serviceName|serviceType|benefitName|itemName|careName|급여내용|급여명|서비스명|세부급여내용|급여제공내용|항목명)$/i;
-  const seen = new WeakSet();
-  const scan = (value, parentKey = "") => {
+  // 실제 급여목록의 서비스명 필드만 확인합니다. 종합의견·목표·사유는 판정하지 않습니다.
+  const normalize = value => String(value ?? "").replace(/\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
+  const isFoodService = value => /^기능상태에맞는음식준비(?:일[0-9]+회|주[0-9]+회|[0-9]+회|[0-9]+분)?$/.test(normalize(value));
+  const serviceFields = [
+    "필요내용_수기(250)", "필요내용", "급여내용", "급여명", "서비스명",
+    "세부급여내용", "급여제공내용", "항목명", "serviceName", "serviceType",
+    "benefitName", "itemName", "careName"
+  ];
+  const excluded = /opinion|summary|reason|description|remark|종합의견|총평|사유|비고|설명|특이사항|목표/i;
+  const scan = (value, parentKey = "", visited = new WeakSet()) => {
     if (value == null || excluded.test(parentKey)) return false;
-    if (typeof value === "string") return serviceKeys.test(parentKey) && isServiceLabel(value);
-    if (typeof value !== "object" || seen.has(value)) return false;
-    seen.add(value);
-    if (Array.isArray(value)) {
-      // 원본 엑셀의 개별 급여 행: 서비스명이 셀 하나에 독립적으로 기재된 경우만 인정.
-      if (value.every(v => v == null || typeof v !== "object") && value.some(isServiceLabel)) return true;
-      return value.some(v => scan(v, parentKey));
+    if (typeof value === "string") {
+      const parsed = tryParseJson(value);
+      return parsed !== value ? scan(parsed, parentKey, visited) : false;
     }
-    return Object.entries(value).some(([key, child]) => {
-      if (excluded.test(key)) return false;
-      if (typeof child === "string") return serviceKeys.test(key) && isServiceLabel(child);
-      return child && typeof child === "object" && scan(child, key);
-    });
+    if (typeof value !== "object" || visited.has(value)) return false;
+    visited.add(value);
+    if (Array.isArray(value)) {
+      // 구형 엑셀의 셀 배열에서는 독립된 항목명 셀만 인정합니다.
+      if (value.every(cell => cell == null || typeof cell !== "object") && value.some(isFoodService)) return true;
+      return value.some(child => scan(child, parentKey, visited));
+    }
+    if (serviceFields.some(key => Object.prototype.hasOwnProperty.call(value, key) && isFoodService(value[key]))) return true;
+    return Object.entries(value).some(([key, child]) => !excluded.test(key) && child && typeof child === "object" && scan(child, key, visited));
   };
-  return [plan.rows, plan.rowsJson].some(source => scan(tryParseJson(source), "rows"));
+  return [plan.rows, plan.rowsJson].some(source => scan(source, "rows"));
 }
 
 function getCounselDate(counsel) {
