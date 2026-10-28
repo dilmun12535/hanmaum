@@ -797,9 +797,10 @@ function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
       // 제외 판정을 최우선으로 적용합니다.
       if (isRemoveCounsel(counsel)) {
         specialFood = false;
-      } else if (isAddCounsel(counsel) &&
-                 normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""}`).includes("음식준비")) {
-        // 실제 음식 준비 급여 추가를 명시한 상담만 인정합니다.
+      } else if (normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""}`).includes("기능상태에맞는음식준비") ||
+                 (isAddCounsel(counsel) && cleanText.includes("음식준비"))) {
+        // [기타]로 기록된 상담이라도 급여내용에 정확한 항목이 있으면 적용합니다.
+        // 종합의견이나 단순 설명만으로 계획서 급여를 생성하지 않습니다.
         specialFood = true;
       }
       specialFoodSource = "상담";
