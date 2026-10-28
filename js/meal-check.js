@@ -30,7 +30,7 @@ async function loadCarePlanLibraryFromFirestore(monthValue) {
   try {
     // 과거 작성 계획서도 현재 확인 월에 적용되므로 월 필터 없이 전체 조회합니다.
     // 예: 2023년 12월 작성 계획서 → 2024년 5월 식사 확인
-    const allPlans = await window.HanmaumFirestore.carePlans();
+    const allPlans = await window.HanmaumFirestore.allCarePlans();
     const monthPlans = Array.isArray(allPlans) && allPlans.length ? allPlans : await window.HanmaumFirestore.carePlans(monthValue);
     carePlanLibraryCache = Array.isArray(monthPlans) ? monthPlans : [];
     console.info("급여제공계획서 조회 건수:", carePlanLibraryCache.length);
@@ -407,45 +407,36 @@ function parseMealReport(workbook, monthValue) {
   return [...resultMap.values()];
 }
 
-function getLatestPlansByRecipient(name, checkDate, careGrade = "") {
-  const checkDateText = normalizeDateText(checkDate);
-  const library = carePlanLibraryCache || [];
-
-  const candidates = library.filter((plan) => {
-    // 영문 A/B 식별자는 대소문자 무시, 다른 식별자 및 식별자 없는 이름은 구분
-    const planName = plan.recipientName || plan.name || plan.recipient || "";
-    const writtenDate = parseDate(plan.writtenDate || plan.planDate || plan.createdDate || "");
-    return writtenDate && writtenDate <= checkDateText && isSameRecipient(planName, name);
+function getPlanDateFields(plan) {
+  const dates = [plan.writtenDate, plan.planDate, plan.createdDate, plan.writtenAt,
+    plan.applicationStartDate, plan.applyStartDate, plan.startDate,
+    plan.effectiveStartDate, plan.periodStart, plan.serviceStartDate]
+    .map(parseDate).filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x));
+  const starts = [plan.applicationStartDate, plan.applyStartDate, plan.startDate,
+    plan.effectiveStartDate, plan.periodStart, plan.serviceStartDate]
+    .map(parseDate).filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x));
+  const ends = [plan.applicationEndDate, plan.applyEndDate, plan.endDate,
+    plan.effectiveEndDate, plan.periodEnd, plan.serviceEndDate]
+    .map(parseDate).filter(x => /^\d{4}-\d{2}-\d{2}$/.test(x));
+  return {start: starts[0] || dates[0] || '', end: ends[0] || '',
+    written: parseDate(plan.writtenDate || plan.planDate || plan.createdDate || plan.writtenAt || '')};
+}
+function getLatestPlansByRecipient(name, checkDate, careGrade = '') {
+  const date = parseDate(checkDate);
+  const cleanGrade = normalizeCareGrade(careGrade);
+  const candidates = (carePlanLibraryCache || []).filter(plan => {
+    const planName = plan.recipientName || plan.name || plan.recipient || '';
+    if (!isSameRecipient(planName, name)) return false;
+    const d = getPlanDateFields(plan);
+    return d.start && d.start <= date && (!d.end || date <= d.end);
   });
-  if (!candidates.length && library.length) {
-    const sameNames = library.filter(p => isSameRecipient(p.recipientName || p.name || p.recipient, name));
-    console.warn("계획서 매칭 없음:", {name, checkDate: checkDateText, sameNamePlans: sameNames.map(p => ({name:p.recipientName, writtenDate:p.writtenDate})), loadedPlans:library.length});
-  }
-
-  if (candidates.length === 0) return null;
-
-  const cleanCareGrade = normalizeCareGrade(careGrade);
-  let validPlans = candidates;
-
-  // 계획서 안에서 등급이 확실히 확인되는 경우에만 등급으로 좁힙니다.
-  // 계획서에 등급 정보가 없으면 이름 기준 계획서를 그대로 사용합니다.
-  if (cleanCareGrade) {
-    const gradeMatched = candidates.filter((plan) => {
-      const planGrade =
-        plan.__careGrade ||
-        getCareGradeFromAny(plan) ||
-        getCareGradeFromAny(plan.rows) ||
-        getCareGradeFromAny(plan.rowsJson);
-      return planGrade && planGrade === cleanCareGrade;
-    });
-
-    if (gradeMatched.length > 0) {
-      validPlans = gradeMatched;
-    }
-  }
-
-  validPlans.sort((a, b) => normalizeDateText(b.writtenDate).localeCompare(normalizeDateText(a.writtenDate)));
-  return validPlans[0] || null;
+  const gradeMatches = cleanGrade ? candidates.filter(p => {
+    const grade = p.__careGrade || getCareGradeFromAny(p);
+    return grade && grade === cleanGrade;
+  }) : [];
+  const pool = gradeMatches.length ? gradeMatches : candidates;
+  pool.sort((a,b) => getPlanDateFields(b).start.localeCompare(getPlanDateFields(a).start));
+  return pool[0] || null;
 }
 
 function planToFullText(plan) {
@@ -768,7 +759,7 @@ function getMealCountFromCounselText(text, fallback) {
 }
 
 function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
-  const planDate = plan ? normalizeDateText(plan.writtenDate) : "";
+  const planDate = plan ? getPlanDateFields(plan).start : "";
   const planMealCount = getMealCountFromPlan(plan);
   const planSpecialFood = hasFoodPrepPlan(plan);
 
@@ -1008,7 +999,7 @@ function buildResults(monthValue, mealRows) {
     return {
       name,
       careGrade,
-      planDate: plan ? plan.writtenDate : "-",
+      planDate: plan ? (getPlanDateFields(plan).written || getPlanDateFields(plan).start) : "-",
       counselText: getCounselTextForMonth(name, monthEndDate, careGrade),
       attendanceDates: attendance.dates || [],
       leaveTimes: attendance.leaveTimes || {},
