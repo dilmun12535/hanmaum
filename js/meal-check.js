@@ -335,44 +335,71 @@ function parseMealType(value) {
 }
 
 function parseMealReport(workbook, monthValue) {
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const rows = sheetToRowsWithMerges(sheet);
-  const headerIndex = findHeaderIndex(rows);
+  const resultMap = new Map();
+  const normalizeHeader = (value) => normalizeText(value).replace(/[()·]/g, "");
+  let foundHeader = false;
+  let matchedRows = 0;
 
-  if (headerIndex === -1) {
-    alert("식사/화장실 기록에서 표 머리글을 찾지 못했습니다.");
-    return [];
-  }
+  for (const sheetName of workbook.SheetNames) {
+    const sheet = workbook.Sheets[sheetName];
+    const rows = sheetToRowsWithMerges(sheet);
+    if (!rows.length) continue;
 
-  const header = makeCombinedHeader(rows, headerIndex);
-  const nameCol = findColumn(header, ["수급자명"]);
-  const dateCol = findColumn(header, ["작성일"]);
-  const lunchCol = findColumn(header, ["식사", "점심"]);
-  const dinnerCol = findColumn(header, ["식사", "저녁"]);
-
-  const resultMap = {};
-  let currentName = "";
-
-  for (let i = headerIndex + 2; i < rows.length; i++) {
-    const row = rows[i] || [];
-    const rawName = String(row[nameCol] || "").trim();
-    if (rawName && rawName !== "수급자명") currentName = rawName;
-    const name = currentName;
-    if (!name) continue;
-
-    const dateText = parseDate(row[dateCol]);
-    if (!dateText || !dateText.startsWith(monthValue)) continue;
-
-    if (!resultMap[name]) {
-      resultMap[name] = { name, days: {} };
+    // 리포트별 1~3행 머리글과 병합 셀을 모두 지원합니다.
+    let headerIndex = -1;
+    let columns = null;
+    let headerDepth = 1;
+    for (let i = 0; i < Math.min(rows.length, 35); i++) {
+      for (const depth of [2, 3, 1]) {
+        const headerRows = rows.slice(i, i + depth);
+        const width = Math.max(0, ...headerRows.map(row => row.length));
+        const labels = Array.from({length: width}, (_, col) =>
+          normalizeHeader(headerRows.map(row => row[col] || "").join(" ")));
+        const name = labels.findIndex(label => label.includes("수급자명") || label === "성명");
+        const date = labels.findIndex(label => label.includes("작성일") || label.includes("제공일자") || label.includes("제공일") || label === "일자");
+        const lunch = labels.findIndex(label => (label.includes("점심") || label.includes("중식")) && !label.includes("저녁") && !label.includes("석식"));
+        const dinner = labels.findIndex(label => label.includes("저녁") || label.includes("석식"));
+        if (name >= 0 && date >= 0 && lunch >= 0 && dinner >= 0 && lunch !== dinner) {
+          headerIndex = i;
+          headerDepth = depth;
+          columns = {name, date, lunch, dinner};
+          break;
+        }
+      }
+      if (columns) break;
     }
-    resultMap[name].days[dateText] = {
-      lunch: parseMealType(row[lunchCol]),
-      dinner: parseMealType(row[dinnerCol])
-    };
+    if (!columns) continue;
+    foundHeader = true;
+    let currentName = "";
+    for (let i = headerIndex + headerDepth; i < rows.length; i++) {
+      const row = rows[i] || [];
+      const rawName = String(row[columns.name] || "").trim();
+      if (rawName && !/^(수급자명|합계|총계|소계)$/.test(rawName)) currentName = rawName;
+      if (!currentName) continue;
+      const dateText = parseDate(row[columns.date]);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(dateText) || !dateText.startsWith(monthValue + "-")) continue;
+      matchedRows++;
+      const key = normalizeRecipientName(currentName);
+      if (!resultMap.has(key)) resultMap.set(key, {name: currentName, days: {}});
+      const recipient = resultMap.get(key);
+      const previous = recipient.days[dateText] || {lunch: "", dinner: ""};
+      const lunch = parseMealType(row[columns.lunch]);
+      const dinner = parseMealType(row[columns.dinner]);
+      // 같은 날짜의 빈 행이 이미 읽은 식사 기록을 지우지 않도록 합니다.
+      recipient.days[dateText] = {
+        lunch: lunch || previous.lunch,
+        dinner: dinner || previous.dinner
+      };
+    }
   }
-  return Object.values(resultMap);
+
+  if (!foundHeader) {
+    alert("식사/화장실 엑셀의 수급자명·작성일·점심·저녁 머리글을 찾지 못했습니다. 원본 리포트 양식을 확인해주세요.");
+  } else if (matchedRows === 0) {
+    alert("식사 엑셀에서 선택한 월(" + monthValue + ")의 날짜를 찾지 못했습니다. 파일의 작성일과 확인 월을 확인해주세요.");
+  }
+  console.info("식사 리포트 분석:", {sheets: workbook.SheetNames.length, matchedRows, recipients: resultMap.size});
+  return [...resultMap.values()];
 }
 
 function getLatestPlansByRecipient(name, checkDate, careGrade = "") {
