@@ -28,7 +28,12 @@ function parseApiJson(text, fallbackValue, label) {
 
 async function loadCarePlanLibraryFromFirestore(monthValue) {
   try {
-    carePlanLibraryCache = await window.HanmaumFirestore.carePlans(monthValue);
+    // 과거 작성 계획서도 현재 확인 월에 적용되므로 월 필터 없이 전체 조회합니다.
+    // 예: 2023년 12월 작성 계획서 → 2024년 5월 식사 확인
+    const allPlans = await window.HanmaumFirestore.carePlans();
+    const monthPlans = Array.isArray(allPlans) && allPlans.length ? allPlans : await window.HanmaumFirestore.carePlans(monthValue);
+    carePlanLibraryCache = Array.isArray(monthPlans) ? monthPlans : [];
+    console.info("급여제공계획서 조회 건수:", carePlanLibraryCache.length);
     return carePlanLibraryCache;
   } catch (error) {
     console.error("Firebase 급여제공계획서 조회 오류:", error);
@@ -407,9 +412,15 @@ function getLatestPlansByRecipient(name, checkDate, careGrade = "") {
   const library = carePlanLibraryCache || [];
 
   const candidates = library.filter((plan) => {
-    const writtenDate = normalizeDateText(plan.writtenDate);
-    return writtenDate && writtenDate <= checkDateText && isSameRecipient(plan.recipientName, name);
+    // 영문 A/B 식별자는 대소문자 무시, 다른 식별자 및 식별자 없는 이름은 구분
+    const planName = plan.recipientName || plan.name || plan.recipient || "";
+    const writtenDate = parseDate(plan.writtenDate || plan.planDate || plan.createdDate || "");
+    return writtenDate && writtenDate <= checkDateText && isSameRecipient(planName, name);
   });
+  if (!candidates.length && library.length) {
+    const sameNames = library.filter(p => isSameRecipient(p.recipientName || p.name || p.recipient, name));
+    console.warn("계획서 매칭 없음:", {name, checkDate: checkDateText, sameNamePlans: sameNames.map(p => ({name:p.recipientName, writtenDate:p.writtenDate})), loadedPlans:library.length});
+  }
 
   if (candidates.length === 0) return null;
 
