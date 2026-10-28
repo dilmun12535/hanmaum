@@ -421,11 +421,15 @@ function getPlanDateFields(plan) {
   return {start: starts[0] || dates[0] || '', end: ends[0] || '',
     written: parseDate(plan.writtenDate || plan.planDate || plan.createdDate || plan.writtenAt || '')};
 }
-function getLatestPlansByRecipient(name, checkDate, careGrade = '') {
+function getLatestPlansByRecipient(name, checkDate, careGrade = '', longTermNumber = '') {
   const date = parseDate(checkDate);
   const cleanGrade = normalizeCareGrade(careGrade);
+  const cleanNumber = String(longTermNumber || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
   const candidates = (carePlanLibraryCache || []).filter(plan => {
     const planName = plan.recipientName || plan.name || plan.recipient || '';
+    const planNumber = String(plan.longTermNumber || plan.certNumber || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+    // 인정번호가 양쪽에 있으면 우선 확인하고, 이름의 영문 구분자는 대소문자만 무시합니다.
+    if (cleanNumber && planNumber && cleanNumber !== planNumber) return false;
     if (!isSameRecipient(planName, name)) return false;
     const d = getPlanDateFields(plan);
     return d.start && d.start <= date && (!d.end || date <= d.end);
@@ -890,6 +894,7 @@ function getAttendanceMonth(monthValue) {
       return {
         name: String(item.recipientName || item.name || "").trim(),
         careGrade: item.__careGrade || getCareGradeFromAny(item),
+        longTermNumber: item.longTermNumber || item.certNumber || "",
         dates: item.dates || item.attendanceDates || [],
         leaveTimes
       };
@@ -993,12 +998,13 @@ function buildResults(monthValue, mealRows) {
   return attendanceRows.map((attendance) => {
     const name = attendance.name;
     const careGrade = attendance.careGrade || "";
-    const plan = getLatestPlansByRecipient(name, monthEndDate, careGrade);
+    const plan = getLatestPlansByRecipient(name, monthEndDate, careGrade, attendance.longTermNumber);
     const meal = mealRows.find((item) => isSameRecipient(item.name, name));
 
     return {
       name,
       careGrade,
+      longTermNumber: attendance.longTermNumber,
       planDate: plan ? (getPlanDateFields(plan).written || getPlanDateFields(plan).start) : "-",
       counselText: getCounselTextForMonth(name, monthEndDate, careGrade),
       attendanceDates: attendance.dates || [],
@@ -1099,13 +1105,13 @@ function renderResults(monthValue, results) {
     const row = document.createElement("tr");
     const attendanceSet = new Set(item.attendanceDates || []);
     const monthEndDate = getMonthEndDate(monthValue);
-    const monthEndPlan = getLatestPlansByRecipient(item.name, monthEndDate, item.careGrade);
+    const monthEndPlan = getLatestPlansByRecipient(item.name, monthEndDate, item.careGrade, item.longTermNumber);
     const monthEndRule = getMealRuleAtDate(monthEndPlan, item.name, monthEndDate, item.careGrade);
 
     let problemCount = 0;
     const dayCells = days.map((day) => {
       const isAttendanceDay = attendanceSet.has(day);
-      const dayPlan = getLatestPlansByRecipient(item.name, day, item.careGrade);
+      const dayPlan = getLatestPlansByRecipient(item.name, day, item.careGrade, item.longTermNumber);
       const rule = getMealRuleAtDate(dayPlan, item.name, day, item.careGrade);
       const leaveTime = item.leaveTimes ? item.leaveTimes[day] : "";
       const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule, leaveTime, day) : "정상";
