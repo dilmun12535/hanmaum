@@ -588,13 +588,48 @@ function getMealCountFromPlan(plan) {
 
 function hasFoodPrepPlan(plan) {
   if (!plan) return false;
-  let combinedText = "";
-  if (plan.rows) {
-    if (typeof plan.rows === "object") combinedText = JSON.stringify(plan.rows);
-    else combinedText = plan.rows;
+
+  // 종합의견(opinion/content)이나 전체 JSON 문자열에서는 검색하지 않습니다.
+  // 급여제공계획서의 개별 급여 항목에 실제로 기재된 경우에만 인정합니다.
+  const serviceNames = [
+    "기능상태에맞는음식준비", "기능상태에맞는음식준비하기"
+  ];
+  const normalizeService = (value) => String(value == null ? "" : value)
+    .replace(/\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
+  const isService = (value) => serviceNames.includes(normalizeService(value));
+
+  const sources = [plan.rows, plan.rowsJson];
+  for (const source of sources) {
+    const parsed = tryParseJson(source);
+    const stack = [parsed];
+    while (stack.length) {
+      const current = stack.pop();
+      if (Array.isArray(current)) {
+        // 행 배열: 개별 셀에 정확한 급여명칭이 있는 경우
+        if (current.some((cell) => typeof cell === "string" && isService(cell))) return true;
+        current.forEach((child) => {
+          if (child && typeof child === "object") stack.push(child);
+        });
+      } else if (current && typeof current === "object") {
+        // 항목명으로 사용되는 필드만 검사합니다. 설명/종합의견 필드는 제외합니다.
+        const nameKeys = ["serviceName", "serviceType", "benefitName", "itemName",
+          "careName", "급여내용", "급여항목", "서비스명", "항목명", "세부급여내용"];
+        for (const key of nameKeys) {
+          if (typeof current[key] === "string" && isService(current[key])) return true;
+        }
+        // 엑셀 행이 숫자 인덱스의 셀 객체로 저장된 경우
+        const entries = Object.entries(current);
+        if (entries.length && entries.every(([key]) => /^\d+$/.test(key))) {
+          if (entries.some(([, value]) => typeof value === "string" && isService(value))) return true;
+        }
+        for (const [key, value] of entries) {
+          if (/opinion|content|reason|summary|종합의견|사유|비고|설명/i.test(key)) continue;
+          if (value && typeof value === "object") stack.push(value);
+        }
+      }
+    }
   }
-  const finalText = (combinedText + " " + (plan.rowsJson ? String(plan.rowsJson) : "") + " " + `${plan.opinion || ""} ${plan.content || ""}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
-  return finalText.includes("음식준비") || finalText.includes("다진식") || finalText.includes("죽식") || finalText.includes("미음");
+  return false;
 }
 
 function getCounselDate(counsel) {
