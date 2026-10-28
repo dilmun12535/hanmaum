@@ -616,45 +616,44 @@ function getMealCountFromPlan(plan) {
 function hasFoodPrepPlan(plan) {
   if (!plan) return false;
 
-  // 종합의견(opinion/content)이나 전체 JSON 문자열에서는 검색하지 않습니다.
-  // 급여제공계획서의 개별 급여 항목에 실제로 기재된 경우에만 인정합니다.
-  const serviceNames = [
-    "기능상태에맞는음식준비", "기능상태에맞는음식준비하기"
-  ];
-  const normalizeService = (value) => String(value == null ? "" : value)
+  // 종합의견이나 설명에 등장하는 문장은 인정하지 않습니다.
+  // 실제 급여제공 항목(행/서비스명)에 기재된 경우만 인정합니다.
+  const normalize = (value) => String(value ?? "")
     .replace(/\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
-  const isService = (value) => serviceNames.includes(normalizeService(value));
+  const isFoodService = (value) =>
+    normalize(value).includes("기능상태에맞는음식준비");
+  const excludedKey = /opinion|summary|reason|description|remark|종합의견|총평|사유|비고|설명|특이사항/i;
+  const serviceKey = /service|benefit|item|careName|급여|서비스|항목|내용|세부/i;
+  const seen = new WeakSet();
 
-  const sources = [plan.rows, plan.rowsJson];
-  for (const source of sources) {
-    const parsed = tryParseJson(source);
-    const stack = [parsed];
-    while (stack.length) {
-      const current = stack.pop();
-      if (Array.isArray(current)) {
-        // 행 배열: 개별 셀에 정확한 급여명칭이 있는 경우
-        if (current.some((cell) => typeof cell === "string" && isService(cell))) return true;
-        current.forEach((child) => {
-          if (child && typeof child === "object") stack.push(child);
-        });
-      } else if (current && typeof current === "object") {
-        // 항목명으로 사용되는 필드만 검사합니다. 설명/종합의견 필드는 제외합니다.
-        const nameKeys = ["serviceName", "serviceType", "benefitName", "itemName",
-          "careName", "급여내용", "급여항목", "서비스명", "항목명", "세부급여내용"];
-        for (const key of nameKeys) {
-          if (typeof current[key] === "string" && isService(current[key])) return true;
-        }
-        // 엑셀 행이 숫자 인덱스의 셀 객체로 저장된 경우
-        const entries = Object.entries(current);
-        if (entries.length && entries.every(([key]) => /^\d+$/.test(key))) {
-          if (entries.some(([, value]) => typeof value === "string" && isService(value))) return true;
-        }
-        for (const [key, value] of entries) {
-          if (/opinion|content|reason|summary|종합의견|사유|비고|설명/i.test(key)) continue;
-          if (value && typeof value === "object") stack.push(value);
-        }
-      }
+  function scan(value, parentKey = "") {
+    if (value == null) return false;
+    if (excludedKey.test(parentKey)) return false;
+    if (typeof value === "string") {
+      // 텍스트 자체가 개별 급여 항목일 때만 허용합니다.
+      // 최상위의 요약/종합의견 텍스트는 검색하지 않습니다.
+      return !!parentKey && serviceKey.test(parentKey) && isFoodService(value);
     }
+    if (typeof value !== "object" || seen.has(value)) return false;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      // 엑셀 원본의 한 행이 셀 배열인 경우: 해당 셀을 급여명으로 인정
+      if (value.every(v => v == null || typeof v !== "object") &&
+          value.some(v => typeof v === "string" && isFoodService(v) && normalize(v).length < 80)) return true;
+      return value.some(v => scan(v, parentKey));
+    }
+    for (const [key, child] of Object.entries(value)) {
+      if (excludedKey.test(key)) continue;
+      if (typeof child === "string" && serviceKey.test(key) && isFoodService(child)) return true;
+      if (child && typeof child === "object" && scan(child, key)) return true;
+    }
+    return false;
+  }
+
+  // rows/rowsJson만 확인하고 opinion/content 등은 절대 검사하지 않습니다.
+  for (const source of [plan.rows, plan.rowsJson]) {
+    const parsed = tryParseJson(source);
+    if (scan(parsed, "rows")) return true;
   }
   return false;
 }
