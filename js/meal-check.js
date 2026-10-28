@@ -76,7 +76,7 @@ function normalizeText(value) {
 }
 
 function normalizeRecipientName(value) {
-  return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
+  return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim().toLowerCase();
 }
 
 
@@ -164,7 +164,7 @@ function isSameRecipient(nameA, nameB) {
   const cleanB = normalizeRecipientName(nameB);
   if (!cleanA || !cleanB) return false;
 
-  // 김계순 / 김계순A처럼 비슷한 이름이 서로 섞이지 않도록 완전 일치만 허용합니다.
+  // 영문 구분자의 대소문자만 무시합니다. 김무연a=김무연A, 김무연a≠김무연b, 김무연≠김무연a.
   return cleanA === cleanB;
 }
 
