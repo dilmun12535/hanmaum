@@ -812,7 +812,9 @@ function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
       // 제외 판정을 최우선으로 적용합니다.
       if (isRemoveCounsel(counsel)) {
         specialFood = false;
-      } else if (isAddCounsel(counsel)) {
+      } else {
+        // '기타'로 등록된 상담일지라도 음식 준비 항목이 명시되어 있고
+        // 제외/중단 내용이 아니라면 해당 날짜부터 기능상태식으로 적용합니다.
         specialFood = true;
       }
       specialFoodSource = "상담";
