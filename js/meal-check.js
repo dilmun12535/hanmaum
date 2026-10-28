@@ -622,46 +622,33 @@ function getMealCountFromPlan(plan) {
 function hasFoodPrepPlan(plan) {
   if (!plan) return false;
 
-  // 종합의견이나 설명에 등장하는 문장은 인정하지 않습니다.
-  // 실제 급여제공 항목(행/서비스명)에 기재된 경우만 인정합니다.
-  const normalize = (value) => String(value ?? "")
-    .replace(/\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
-  const isFoodService = (value) =>
-    normalize(value).includes("기능상태에맞는음식준비");
-  const excludedKey = /opinion|summary|reason|description|remark|종합의견|총평|사유|비고|설명|특이사항/i;
-  const serviceKey = /service|benefit|item|careName|급여|서비스|항목|내용|세부/i;
+  // 종합의견에서 단어를 언급한 것과 실제 급여 항목을 구분합니다.
+  // 서비스명 셀에는 항목명과 짧은 횟수/시간 표기만 허용합니다.
+  const normalize = (v) => String(v ?? "").replace(/\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
+  const isServiceLabel = (v) => {
+    const t = normalize(v);
+    return /^기능상태에맞는음식준비(?:일[0-9]+회|주[0-9]+회|[0-9]+회|[0-9]+분)?$/.test(t);
+  };
+  const excluded = /opinion|summary|reason|description|remark|종합의견|총평|사유|비고|설명|특이사항/i;
+  const serviceKeys = /^(?:serviceName|serviceType|benefitName|itemName|careName|급여내용|급여명|서비스명|세부급여내용|급여제공내용|항목명)$/i;
   const seen = new WeakSet();
-
-  function scan(value, parentKey = "") {
-    if (value == null) return false;
-    if (excludedKey.test(parentKey)) return false;
-    if (typeof value === "string") {
-      // 텍스트 자체가 개별 급여 항목일 때만 허용합니다.
-      // 최상위의 요약/종합의견 텍스트는 검색하지 않습니다.
-      return !!parentKey && serviceKey.test(parentKey) && isFoodService(value);
-    }
+  const scan = (value, parentKey = "") => {
+    if (value == null || excluded.test(parentKey)) return false;
+    if (typeof value === "string") return serviceKeys.test(parentKey) && isServiceLabel(value);
     if (typeof value !== "object" || seen.has(value)) return false;
     seen.add(value);
     if (Array.isArray(value)) {
-      // 엑셀 원본의 한 행이 셀 배열인 경우: 해당 셀을 급여명으로 인정
-      if (value.every(v => v == null || typeof v !== "object") &&
-          value.some(v => typeof v === "string" && isFoodService(v) && normalize(v).length < 80)) return true;
+      // 원본 엑셀의 개별 급여 행: 서비스명이 셀 하나에 독립적으로 기재된 경우만 인정.
+      if (value.every(v => v == null || typeof v !== "object") && value.some(isServiceLabel)) return true;
       return value.some(v => scan(v, parentKey));
     }
-    for (const [key, child] of Object.entries(value)) {
-      if (excludedKey.test(key)) continue;
-      if (typeof child === "string" && serviceKey.test(key) && isFoodService(child)) return true;
-      if (child && typeof child === "object" && scan(child, key)) return true;
-    }
-    return false;
-  }
-
-  // rows/rowsJson만 확인하고 opinion/content 등은 절대 검사하지 않습니다.
-  for (const source of [plan.rows, plan.rowsJson]) {
-    const parsed = tryParseJson(source);
-    if (scan(parsed, "rows")) return true;
-  }
-  return false;
+    return Object.entries(value).some(([key, child]) => {
+      if (excluded.test(key)) return false;
+      if (typeof child === "string") return serviceKeys.test(key) && isServiceLabel(child);
+      return child && typeof child === "object" && scan(child, key);
+    });
+  };
+  return [plan.rows, plan.rowsJson].some(source => scan(tryParseJson(source), "rows"));
 }
 
 function getCounselDate(counsel) {
@@ -812,9 +799,9 @@ function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
       // 제외 판정을 최우선으로 적용합니다.
       if (isRemoveCounsel(counsel)) {
         specialFood = false;
-      } else {
-        // '기타'로 등록된 상담일지라도 음식 준비 항목이 명시되어 있고
-        // 제외/중단 내용이 아니라면 해당 날짜부터 기능상태식으로 적용합니다.
+      } else if (isAddCounsel(counsel) &&
+                 normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""}`).includes("음식준비")) {
+        // 실제 음식 준비 급여 추가를 명시한 상담만 인정합니다.
         specialFood = true;
       }
       specialFoodSource = "상담";
