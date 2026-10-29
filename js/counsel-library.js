@@ -55,7 +55,7 @@ function getCellValueByLabel(rows, labelText) {
     for (let c = 0; c < row.length; c++) {
       const cellText = normalizeText(row[c]);
 
-    if (cellText.includes(target)) {
+    if (cellText === target || (target === "수급자" && cellText === "수급자명")) {
         for (let next = c + 1; next <= c + 8; next++) {
           if (row[next]) return row[next];
         }
@@ -119,51 +119,38 @@ function findReflectionHeaderRow(rows, startRow) {
 
 function parseReflectionRows(rows) {
   const startRow = findBenefitReflectionStartRow(rows);
-
   if (startRow === -1) return [];
-
   const headerRowIndex = findReflectionHeaderRow(rows, startRow);
-  const result = [];
-
-  if (headerRowIndex === -1) return result;
-
+  if (headerRowIndex === -1) return [];
   const header = rows[headerRowIndex] || [];
-
-  const dateCol = header.findIndex((cell) => normalizeText(cell).includes("반영일"));
-  const typeCol = header.findIndex((cell) => normalizeText(cell).includes("급여구분"));
-  const contentCol = header.findIndex((cell) => normalizeText(cell).includes("급여내용"));
-  const reasonCol = header.findIndex((cell) => normalizeText(cell).includes("반영사유"));
-
+  const dateCol = header.findIndex(cell => normalizeText(cell).includes("반영일"));
+  const typeCol = header.findIndex(cell => normalizeText(cell).includes("급여구분"));
+  const contentCol = header.findIndex(cell => normalizeText(cell).includes("급여내용"));
+  const reasonCol = header.findIndex(cell => normalizeText(cell).includes("반영사유"));
+  if (dateCol < 0 || contentCol < 0) return [];
+  const result = [];
+  let lastDate = "";
+  let lastType = "";
   for (let r = headerRowIndex + 1; r < rows.length; r++) {
     const row = rows[r] || [];
     const rowText = normalizeText(row.join(" "));
-
     if (!rowText) continue;
-
-    const dateValue = dateCol >= 0 ? row[dateCol] : "";
-    const typeValue = typeCol >= 0 ? row[typeCol] : "";
-    const contentValue = contentCol >= 0 ? row[contentCol] : "";
-    const reasonValue = reasonCol >= 0 ? row[reasonCol] : "";
-
-    const joined = [dateValue, typeValue, contentValue, reasonValue].join(" ");
-    // 급여구분은 "목욕/기타" 같은 대분류일 수 있으므로 실제 급여내용 우선.
-    // 반영사유에 등장하는 단어로 급여를 오분류하지 않습니다.
-    const category = detectCareCategory(contentValue || typeValue);
-    const changeSource = [typeValue, contentValue].join(" ");
-
+    if (/^(상담일지|작성자|수급자)/.test(rowText) && r > headerRowIndex + 1) break;
+    const rawDate = row[dateCol];
+    const rawType = typeCol >= 0 ? row[typeCol] : "";
+    const content = contentCol >= 0 ? row[contentCol] : "";
+    const reason = reasonCol >= 0 ? row[reasonCol] : "";
+    if (rawDate) lastDate = rawDate;
+    if (rawType) lastType = rawType;
+    if (!normalizeText(content)) continue;
+    const category = detectCareCategory(content || lastType);
     if (!category) continue;
-
-    result.push({
-      reflectionDateRaw: dateValue,
-      category,
-      changeType: detectChangeType(changeSource),
-      careType: String(typeValue || "").trim(),
-      careContent: String(contentValue || "").trim(),
-      reason: String(reasonValue || "").trim(),
-      joined
-    });
+    const changeSource = [rawType, content].join(" ");
+    result.push({reflectionDateRaw: rawDate || lastDate, category,
+      changeType: detectChangeType(changeSource), careType: String(rawType || lastType || "").trim(),
+      careContent: String(content).trim(), reason: String(reason || "").trim(),
+      joined: [rawDate || lastDate, rawType || lastType, content, reason].join(" "), sourceRow: r + 1});
   }
-
   return result;
 }
 
@@ -199,7 +186,7 @@ function parseCounselSheet(rows, fileName, sheetName) {
       }
 
       return {
-        id: `${Date.now()}_${sheetName}_${index}_${Math.random().toString(36).slice(2, 8)}`,
+        id: `counsel_${sheetName}_${item.sourceRow || index}_${reflectionDate}`,
         recipientName,
         consultDate: reflectionDate,
         category: item.category,
@@ -290,19 +277,73 @@ async function loadCounselLibrary() {
   }
 }
 
+// 동일 파일의 같은 상담일지 행은 재업로드해도 중복 생성하지 않습니다.
+// 기존 데이터는 수정하지 않고, 새 문서만 생성합니다.
+function stableCounselKey(item) {
+  const key = [item.recipientName, item.consultDate, item.category,
+    item.changeType, String(item.careContent || "").replace(/<br\s*\/?\s*>/gi, "\n"),
+    item.reason].map(v => String(v || "").replace(/\s+/g, "").toLowerCase()).join("|");
+  return key;
+}
+function hashCounselKey(text) {
+  // 두 개의 독립 32-bit 해시를 사용하여 문서 ID를 안정적으로 만듭니다.
+  let a = 2166136261, b = 2246822519;
+  for (let i = 0; i < text.length; i++) {
+    const c = text.charCodeAt(i);
+    a = Math.imul(a ^ c, 16777619);
+    b = Math.imul(b ^ c, 3266489917);
+  }
+  return `c_${(a >>> 0).toString(16).padStart(8, "0")}${(b >>> 0).toString(16).padStart(8, "0")}`;
+}
+function setCounselUploadStatus(message) {
+  let status = document.getElementById("counselUploadStatus");
+  if (!status) {
+    status = document.createElement("div");
+    status.id = "counselUploadStatus";
+    status.setAttribute("role", "status");
+    status.style.cssText = "margin:12px 0;padding:10px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;color:#1e3a8a;white-space:pre-wrap;font-size:13px";
+    uploadCounselBtn.parentElement.insertAdjacentElement("afterend", status);
+  }
+  status.textContent = message;
+}
 async function addCounselsToFirestore(items) {
   const user = auth.currentUser;
   if (!user) throw new Error("로그인이 필요합니다.");
   const uploadedBy = getLoginName();
-  for (let i = 0; i < items.length; i += 400) {
-    const batch = writeBatch(db);
-    items.slice(i, i + 400).forEach((raw, j) => {
-      const item = firestoreSafe({ ...raw, uploadedBy, ownerUid: user.uid, storage: "firestore" });
-      const unique = safeDocId(`${item.id || 'counsel'}__${item.recipientName || ''}__${item.consultDate || ''}__${item.sheetName || ''}__${i+j}`);
-      batch.set(doc(db, COUNSEL_COLLECTION, unique), item, { merge: true });
-    });
-    await batch.commit();
+  setCounselUploadStatus("기존 상담일지와 중복 여부 확인 중...");
+  const existing = await getDocs(collection(db, COUNSEL_COLLECTION));
+  const knownKeys = new Set(existing.docs.map(d => stableCounselKey(d.data())));
+  const existingIds = new Set(existing.docs.map(d => d.id));
+  const unique = new Map();
+  let duplicateCount = 0;
+  for (const raw of items) {
+    const key = stableCounselKey(raw);
+    const id = hashCounselKey(key);
+    if (knownKeys.has(key) || existingIds.has(id) || unique.has(key)) {duplicateCount++; continue;}
+    unique.set(key, {...raw, firestoreId:id});
   }
+  const pending = [...unique.values()];
+  let saved = 0;
+  const failures = [];
+  for (let i = 0; i < pending.length; i += 200) {
+    const part = pending.slice(i, i + 200);
+    const batch = writeBatch(db);
+    part.forEach(raw => {
+      const item = firestoreSafe({...raw, uploadedBy, ownerUid:user.uid, storage:"firestore"});
+      batch.set(doc(db, COUNSEL_COLLECTION, raw.firestoreId), item);
+    });
+    try {
+      await batch.commit();
+      saved += part.length;
+      setCounselUploadStatus(`저장 진행: ${saved}/${pending.length}건 완료 · 중복 ${duplicateCount}건 건너뜀`);
+    } catch (error) {
+      failures.push({start:i + 1, count:part.length, message:error.message || String(error),
+        sheets:[...new Set(part.map(x=>x.sheetName))].slice(0,20)});
+      setCounselUploadStatus(`저장 실패 묶음 발생 · 성공 ${saved}건 · 실패 ${failures.reduce((n,x)=>n+x.count,0)}건`);
+      // 실패한 묶음 이후에도 나머지를 계속 시도합니다.
+    }
+  }
+  return {parsed:items.length, saved, duplicateCount, failures};
 }
 
 async function deleteCounselsFromFirestore(items) {
