@@ -452,6 +452,36 @@ function getWeekResult(required, weekData, hasAttendanceInWeek) {
   return "정상";
 }
 
+// 주중 급여 변경 시 주차 말일이 아닌 실제 제공일을 기준으로 검증합니다.
+function getTherapyRecordDates(weekData) {
+  if (!weekData || !weekData.hasRecord) return [];
+  const text = String(weekData.recordText || "");
+  return [...new Set((text.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []))];
+}
+
+function getDateAwareWeekResult(name, weekDays, attendDatesSet, weekData) {
+  const attended = weekDays.filter(day => attendDatesSet.has(day));
+  if (!attended.length) return "결석";
+
+  const requiredDays = attended.filter(day => {
+    const plan = getLatestPlansByRecipient(name, day);
+    return getTherapyRuleAtDate(plan, name, day).required;
+  });
+  const recordDates = getTherapyRecordDates(weekData);
+
+  // 기록이 있는 날은 해당 날짜의 계획서 및 상담일지 적용 여부를 각각 확인합니다.
+  if (weekData && weekData.hasRecord) {
+    // 제공일을 읽지 못한 기록을 정상으로 처리하지 않습니다.
+    if (!recordDates.length) return "오류";
+    const invalidRecord = recordDates.some(day => {
+      const plan = getLatestPlansByRecipient(name, day);
+      return !getTherapyRuleAtDate(plan, name, day).required;
+    });
+    return invalidRecord ? "오류" : "정상";
+  }
+  return requiredDays.length ? "누락" : "정상";
+}
+
 function makeResultClass(result) {
   if (result === "정상") return "status-ok";
   if (result === "결석") return "status-absent";
@@ -544,12 +574,14 @@ function buildResults(monthValue, therapyRows) {
       }
 
       const weekDays = getDaysInWeekRange(monthValue, wk);
-      const hasAttend = weekDays.some((d) => attendDatesSet.has(d));
-      const weekPlan = getLatestPlansByRecipient(name, weekEndDates[wk]);
-      const req = getTherapyRuleAtDate(weekPlan, name, weekEndDates[wk]).required;
+      const req = weekDays.some(day => {
+        if (!attendDatesSet.has(day)) return false;
+        const dayPlan = getLatestPlansByRecipient(name, day);
+        return getTherapyRuleAtDate(dayPlan, name, day).required;
+      });
 
       weekRequired[wk] = req;
-      weekResultsMap[wk] = getWeekResult(req, weeks[wk], hasAttend);
+      weekResultsMap[wk] = getDateAwareWeekResult(name, weekDays, attendDatesSet, weeks[wk]);
     });
 
     const weekResultsArray = weekKeys.map((wk) => weekResultsMap[wk]);
