@@ -10,6 +10,17 @@ const counselLibraryTableBody =
   document.getElementById("counselTableBody");
 
 let counselLibrary = [];
+let isCounselAdmin = false;
+const mayDeleteCounsel = item => !!auth.currentUser && (isCounselAdmin || item.ownerUid === auth.currentUser.uid);
+async function refreshCounselAdmin() {
+  isCounselAdmin = false;
+  const user = auth.currentUser;
+  if (!user) return;
+  try {
+    const snap = await getDoc(doc(db, "users", user.uid));
+    if (auth.currentUser?.uid === user.uid) isCounselAdmin = snap.exists() && snap.data().role === "admin";
+  } catch (error) { console.error("관리자 권한 확인 실패:", error); }
+}
 
 function normalizeText(value) {
   return String(value || "").replace(/\s/g, "").trim();
@@ -245,7 +256,7 @@ function parseCounselWorkbook(workbook, fileName) {
 }
 
 import { auth, db } from "./firebase-config.js";
-import { collection, getDocs, doc, setDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+import { collection, getDocs, getDoc, doc, setDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const COUNSEL_COLLECTION = "counsels";
 
@@ -371,7 +382,10 @@ selectAllCounselCheckbox.addEventListener("change", e => {
 deleteSelectedCounselBtn.addEventListener("click", async () => {
   const selected = counselLibrary.filter(x => x.checked);
   if (!selected.length) return alert("삭제할 상담일지를 선택해주세요.");
-  if (!confirm(`선택한 ${selected.length}개의 상담일지를 Firebase에서 삭제하시겠습니까?`)) return;
+  await refreshCounselAdmin();
+  const unauthorized = selected.filter(item => !mayDeleteCounsel(item));
+  if (unauthorized.length) return alert(`삭제 권한이 없는 상담일지 ${unauthorized.length}건이 포함되어 있습니다.`);
+  if (!confirm(`선택한 ${selected.length}개의 상담일지를 Firebase에서 삭제하시겠습니까?\n${isCounselAdmin ? "관리자 권한으로 삭제합니다." : "본인이 등록한 자료만 삭제합니다."}`)) return;
   try { await deleteCounselsFromFirestore(selected); alert("삭제되었습니다."); await loadCounselLibrary(); }
   catch(e){ console.error(e); alert("삭제 중 오류가 발생했습니다.\n"+(e.message||e)); }
 });
