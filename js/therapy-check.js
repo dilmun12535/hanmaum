@@ -459,6 +459,23 @@ function getTherapyRecordDates(weekData) {
   return [...new Set((text.match(/\b\d{4}-\d{2}-\d{2}\b/g) || []))];
 }
 
+// 상담일지의 물리치료 제외 반영일이 포함된 주차는 기록 의무를 면제합니다.
+// 날짜 비교는 월~일 전체를 기준으로 하며, 월 경계 주차도 처리합니다.
+function hasTherapyExclusionInWeek(name, weekDays) {
+  if (!weekDays || !weekDays.length) return false;
+  const monday = weekDays[0];
+  const sundayDate = new Date(`${monday}T12:00:00`);
+  sundayDate.setDate(sundayDate.getDate() + 6);
+  const sunday = `${sundayDate.getFullYear()}-${String(sundayDate.getMonth() + 1).padStart(2, '0')}-${String(sundayDate.getDate()).padStart(2, '0')}`;
+  return (counselLibraryCache || []).some(item => {
+    if (!isSameRecipient(item.recipientName || item.name, name)) return false;
+    const date = parseDate(item.reflectionDate || item.reflection || item.date);
+    if (!date || date < monday || date > sunday || !isRemoveCounsel(item)) return false;
+    const text = normalizeText(`${item.category || ''} ${item.careContent || ''} ${item.reason || ''}`);
+    return ['물리치료', '물이치료', '기능회복', '재활훈련', '운동치료', '작업치료'].some(word => text.includes(word));
+  });
+}
+
 function getDateAwareWeekResult(name, weekDays, attendDatesSet, weekData) {
   const attended = weekDays.filter(day => attendDatesSet.has(day));
   if (!attended.length) return "결석";
@@ -479,6 +496,8 @@ function getDateAwareWeekResult(name, weekDays, attendDatesSet, weekData) {
     });
     return invalidRecord ? "오류" : "정상";
   }
+  // 제외 반영일이 속한 주차부터 기록이 없어도 정상입니다.
+  if (hasTherapyExclusionInWeek(name, weekDays)) return "정상";
   return requiredDays.length ? "누락" : "정상";
 }
 
