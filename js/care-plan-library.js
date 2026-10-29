@@ -1,7 +1,7 @@
 import { auth, db } from "./firebase-config.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import {
-  collection, getDocs, doc, setDoc, deleteDoc
+  collection, getDocs, getDoc, doc, setDoc, deleteDoc
 } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const elPlanFileSelector = document.getElementById("planFile");
@@ -21,6 +21,8 @@ const elMigrationStatus = document.getElementById("migrationStatus");
 
 let carePlanLibrary = [];
 let currentUser = null;
+let isPortalAdmin = false;
+const mayDeletePlan = plan => !!currentUser && (isPortalAdmin || plan.ownerUid === currentUser.uid);
 let currentFilter = "all";
 
 if (elPlanDateSelector) {
@@ -485,6 +487,7 @@ async function addPlanToFirestore(plan) {
 
 async function deleteSelectedFromFirestore(plans) {
   for (const plan of plans) {
+    if (!mayDeletePlan(plan)) throw new Error("본인이 등록한 문서만 삭제할 수 있습니다.");
     await deleteDoc(doc(db, "carePlans", String(plan.firestoreId || plan.id)));
   }
 }
@@ -605,9 +608,15 @@ elPlanFilterButtons.forEach(btn => btn.addEventListener("click", () => {
 if (elPlanExportTrigger) elPlanExportTrigger.addEventListener("click", exportPlansToExcel);
 
 if (elPlanDeleteTrigger) elPlanDeleteTrigger.addEventListener("click", async () => {
+  if (currentUser) {
+    try { const snap = await getDoc(doc(db, "users", currentUser.uid)); isPortalAdmin = snap.exists() && snap.data().role === "admin"; }
+    catch (error) { isPortalAdmin = false; console.error(error); }
+  }
   const selected=carePlanLibrary.filter(p=>p.checked);
   if (!selected.length) return alert("삭제할 계획서를 선택해주세요.");
-  if (!confirm(`선택한 ${selected.length}개의 계획서를 삭제하시겠습니까?\n본인이 등록/이전한 자료만 삭제할 수 있습니다.`)) return;
+  const unauthorized = selected.filter(p => !mayDeletePlan(p));
+  if (unauthorized.length) return alert(`삭제 권한이 없는 문서 ${unauthorized.length}건이 포함되어 있습니다.\n일반 직원은 본인이 업로드한 문서만 삭제할 수 있습니다.`);
+  if (!confirm(`선택한 ${selected.length}개의 계획서를 삭제하시겠습니까?\n${isPortalAdmin ? "관리자 권한으로 삭제합니다." : "본인이 등록한 자료만 삭제합니다."}`)) return;
   try { elPlanDeleteTrigger.disabled=true; await deleteSelectedFromFirestore(selected); await loadLibrary(); alert("삭제되었습니다."); }
   catch(error) { console.error(error); alert("삭제 권한이 없거나 삭제 중 오류가 발생했습니다."); }
   finally { elPlanDeleteTrigger.disabled=false; }
@@ -689,7 +698,14 @@ if (elMigrationBtn) elMigrationBtn.addEventListener("click", async () => {
   }
 });
 
-onAuthStateChanged(auth, user => {
-  currentUser=user;
-  if (user) loadLibrary();
+onAuthStateChanged(auth, async user => {
+  currentUser = user;
+  isPortalAdmin = false;
+  if (!user) return;
+  try {
+    const userSnap = await getDoc(doc(db, "users", user.uid));
+    if (auth.currentUser?.uid !== user.uid) return;
+    isPortalAdmin = userSnap.exists() && userSnap.data().role === "admin";
+  } catch (error) { console.error("관리자 권한 확인 실패:", error); }
+  if (auth.currentUser?.uid === user.uid) loadLibrary();
 });
