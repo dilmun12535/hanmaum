@@ -747,7 +747,7 @@ function getMealCountFromCounselText(text, fallback) {
   return fallback;
 }
 
-function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
+function getMealRuleAtDate(plan, name, targetDate, careGrade = "", forMonthlySummary = false) {
   const planDate = plan ? getPlanDateFields(plan).start : "";
   const planMealCount = getMealCountFromPlan(plan);
   const planSpecialFood = hasFoodPrepPlan(plan);
@@ -809,13 +809,13 @@ function getMealRuleAtDate(plan, name, targetDate, careGrade = "") {
 
   // 토요일은 센터 운영 기준으로 전원 점심 1회만 제공합니다.
   const dayOfWeek = new Date(targetDate).getDay();
-  if (dayOfWeek === 6) {
+  if (!forMonthlySummary && dayOfWeek === 6) {
     mealCount = 1;
     mealCountSource = "토요일 기본";
   }
 
   // 토요일은 센터 운영 기준으로 전원 점심 1회만 제공합니다.
-  if (isSaturdayDate(targetDate)) {
+  if (!forMonthlySummary && isSaturdayDate(targetDate)) {
     mealCount = 1;
     mealCountSource = "토요일 기본";
   }
@@ -1094,7 +1094,7 @@ function renderResults(monthValue, results) {
     const attendanceSet = new Set(item.attendanceDates || []);
     const monthEndDate = getMonthEndDate(monthValue);
     const monthEndPlan = getLatestPlansByRecipient(item.name, monthEndDate, item.careGrade, item.longTermNumber);
-    const monthEndRule = getMealRuleAtDate(monthEndPlan, item.name, monthEndDate, item.careGrade);
+    const monthEndRule = getMealRuleAtDate(monthEndPlan, item.name, monthEndDate, item.careGrade, true);
 
     let problemCount = 0;
     const dayCells = days.map((day) => {
