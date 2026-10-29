@@ -1,633 +1,728 @@
-/* 월별 어르신 수가 보관함 */
-const MONTHLY_FEE_API_URL = "https://script.google.com/macros/s/AKfycbwJhnr6jFypaNIPzsaCUx8zk9Lc0SHN3AYPzhoT0uoMW_eTDPVlnrIzONA1gCD0_A5WDQ/exec";
+import { auth, db } from "./firebase-config.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import {
+  collection, getDocs, getDoc, doc, setDoc, deleteDoc
+} from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
-const $ = (id) => document.getElementById(id);
+const elPlanFileSelector = document.getElementById("planFile");
+const elPlanDateSelector = document.getElementById("planWrittenDate");
+const elPlanUploadTrigger = document.getElementById("uploadPlanBtn");
+const elPlanFileCount = document.getElementById("planFileCount");
+const elPlanUploadProgress = document.getElementById("planUploadProgress");
+const elPlanDeleteTrigger = document.getElementById("deleteSelectedPlanBtn");
+const elPlanSelectAllTrigger = document.getElementById("selectAllPlanCheckbox");
+const elPlanTableBodyContainer = document.getElementById("planLibraryTableBody");
+const elPlanExportTrigger = document.getElementById("exportPlanExcelBtn");
+const elPlanCountText = document.getElementById("planCountText");
+const elPlanFilterButtons = [...document.querySelectorAll(".filter-btn[data-filter]")];
+const elMigrationFile = document.getElementById("legacyDbFile");
+const elMigrationBtn = document.getElementById("migratePlanBtn");
+const elMigrationStatus = document.getElementById("migrationStatus");
 
-const state = {
-  file: null,
-  previewRows: [],
-  savedRows: [],
-  displayMode: "saved",
-  monthPickerYear: new Date().getFullYear()
-};
+let carePlanLibrary = [];
+let currentUser = null;
+let isPortalAdmin = false;
+const mayDeletePlan = plan => !!currentUser && (isPortalAdmin || plan.ownerUid === currentUser.uid);
+let currentFilter = "all";
 
-window.addEventListener("DOMContentLoaded", () => {
-  setTodayText();
-  setupMonthInput();
-
-  $("fileInput").addEventListener("change", handleFileChange);
-  $("uploadBtn").addEventListener("click", uploadMonthlyFee);
-  $("reloadBtn").addEventListener("click", () => {
-    state.displayMode = "saved";
-    loadMonthlyFee();
-  });
-  ["viewSavedBtn", "viewSavedBtnMobile"].forEach((id) => {
-    const btn = $(id);
-    if (!btn) return;
-    btn.addEventListener("click", () => {
-      state.displayMode = "saved";
-      loadMonthlyFee();
-    });
-  });
-  $("deleteMonthBtn").addEventListener("click", deleteMonth);
-  $("searchInput").addEventListener("input", renderTable);
-
-  loadMonthlyFee();
-});
-
-function setTodayText() {
-  const el = $("todayText");
-  if (!el) return;
-
-  const now = new Date();
-  el.textContent = now.toLocaleDateString("ko-KR", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short"
+if (elPlanDateSelector) {
+  elPlanDateSelector.setAttribute("max", "9999-12-31");
+  elPlanDateSelector.addEventListener("input", () => {
+    const value = elPlanDateSelector.value;
+    if (value && value.length > 10) elPlanDateSelector.value = value.slice(0, 10);
   });
 }
 
-/* 월 선택창 */
-function setupMonthInput() {
-  const input = $("monthInput");
-  if (!input) return;
+function normalizeText(value) { return String(value || "").replace(/\s/g, "").trim(); }
+function normalizeDateString(value) {
+  if (!value) return "";
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const y = value.getFullYear(); const m = String(value.getMonth()+1).padStart(2,"0"); const d = String(value.getDate()).padStart(2,"0");
+    return `${y}-${m}-${d}`;
+  }
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  if (text.includes("T")) return text.split("T")[0];
+  return text;
+}
+function formatDateValue(value) { return normalizeDateString(value) || "-"; }
+function extractInfoFromFileName(fileName) {
+  const nameOnly = String(fileName || "").replace(/\.(xlsx|xls)$/i, "").trim();
 
-  const now = new Date();
-  const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-  input.type = "text";
-  input.readOnly = true;
-  input.value = input.value || currentMonth;
-  input.placeholder = "예: 2026-05";
-  input.setAttribute("autocomplete", "off");
-
-  state.monthPickerYear = Number(input.value.slice(0, 4)) || now.getFullYear();
-
-  let picker = $("customMonthPicker");
-  if (!picker) {
-    picker = document.createElement("div");
-    picker.id = "customMonthPicker";
-    picker.className = "custom-month-picker";
-    picker.style.display = "none";
-    document.body.appendChild(picker);
+  const legacy = nameOnly.match(/^(L\d+)\s+(.+?)\s+수급자\s+급여제공계획/i);
+  if (legacy) {
+    return { longTermNumber: legacy[1].trim(), recipientName: legacy[2].trim() };
   }
 
-  input.addEventListener("click", (e) => {
-    e.stopPropagation();
-    state.monthPickerYear = Number(input.value.slice(0, 4)) || state.monthPickerYear || now.getFullYear();
-    openMonthPicker();
-  });
-
-  document.addEventListener("click", (e) => {
-    const pickerEl = $("customMonthPicker");
-    if (!pickerEl) return;
-    if (e.target === input || pickerEl.contains(e.target)) return;
-    closeMonthPicker();
-  });
-
-  window.addEventListener("resize", positionMonthPicker);
-  window.addEventListener("scroll", positionMonthPicker, true);
-}
-
-function openMonthPicker() {
-  renderMonthPicker();
-  positionMonthPicker();
-
-  const picker = $("customMonthPicker");
-  if (picker) picker.style.display = "block";
-}
-
-function closeMonthPicker() {
-  const picker = $("customMonthPicker");
-  if (picker) picker.style.display = "none";
-}
-
-function positionMonthPicker() {
-  const input = $("monthInput");
-  const picker = $("customMonthPicker");
-  if (!input || !picker || picker.style.display === "none") return;
-
-  const rect = input.getBoundingClientRect();
-  picker.style.left = `${rect.left + window.scrollX}px`;
-  picker.style.top = `${rect.bottom + window.scrollY + 6}px`;
-}
-
-function renderMonthPicker() {
-  const picker = $("customMonthPicker");
-  const input = $("monthInput");
-  if (!picker || !input) return;
-
-  const selected = normalizeMonth(input.value);
-  const selectedYear = Number(selected.slice(0, 4));
-  const selectedMonth = Number(selected.slice(5, 7));
-
-  picker.innerHTML = `
-    <div class="custom-month-picker-header">
-      <button type="button" class="custom-month-picker-nav" id="monthPickerPrev">‹</button>
-      <div class="custom-month-picker-title">${state.monthPickerYear}</div>
-      <button type="button" class="custom-month-picker-nav" id="monthPickerNext">›</button>
-    </div>
-
-    <div class="custom-month-picker-grid">
-      ${Array.from({ length: 12 }, (_, i) => {
-        const month = i + 1;
-        const isActive = selectedYear === state.monthPickerYear && selectedMonth === month;
-        return `<button type="button" class="custom-month-picker-month ${isActive ? "active" : ""}" data-month="${month}">${month}월</button>`;
-      }).join("")}
-    </div>
-
-    <div class="custom-month-picker-footer">
-      <button type="button" class="custom-month-picker-link" id="monthPickerClear">삭제</button>
-      <button type="button" class="custom-month-picker-link" id="monthPickerThisMonth">이번 달</button>
-    </div>
-  `;
-
-  $("monthPickerPrev").addEventListener("click", (e) => {
-    e.stopPropagation();
-    state.monthPickerYear -= 1;
-    renderMonthPicker();
-  });
-
-  $("monthPickerNext").addEventListener("click", (e) => {
-    e.stopPropagation();
-    state.monthPickerYear += 1;
-    renderMonthPicker();
-  });
-
-  $("monthPickerClear").addEventListener("click", (e) => {
-    e.stopPropagation();
-    input.value = "";
-    closeMonthPicker();
-    clearPreview();
-    loadMonthlyFee();
-  });
-
-  $("monthPickerThisMonth").addEventListener("click", (e) => {
-    e.stopPropagation();
-    const now = new Date();
-    input.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-    state.monthPickerYear = now.getFullYear();
-    closeMonthPicker();
-    clearPreview();
-    loadMonthlyFee();
-  });
-
-  picker.querySelectorAll(".custom-month-picker-month").forEach((btn) => {
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-
-      const month = String(btn.dataset.month).padStart(2, "0");
-      input.value = `${state.monthPickerYear}-${month}`;
-
-      closeMonthPicker();
-      clearPreview();
-      loadMonthlyFee();
-    });
-  });
-}
-
-function clearPreview() {
-  state.file = null;
-  state.previewRows = [];
-  state.displayMode = "saved";
-
-  if ($("fileInput")) $("fileInput").value = "";
-  if ($("fileName")) $("fileName").textContent = "선택된 파일 없음";
-  if ($("uploadBtn")) $("uploadBtn").disabled = true;
-}
-
-function showNotice(message, type = "info") {
-  const box = $("noticeBox");
-  if (!box) return;
-
-  if (!message) {
-    box.style.display = "none";
-    box.textContent = "";
-    return;
+  // 신버전: 파일명에 들어 있는 이름을 수급자명으로 최우선 사용
+  // 예) 장기요양급여 제공 계획서_김무연a_20260430.xls
+  let recipientName = "";
+  const parts = nameOnly.split("_").map(v => v.trim()).filter(Boolean);
+  if (parts.length >= 2 && /장기요양급여\s*제공\s*계획서/i.test(parts[0])) {
+    if (!/^\d{8}$/.test(parts[1])) recipientName = parts[1];
   }
 
-  box.style.display = "block";
-  box.textContent = message;
-  box.style.background = type === "error" ? "#fef2f2" : type === "success" ? "#ecfdf3" : "#fffbeb";
-  box.style.color = type === "error" ? "#b42318" : type === "success" ? "#027a48" : "#92400e";
-}
-
-function hideNoticeLater() {
-  setTimeout(() => showNotice(""), 2500);
-}
-
-function apiGetUrl(payload) {
-  return `${MONTHLY_FEE_API_URL}?payload=${encodeURIComponent(JSON.stringify(payload))}`;
-}
-
-/*
-  중요 수정:
-  - 목록 조회/삭제처럼 작은 요청은 GET 유지
-  - 업로드처럼 큰 요청은 POST 사용
-  - Content-Type을 일부러 지정하지 않음
-    → application/json 지정 시 Apps Script에서 preflight/CORS가 날 수 있음
-*/
-async function requestApi(payload, options = {}) {
-  const method = options.method || "GET";
-
-  let res;
-  if (method === "POST") {
-    res = await fetch(MONTHLY_FEE_API_URL, {
-      method: "POST",
-      body: JSON.stringify(payload),
-      redirect: "follow"
-    });
-  } else {
-    res = await fetch(apiGetUrl(payload), {
-      method: "GET",
-      redirect: "follow"
-    });
+  if (!recipientName) {
+    const m = nameOnly.match(/장기요양급여\s*제공\s*계획서[\s_-]+([가-힣]{2,5}(?:[A-Za-z])?)/i);
+    if (m) recipientName = m[1].trim();
   }
 
-  if (!res.ok) {
-    throw new Error("앱스크립트 연결에 실패했습니다.");
-  }
-
-  const text = await res.text();
-  let data;
-  try {
-    data = JSON.parse(text);
-  } catch (err) {
-    throw new Error("앱스크립트 응답을 읽지 못했습니다. 웹앱 배포 상태를 확인해주세요.");
-  }
-
-  if (data && data.ok === false) {
-    throw new Error(data.message || "앱스크립트 처리에 실패했습니다.");
-  }
-
-  return data;
+  const cert = nameOnly.match(/L\d{8,}/i)?.[0] || "";
+  return { longTermNumber: cert, recipientName };
+}
+function getCareItemCount(rows) {
+  return rows.filter(row => normalizeText(JSON.stringify(row)).length > 0).length;
 }
 
-function handleFileChange(e) {
-  const file = e.target.files && e.target.files[0];
+function cellText(v) { return String(v ?? "").replace(/\r/g, "").trim(); }
+function sheetRows(ws) {
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", raw: false });
 
-  state.file = file || null;
-  state.previewRows = [];
-  state.displayMode = "saved";
-
-  $("fileName").textContent = file ? file.name : "선택된 파일 없음";
-  $("uploadBtn").disabled = !file;
-
-  if (file) {
-    previewFile(file);
-  } else {
-    renderSummary();
-    renderTable();
-  }
-}
-
-async function previewFile(file) {
-  try {
-    showNotice("파일을 읽는 중입니다...");
-
-    const items = await parseMonthlyFeeFile(file, $("monthInput").value);
-
-    state.previewRows = items;
-    state.displayMode = "preview";
-    $("uploadBtn").disabled = items.length === 0;
-
-    renderSummary();
-    renderTable();
-
-    if (items.length === 0) {
-      showNotice("파일은 읽었지만 저장할 수가 행을 찾지 못했습니다. 헤더명을 확인해주세요.", "error");
-      return;
+  // 엑셀 병합셀은 SheetJS에서 좌상단 셀에만 값이 남습니다.
+  // 예: N31:O32가 "일 2회"로 병합되어 있으면 32행(균형잡힌 식단 관리)의
+  // 횟수 칸은 빈칸처럼 읽힙니다. 병합 범위 전체에 좌상단 값을 복원하여
+  // 각 급여 행이 실제 화면에 보이는 횟수를 그대로 갖도록 합니다.
+  const merges = Array.isArray(ws?.["!merges"]) ? ws["!merges"] : [];
+  for (const merge of merges) {
+    const sr = merge.s.r, sc = merge.s.c, er = merge.e.r, ec = merge.e.c;
+    const topValue = rows?.[sr]?.[sc];
+    if (topValue === undefined || topValue === null || String(topValue).trim() === "") continue;
+    for (let r = sr; r <= er; r++) {
+      if (!rows[r]) rows[r] = [];
+      for (let c = sc; c <= ec; c++) {
+        if (rows[r][c] === undefined || rows[r][c] === null || String(rows[r][c]).trim() === "") {
+          rows[r][c] = topValue;
+        }
+      }
     }
-
-    showNotice(`미리보기 완료: ${items.length.toLocaleString()}건을 찾았습니다. 업로드 저장을 누르면 구글시트에 저장됩니다.`, "success");
-  } catch (err) {
-    state.previewRows = [];
-    state.displayMode = "saved";
-    $("uploadBtn").disabled = true;
-
-    renderSummary();
-    renderTable();
-    showNotice(err.message || "파일을 읽지 못했습니다.", "error");
   }
+  return rows;
 }
-
-async function parseMonthlyFeeFile(file, selectedMonth) {
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
-  const sheet = workbook.Sheets[workbook.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
-
-  const headerRowIndex = rows.findIndex((r) => {
-    const normalized = r.map(normalizeHeader);
-    return normalized.includes("일자") && (normalized.includes("수급자명") || normalized.includes("수급자"));
-  });
-
-  if (headerRowIndex < 0) {
-    throw new Error("헤더 행을 찾지 못했습니다. '일자', '수급자명', '수가코드', '수가명'이 있는 파일인지 확인해주세요.");
+function firstNonEmpty(row, start=0) {
+  for (let i=start;i<row.length;i++) if (cellText(row[i])) return cellText(row[i]);
+  return "";
+}
+function parseDateRange(text) {
+  const dates = cellText(text).match(/\d{4}[.\/-]\d{1,2}[.\/-]\d{1,2}/g) || [];
+  const norm = x => x ? x.replace(/[.\/]/g,"-").split("-").map((v,i)=>i?String(Number(v)).padStart(2,"0"):v).join("-") : "";
+  return { start: norm(dates[0]), end: norm(dates[1]) };
+}
+function findValueNearLabel(rows, label) {
+  const needle=normalizeText(label);
+  for (const row of rows) for (let c=0;c<row.length;c++) {
+    if (normalizeText(row[c]).includes(needle)) {
+      for (let k=c+1;k<Math.min(row.length,c+8);k++) if (cellText(row[k])) return cellText(row[k]);
+    }
   }
-
-  const headers = rows[headerRowIndex].map((v) => String(v || "").trim());
-  const idx = makeHeaderIndex(headers);
-  const items = [];
-
-  rows.slice(headerRowIndex + 1).forEach((row) => {
-    const dateText = normalizeDate(readCell(row, idx, ["일자", "급여일자", "제공일자"]));
-    const month = normalizeMonth(selectedMonth || dateText);
-    const recipientName = readCell(row, idx, ["수급자명", "성명", "어르신명"]);
-    const longTermNumber = readCell(row, idx, ["수급자인정번호", "인정번호", "장기요양번호"]);
-    const birthDate = normalizeDate(readCell(row, idx, ["생년월일"]));
-    const serviceType = readCell(row, idx, ["서비스구분", "서비스 구분"]);
-    const serviceCode = readCell(row, idx, ["수가코드", "수가 코드"]);
-    const serviceName = readCell(row, idx, ["수가명", "수가 명"]);
-    const unitPrice = toNumber(readCell(row, idx, ["수가", "단가", "금액"]));
-
-    if (!recipientName || !dateText) return;
-    if (!serviceCode && !serviceName && !unitPrice) return;
-
-    items.push({
-      id: `${month}_${recipientName}_${longTermNumber}_${serviceCode}_${serviceName}_${dateText}_${Math.random().toString(36).slice(2, 7)}`,
-      month,
-      recipientName,
-      longTermNumber,
-      certNumber: longTermNumber,
-      birthDate,
-      careManagerName: readCell(row, idx, ["요양보호사명", "요양보호사 명"]),
-      careManagerBirthDate: "",
-      careManagerCareNumber: readCell(row, idx, ["요양보호사번호", "요양보호사 번호"]),
-      workerType: readCell(row, idx, ["종사자구분", "종사자 구분"]),
-      familyCareYn: readCell(row, idx, ["가족여부", "가족 여부"]),
-      familyRelation: readCell(row, idx, ["가족관계", "가족 관계"]),
-      serviceType,
-      serviceCode,
-      serviceName,
-      unitPrice,
-      serviceDates: [dateText],
-      serviceDays: 1,
-      totalAmount: unitPrice,
-      fileName: file.name,
-      uploadedAt: new Date().toISOString(),
-      rows: Object.fromEntries(headers.map((h, i) => [h || `col${i + 1}`, row[i] || ""]))
-    });
-  });
-
-  return mergeDailyRows(items);
-}
-
-function normalizeHeader(value) {
-  return String(value || "").replace(/\s/g, "").trim();
-}
-
-function makeHeaderIndex(headers) {
-  const idx = {};
-
-  headers.forEach((h, i) => {
-    const raw = String(h || "").trim();
-    const normalized = normalizeHeader(raw);
-
-    if (raw && idx[raw] === undefined) idx[raw] = i;
-    if (normalized && idx[normalized] === undefined) idx[normalized] = i;
-  });
-
-  return idx;
-}
-
-function readCell(row, idx, names) {
-  for (const name of names) {
-    if (idx[name] !== undefined) return String(row[idx[name]] || "").trim();
-
-    const normalized = normalizeHeader(name);
-    if (idx[normalized] !== undefined) return String(row[idx[normalized]] || "").trim();
-  }
-
   return "";
 }
 
-function mergeDailyRows(items) {
-  const map = new Map();
+const CARE_PLAN_HEADER_WORDS = new Set([
+  "성명", "장기요양등급", "장기요양인정번호", "생년월일", "수급자와의관계", "작성일", "종합의견"
+]);
+function isHeaderLikeValue(value) {
+  const t=normalizeText(value);
+  return !t || CARE_PLAN_HEADER_WORDS.has(t) || /^(①수급자|②동의자)$/.test(t);
+}
+function findValidatedValueRight(rows, r, c, validator, maxCols=12) {
+  const row=rows[r] || [];
+  const label=normalizeText(row[c]);
+  for (let k=c+1; k<Math.min(row.length, c+maxCols+1); k++) {
+    const value=cellText(row[k]);
+    // 병합셀 복원으로 '성명 성명 성명 권선기'처럼 라벨이 반복될 수 있으므로 건너뜁니다.
+    if (!value || normalizeText(value)===label || isHeaderLikeValue(value)) continue;
+    if (!validator || validator(value)) return value;
+  }
+  return "";
+}
+function isRecipientNameValue(value) {
+  return /^[가-힣]{2,5}$/.test(cellText(value)) && !/^(성명|수급자|동의자)$/.test(cellText(value));
+}
+function isLongTermNumberValue(value) { return /^L\d{8,}$/i.test(cellText(value).replace(/\s/g,"")); }
+function isGradeValue(value) { return /^(?:[1-5]등급|인지지원등급)$/i.test(cellText(value).replace(/\s/g,"")); }
+const FEE_RANGE_PATTERN = "(3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
+const FEE_RANGE_RE = new RegExp(FEE_RANGE_PATTERN, "g");
+function cleanFeeRange(value) { return cellText(value).replace(/\s+/g, " ").trim(); }
+function cleanWeeklyCount(value) {
+  const n=String(value ?? "").match(/\d+/)?.[0];
+  return n ? `주 ${n}회` : "";
+}
+function extractWeeklyFeePairs(text) {
+  const source = cellText(text)
+    .replace(/\u200e|\u200f|\ufeff/g, "")
+    .replace(/\r?\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 
-  items.forEach((item) => {
-    const key = [
-      item.month,
-      item.recipientName.replace(/\s/g, ""),
-      item.longTermNumber.replace(/\s/g, ""),
-      item.serviceCode.replace(/\s/g, ""),
-      item.serviceName.replace(/\s/g, "")
-    ].join("|");
+  const feePattern = "(?:3\\s*시간\\s*미만|3\\s*시간\\s*이상\\s*6\\s*시간\\s*미만|6\\s*시간\\s*이상\\s*8\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*10\\s*시간\\s*미만|8\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|10\\s*시간\\s*이상\\s*13\\s*시간\\s*미만|13\\s*시간\\s*이상)";
+  const re = new RegExp(`주\\s*(\\d+)\\s*(?:(?:회|일)\\s*)?(${feePattern})`, "g");
+  const pairs = [];
+  let m;
+  while ((m = re.exec(source)) !== null) {
+    pairs.push({ count:`주 ${m[1]}회`, fee:cleanFeeRange(m[2]), index:m.index });
+  }
+  return pairs;
+}
 
-    if (!map.has(key)) {
-      map.set(key, {
-        ...item,
-        serviceDates: [...item.serviceDates],
-        serviceDays: 1,
-        totalAmount: item.totalAmount || item.unitPrice || 0,
-        rows: [item.rows]
-      });
-      return;
+function extractFeeInfo(opinion) {
+  const text = cellText(opinion)
+    .replace(/\u200e|\u200f|\ufeff/g, "")
+    .replace(/\r/g, " ")
+    .replace(/\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const result = {
+    planFee:"", planWeeklyCount:"",
+    weekdayFee:"", weekdayWeeklyCount:"",
+    weekendFee:"", weekendWeeklyCount:"",
+    feeText:""
+  };
+  if (!text) return result;
+
+  /*
+   * 중요:
+   * 1) 개인별장기요양이용계획서에 적힌 기존 계획은 planFee/planWeeklyCount로 보존한다.
+   * 2) "욕구 반영하여" 이후의 실제 요양급여제공계획은 weekday/weekend에 별도로 넣는다.
+   * 즉 기존 계획을 버리지 않는다.
+   */
+  const anchors = [
+    /수급자\s*및\s*보호자(?:의)?\s*욕구(?:를)?\s*반영하여/,
+    /수급자\s*및\s*보호자\s*욕구반영하여/,
+    /보호자\s*욕구\s*반영하여/,
+    /욕구\s*반영하여/,
+    /욕구반영하여/,
+    /반영하여/
+  ];
+
+  let splitIndex = -1;
+  let anchorLength = 0;
+  for (const re of anchors) {
+    const m = re.exec(text);
+    if (m && m.index != null) {
+      splitIndex = m.index;
+      anchorLength = m[0].length;
+      break;
+    }
+  }
+
+  const allPairs = extractWeeklyFeePairs(text);
+  const allRanges = text.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
+
+  if (splitIndex >= 0) {
+    const beforeText = text.slice(0, splitIndex);
+    const afterText = text.slice(splitIndex + anchorLength);
+
+    // 앞부분 = 개인별장기요양이용계획서(기존 계획)
+    const planPairs = extractWeeklyFeePairs(beforeText);
+    const planRanges = beforeText.match(new RegExp(FEE_RANGE_PATTERN, "g")) || [];
+
+    if (planPairs.length) {
+      const p = planPairs[planPairs.length - 1];
+      result.planWeeklyCount = p.count;
+      result.planFee = p.fee;
+    } else if (planRanges.length) {
+      result.planFee = cleanFeeRange(planRanges[planRanges.length - 1]);
     }
 
-    const old = map.get(key);
+    // 뒷부분 = 실제 요양급여제공계획
+    const actualPairs = extractWeeklyFeePairs(afterText);
+    if (actualPairs[0]) {
+      result.weekdayWeeklyCount = actualPairs[0].count;
+      result.weekdayFee = actualPairs[0].fee;
+    }
+    if (actualPairs[1]) {
+      result.weekendWeeklyCount = actualPairs[1].count;
+      result.weekendFee = actualPairs[1].fee;
+    }
 
-    item.serviceDates.forEach((d) => {
-      if (d && !old.serviceDates.includes(d)) old.serviceDates.push(d);
+    // 앞부분 파싱이 실패했을 때 전체 첫 값을 기존 계획으로 복구
+    if (!result.planFee && allPairs[0]) {
+      result.planWeeklyCount = allPairs[0].count;
+      result.planFee = allPairs[0].fee;
+    }
+  } else {
+    // 구분 문구가 없는 문서는 기존 동작 유지:
+    // 첫 값=계획서, 두 번째=평일, 세 번째=주말
+    if (allPairs[0]) {
+      result.planWeeklyCount = allPairs[0].count;
+      result.planFee = allPairs[0].fee;
+    } else if (allRanges.length) {
+      result.planFee = cleanFeeRange(allRanges[0]);
+    }
+    if (allPairs[1]) {
+      result.weekdayWeeklyCount = allPairs[1].count;
+      result.weekdayFee = allPairs[1].fee;
+    }
+    if (allPairs[2]) {
+      result.weekendWeeklyCount = allPairs[2].count;
+      result.weekendFee = allPairs[2].fee;
+    }
+  }
+
+  result.feeText = [
+    result.planFee ? `계획서 수가: ${result.planFee}${result.planWeeklyCount ? ` (${result.planWeeklyCount})` : ""}` : "",
+    result.weekdayFee ? `평일 수가: ${result.weekdayFee}${result.weekdayWeeklyCount ? ` (${result.weekdayWeeklyCount})` : ""}` : "",
+    result.weekendFee ? `주말 수가: ${result.weekendFee}${result.weekendWeeklyCount ? ` (${result.weekendWeeklyCount})` : ""}` : ""
+  ].filter(Boolean).join("\\n");
+
+  return result;
+}
+
+// 검증 항목은 급여명(장기요양필요내용)으로만 분류합니다.
+// 세부제공내용, 종합의견, 세부목표에 나온 단어로 다른 급여를 추정하지 않습니다.
+function classifyCareBenefit(needValue) {
+  const name = normalizeText(needValue).replace(/[·ㆍ]/g, "");
+  if (!name) return "기타";
+  // 옷갈아입기, 착탈의 등은 목욕 급여가 아닙니다.
+  if (/옷갈아입|옷입|옷벗|착탈의|의복착용|의복관리/.test(name)) return "기타";
+  if (/기저귀/.test(name)) return "기저귀";
+  if (/몸씻기|목욕/.test(name)) return "목욕";
+  if (/균형잡힌식단관리/.test(name)) return "식사횟수";
+  if (/기능상태에맞는음식준비/.test(name)) return "식사종류";
+  if (/물리치료|기능회복훈련/.test(name)) return "물리치료";
+  if (/복약|약복용|투약/.test(name)) return "복약횟수";
+  return "기타";
+}
+
+function parseNewCarePlanSheet(ws, fileName) {
+  const a=sheetRows(ws);
+  let recipientName="", longTermNumber="", grade="", applicationPeriod="", writtenDate="", summaryOpinion="";
+  for (let r=0;r<a.length;r++) {
+    const row=a[r]||[];
+    for (let c=0;c<row.length;c++) {
+      const t=normalizeText(row[c]);
+      // 수급자 정보는 반드시 ①수급자 영역에서만 읽습니다.
+      // ②동의자의 성명(예: 박태환)이 수급자명으로 잘못 저장되는 것을 방지합니다.
+      const rowContext = normalizeText(row.join(" "));
+      let recipientSection = false;
+      for (let rr = Math.max(0, r - 4); rr <= r; rr++) {
+        const contextText = normalizeText((a[rr] || []).join(" "));
+        if (contextText.includes("①수급자")) recipientSection = true;
+        if (contextText.includes("②동의자")) recipientSection = false;
+      }
+
+      if (t==="성명" && !recipientName && recipientSection) {
+        recipientName=findValidatedValueRight(a,r,c,isRecipientNameValue,10);
+      }
+      if (t.includes("장기요양등급") && !grade && recipientSection) {
+        grade=findValidatedValueRight(a,r,c,isGradeValue,10);
+      }
+      if (t.includes("장기요양인정번호") && !longTermNumber && recipientSection) {
+        longTermNumber=findValidatedValueRight(a,r,c,isLongTermNumberValue,10).replace(/\s/g,"");
+      }
+      if (t.includes("장기요양급여제공계획서적용기간") && !applicationPeriod) applicationPeriod=firstNonEmpty(a[r+1]||[],c);
+      if (t==="작성일" && !writtenDate) writtenDate=firstNonEmpty(a[r+1]||[],c);
+      if (t==="종합의견" && !summaryOpinion) {
+        // 종합의견은 한 셀에만 있지 않고 아래 행/병합셀에 이어지는 양식이 있습니다.
+        // "종합의견" 위치부터 "종합확인자"/서명 영역 직전까지의 모든 텍스트를 모읍니다.
+        const opinionParts=[];
+        for (let rr=r; rr<a.length; rr++) {
+          const opinionRow=a[rr] || [];
+          const rowText=opinionRow.map(cellText).filter(Boolean).join(" ");
+          if (rr>r && /종합\s*확인자|확인자\s*서명/.test(rowText)) break;
+          for (let cc=(rr===r ? c+1 : 0); cc<opinionRow.length; cc++) {
+            const value=cellText(opinionRow[cc]);
+            if (value && normalizeText(value)!=="종합의견") opinionParts.push(value);
+          }
+        }
+        summaryOpinion=[...new Set(opinionParts)].join("\n").trim();
+      }
+    }
+  }
+  const fileInfo=extractInfoFromFileName(fileName);
+  // 헤더 문자열이 실제 값으로 들어가는 것을 마지막 단계에서도 차단합니다.
+  if (!isRecipientNameValue(recipientName)) recipientName="";
+  if (!isLongTermNumberValue(longTermNumber)) longTermNumber="";
+  if (!isGradeValue(grade)) grade="";
+  // 파일명에 수급자명이 있으면 무조건 그 이름을 우선합니다.
+  // 엑셀 내부의 동의자/작성자/제공 문구가 수급자명으로 오인되는 문제 방지.
+  if (fileInfo.recipientName) recipientName = fileInfo.recipientName;
+  longTermNumber ||= fileInfo.longTermNumber;
+  const period=parseDateRange(applicationPeriod);
+  writtenDate=normalizeDateString(writtenDate) || period.start;
+
+  // 기존 제공확인 페이지가 읽는 급여목록 구조를 유지합니다.
+  const careRows=[];
+  let currentArea="", currentGoal="";
+  for (let r=0;r<a.length;r++) {
+    const row=a[r]||[];
+    const need=cellText(row[7]);
+    const detail=cellText(row[9]);
+    if (!need || /장기요양.*필요내용/.test(need.replace(/\s/g,""))) continue;
+    const area=cellText(row[1]); if (area && !/장기요양.*필요영역/.test(area.replace(/\s/g,""))) currentArea=area;
+    const goal=cellText(row[2]); if (goal && goal!=="장기요양\n세부목표") currentGoal=goal;
+    careRows.push({
+      "장기요양필요영역": currentArea,
+      "장기요양세부목표": currentGoal,
+      "장기요양필요내용": need,
+      "필요내용": need,
+      "검증분류": classifyCareBenefit(need),
+      "세부제공내용": detail,
+      "세부 제공내용": detail,
+      "횟수": cellText(row[13]),
+      "시간(분)": cellText(row[15]),
+      "작성자": cellText(row[17])
     });
+  }
+  const feeInfo=extractFeeInfo(summaryOpinion);
+  return { recipientName,longTermNumber,grade,writtenDate,applicationStartDate:period.start,applicationEndDate:period.end,applicationPeriod,summaryOpinion,...feeInfo,rows:careRows };
+}
 
-    old.serviceDays = old.serviceDates.length;
-    old.totalAmount += item.totalAmount || item.unitPrice || 0;
-    old.rows.push(item.rows);
+function getLoginName() {
+  return sessionStorage.getItem("loginUser") || localStorage.getItem("loginUser") || currentUser?.email || "알 수 없음";
+}
+function safeRows(value) {
+  if (Array.isArray(value)) return value;
+  if (!value) return [];
+  try { const parsed = JSON.parse(String(value)); return Array.isArray(parsed) ? parsed : []; }
+  catch { return []; }
+}
+function setMigrationStatus(text, isError=false) {
+  if (!elMigrationStatus) return;
+  elMigrationStatus.textContent = text;
+  elMigrationStatus.style.color = isError ? "#b91c1c" : "#334155";
+}
+
+function getPlanVersion(plan) {
+  if (plan.sourceType === "new" || plan.schemaVersion === "new-2026") return "new";
+  if (plan.sourceType === "legacy" || plan.migratedFrom === "googleSheets") return "legacy";
+  // 기존 이전 자료에는 새 양식의 적용기간/등급/수가 필드가 없었습니다.
+  if (!plan.applicationStartDate && !plan.applicationEndDate && !plan.grade && !plan.feeText) return "legacy";
+  return "new";
+}
+function getVisiblePlans() {
+  return carePlanLibrary.filter(plan => currentFilter === "all" || getPlanVersion(plan) === currentFilter);
+}
+function escapeHtml(value) {
+  return String(value ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+}
+function updateCountText() {
+  if (!elPlanCountText) return;
+  const legacy = carePlanLibrary.filter(p => getPlanVersion(p) === "legacy").length;
+  const newer = carePlanLibrary.filter(p => getPlanVersion(p) === "new").length;
+  elPlanCountText.textContent = `전체 ${carePlanLibrary.length}건 · 구버전 ${legacy}건 · 신버전 ${newer}건`;
+}
+function exportPlansToExcel() {
+  const plans = getVisiblePlans();
+  if (!plans.length) return alert("엑셀로 받을 계획서가 없습니다.");
+  const summary = plans.map(plan => ({
+    "구분": getPlanVersion(plan) === "legacy" ? "구버전" : "신버전",
+    "장기요양번호": plan.longTermNumber || "",
+    "수급자명": plan.recipientName || "",
+    "등급": plan.grade || "",
+    "적용 시작일": normalizeDateString(plan.applicationStartDate || plan.writtenDate),
+    "적용 종료일": normalizeDateString(plan.applicationEndDate),
+    "작성일": normalizeDateString(plan.writtenDate),
+    "계획서 주 횟수": plan.planWeeklyCount || "",
+    "계획서 수가": plan.planFee || "",
+    "평일 주 횟수": plan.weekdayWeeklyCount || "",
+    "평일 수가": plan.weekdayFee || "",
+    "주말 주 횟수": plan.weekendWeeklyCount || "",
+    "주말 수가": plan.weekendFee || "",
+    "종합의견": plan.summaryOpinion || "",
+    "파일명": plan.fileName || "",
+    "급여 항목 수": Number(plan.itemCount || (plan.rows || []).length || 0),
+    "업로드일시": plan.uploadedAt || "",
+    "업로드자": plan.uploadedBy || ""
+  }));
+  const details = [];
+  plans.forEach(plan => (plan.rows || []).forEach((row, index) => {
+    details.push({
+      "구분": getPlanVersion(plan) === "legacy" ? "구버전" : "신버전",
+      "장기요양번호": plan.longTermNumber || "",
+      "수급자명": plan.recipientName || "",
+      "적용 시작일": normalizeDateString(plan.applicationStartDate || plan.writtenDate),
+      "급여항목 순번": index + 1,
+      ...row
+    });
+  }));
+  const wb = XLSX.utils.book_new();
+  const ws1 = XLSX.utils.json_to_sheet(summary);
+  XLSX.utils.book_append_sheet(wb, ws1, "계획서목록");
+  if (details.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(details), "급여목록상세");
+  const label = currentFilter === "legacy" ? "구버전" : currentFilter === "new" ? "신버전" : "전체";
+  XLSX.writeFile(wb, `요양급여제공계획서_${label}_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+async function loadLibrary() {
+  try {
+    if (!currentUser) return;
+    const snap = await getDocs(collection(db, "carePlans"));
+    carePlanLibrary = snap.docs.map(s => {
+      const data = s.data();
+      return {
+        ...data,
+        firestoreId: s.id,
+        id: data.id ?? s.id,
+        writtenDate: normalizeDateString(data.writtenDate),
+        applicationStartDate: normalizeDateString(data.applicationStartDate),
+        applicationEndDate: normalizeDateString(data.applicationEndDate),
+        rows: Array.isArray(data.rows) ? data.rows : safeRows(data.rowsJson),
+        checked: false
+      };
+    });
+    if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
+    renderLibrary();
+  } catch (error) {
+    console.error("Firestore 불러오기 오류:", error);
+    alert("Firebase에서 급여제공계획서 데이터를 불러오지 못했습니다. Firestore 규칙을 확인해주세요.");
+  }
+}
+
+async function addPlanToFirestore(plan) {
+  if (!currentUser) throw new Error("로그인 정보가 없습니다.");
+  const id = String(plan.id || Date.now());
+  const rows = plan.rows || [];
+  await setDoc(doc(db, "carePlans", id), {
+    id,
+    longTermNumber: plan.longTermNumber || "",
+    recipientName: plan.recipientName || "",
+    grade: plan.grade || "",
+    applicationStartDate: normalizeDateString(plan.applicationStartDate),
+    applicationEndDate: normalizeDateString(plan.applicationEndDate),
+    applicationPeriod: plan.applicationPeriod || "",
+    summaryOpinion: plan.summaryOpinion || "",
+    feeText: plan.feeText || "",
+    planFee: plan.planFee || "",
+    planWeeklyCount: plan.planWeeklyCount || "",
+    weekdayFee: plan.weekdayFee || "",
+    weekdayWeeklyCount: plan.weekdayWeeklyCount || "",
+    weekendFee: plan.weekendFee || "",
+    weekendWeeklyCount: plan.weekendWeeklyCount || "",
+    writtenDate: normalizeDateString(plan.writtenDate),
+    fileName: plan.fileName || "",
+    itemCount: Number(plan.itemCount || 0),
+    uploadedAt: plan.uploadedAt || new Date().toLocaleString("ko-KR"),
+    uploadedBy: plan.uploadedBy || getLoginName(),
+    ownerUid: currentUser.uid,
+    sourceType: "new",
+    schemaVersion: "new-2026",
+    rows
   });
+}
 
-  return Array.from(map.values()).map((item) => ({
-    ...item,
-    serviceDates: item.serviceDates.sort()
+async function deleteSelectedFromFirestore(plans) {
+  for (const plan of plans) {
+    if (!mayDeletePlan(plan)) throw new Error("본인이 등록한 문서만 삭제할 수 있습니다.");
+    await deleteDoc(doc(db, "carePlans", String(plan.firestoreId || plan.id)));
+  }
+}
+
+function renderLibrary() {
+  if (!elPlanTableBodyContainer) return;
+  elPlanTableBodyContainer.innerHTML = "";
+  updateCountText();
+  const visiblePlans = getVisiblePlans();
+  if (visiblePlans.length === 0) {
+    elPlanTableBodyContainer.innerHTML = `<tr class="empty-row"><td colspan="17" style="text-align:center;padding:25px 0;">해당 구분에 등록된 급여제공계획서가 없습니다.</td></tr>`;
+    if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
+    return;
+  }
+  const sortedList = [...visiblePlans].sort((a,b) => {
+    const na=String(a.recipientName||""), nb=String(b.recipientName||"");
+    if (na===nb) return normalizeDateString(b.applicationStartDate || b.writtenDate).localeCompare(normalizeDateString(a.applicationStartDate || a.writtenDate));
+    return na.localeCompare(nb,"ko");
+  });
+  for (const plan of sortedList) {
+    const row=document.createElement("tr");
+    const version=getPlanVersion(plan);
+    const versionLabel=version === "legacy" ? "구버전" : "신버전";
+    row.innerHTML=`<td class="checkbox-col" style="text-align:center;"><input type="checkbox" class="plan-checkbox" data-id="${escapeHtml(plan.firestoreId || plan.id)}" ${plan.checked?"checked":""}/></td><td><span class="version-badge ${version}">${versionLabel}</span></td><td>${escapeHtml(plan.longTermNumber||"-")}</td><td>${escapeHtml(plan.recipientName||"-")}</td><td>${escapeHtml(plan.grade||"-")}</td><td>${escapeHtml(formatDateValue(plan.applicationStartDate || plan.writtenDate))}</td><td>${escapeHtml(formatDateValue(plan.applicationEndDate))}</td><td>${escapeHtml(plan.planWeeklyCount||"-")}</td><td>${escapeHtml(plan.planFee||"-")}</td><td>${escapeHtml(plan.weekdayWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekdayFee||"-")}</td><td>${escapeHtml(plan.weekendWeeklyCount||"-")}</td><td>${escapeHtml(plan.weekendFee||"-")}</td><td style="text-align:left;">${escapeHtml(plan.fileName||"-")}</td><td>${Number(plan.itemCount||0)}개</td><td>${escapeHtml(plan.uploadedAt||"-")}</td><td>${escapeHtml(plan.uploadedBy||"알 수 없음")}</td>`;
+    elPlanTableBodyContainer.appendChild(row);
+  }
+  bindCheckboxEvents();
+}
+function bindCheckboxEvents() {
+  document.querySelectorAll(".plan-checkbox").forEach(cb => cb.addEventListener("change", e => {
+    const id=String(e.target.dataset.id);
+    carePlanLibrary=carePlanLibrary.map(p => String(p.firestoreId||p.id)===id ? {...p,checked:e.target.checked}:p);
+    if (elPlanSelectAllTrigger && !e.target.checked) elPlanSelectAllTrigger.checked=false;
   }));
 }
 
-async function uploadMonthlyFee() {
-  try {
-    if (!state.previewRows.length) {
-      throw new Error("저장할 자료가 없습니다. 파일을 다시 선택해주세요.");
-    }
+if (elPlanFileSelector) elPlanFileSelector.addEventListener("change", () => {
+  const count = elPlanFileSelector.files?.length || 0;
+  if (elPlanFileCount) elPlanFileCount.textContent = count ? `${count}개 파일 선택됨` : "여러 파일을 한 번에 선택할 수 있습니다.";
+});
 
-    $("uploadBtn").disabled = true;
-
-    const month = $("monthInput").value;
-    const total = state.previewRows.length;
-    const chunkSize = 120;
-    let savedCount = 0;
-
-    showNotice(`구글시트에 저장 중입니다... 0 / ${total.toLocaleString()}건`);
-
-    for (let start = 0; start < total; start += chunkSize) {
-      const chunk = state.previewRows.slice(start, start + chunkSize);
-      const isFirstChunk = start === 0;
-
-      const result = await requestApi({
-        action: "addMonthlyFee",
-        month,
-        replaceMonth: $("replaceMonth").checked && isFirstChunk,
-        allowDuplicate: true,
-        fileName: state.file ? state.file.name : "",
-        uploadedAt: new Date().toISOString(),
-        uploadedBy: localStorage.getItem("loginUser") || "사회복지사",
-        items: chunk
-      }, { method: "POST" });
-
-      savedCount += Number(result.count || chunk.length || 0);
-      showNotice(`구글시트에 저장 중입니다... ${Math.min(start + chunk.length, total).toLocaleString()} / ${total.toLocaleString()}건`);
-    }
-
-    showNotice(`저장 완료: ${savedCount.toLocaleString()}건 저장`, "success");
-
-    state.displayMode = "saved";
-    state.previewRows = [];
-
-    await loadMonthlyFee();
-    hideNoticeLater();
-  } catch (err) {
-    showNotice(err.message || "저장 중 오류가 발생했습니다.", "error");
-  } finally {
-    $("uploadBtn").disabled = !state.file;
-  }
-}
-
-async function loadMonthlyFee() {
-  try {
-    const month = $("monthInput").value;
-    const rows = await requestApi({ action: "listMonthlyFee", month });
-
-    state.savedRows = Array.isArray(rows) ? rows : [];
-    if (state.displayMode !== "preview") state.displayMode = "saved";
-
-    renderSummary();
-    renderTable();
-  } catch (err) {
-    state.savedRows = [];
-    if (state.displayMode !== "preview") state.displayMode = "saved";
-
-    renderSummary();
-    renderTable();
-    showNotice(err.message || "자료를 불러오지 못했습니다.", "error");
-  }
-}
-
-async function deleteMonth() {
-  const month = $("monthInput").value;
-
-  if (!month) {
-    showNotice("삭제할 월을 선택해주세요.", "error");
-    return;
-  }
-
-  if (!confirm(`${month} 수가 자료를 구글시트에서 삭제할까요?`)) return;
-
-  try {
-    await requestApi({ action: "deleteMonthlyFee", month }, { method: "POST" });
-
-    showNotice(`${month} 자료를 삭제했습니다.`, "success");
-
-    state.displayMode = "saved";
-    state.previewRows = [];
-
-    await loadMonthlyFee();
-    hideNoticeLater();
-  } catch (err) {
-    showNotice(err.message || "삭제하지 못했습니다.", "error");
-  }
-}
-
-function getDisplayRows() {
-  return state.displayMode === "preview" ? state.previewRows : state.savedRows;
-}
-
-function renderSummary() {
-  const rows = getDisplayRows();
-  const recipients = new Set(rows.map((r) => `${r.recipientName}|${r.longTermNumber || r.certNumber}`));
-  const amount = rows.reduce((sum, r) => sum + toNumber(r.totalAmount), 0);
-
-  $("summaryMonth").textContent = $("monthInput").value || "전체";
-  $("summaryRecipients").textContent = `${recipients.size.toLocaleString()}명`;
-  $("summaryRows").textContent = `${rows.length.toLocaleString()}건`;
-  $("summaryAmount").textContent = `${amount.toLocaleString()}원`;
-
-  $("statusText").textContent = state.displayMode === "preview"
-    ? `미리보기 ${rows.length.toLocaleString()}건 표시 중`
-    : `저장된 자료 ${rows.length.toLocaleString()}건 표시 중`;
-}
-
-function renderTable() {
-  const q = ($("searchInput").value || "").replace(/\s/g, "").toLowerCase();
-  const body = $("tableBody");
-
-  const rows = getDisplayRows().filter((r) => {
-    if (!q) return true;
-    return JSON.stringify(r).replace(/\s/g, "").toLowerCase().includes(q);
+function readWorkbookFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = event => {
+      try { resolve(XLSX.read(new Uint8Array(event.target.result), {type:"array", cellDates:true})); }
+      catch (e) { reject(e); }
+    };
+    reader.onerror = () => reject(reader.error || new Error("파일을 읽지 못했습니다."));
+    reader.readAsArrayBuffer(file);
   });
+}
+function findExistingPlan(parsed, fileName="") {
+  const no=String(parsed.longTermNumber||"").trim();
+  const start=normalizeDateString(parsed.applicationStartDate);
+  const fn=String(fileName||"").trim();
+  return carePlanLibrary.find(p =>
+    (fn && String(p.fileName||"").trim()===fn) ||
+    (no && String(p.longTermNumber||"").trim()===no && normalizeDateString(p.applicationStartDate || p.writtenDate)===start)
+  );
+}
 
-  if (!rows.length) {
-    body.innerHTML = '<tr><td colspan="10" class="empty">저장된 자료가 없습니다.</td></tr>';
-    return;
+if (elPlanUploadTrigger) elPlanUploadTrigger.addEventListener("click", async () => {
+  if (!elPlanFileSelector) return;
+  const files=[...(elPlanFileSelector.files || [])];
+  if (!files.length) return alert("급여제공계획서 파일을 선택해주세요.");
+
+  elPlanUploadTrigger.disabled=true;
+  const originalText=elPlanUploadTrigger.textContent;
+  if (elPlanUploadProgress) { elPlanUploadProgress.style.display="block"; elPlanUploadProgress.textContent=`총 ${files.length}개 파일 등록을 시작합니다...`; }
+  let success=0, skipped=0;
+  const failed=[];
+  try {
+    for (let i=0;i<files.length;i++) {
+      const file=files[i];
+      elPlanUploadTrigger.textContent=`등록 중 ${i+1}/${files.length}`;
+      if (elPlanUploadProgress) elPlanUploadProgress.textContent=`총 ${files.length}개 중 ${i+1}개 처리 중 · ${file.name}`;
+      try {
+        const workbook=await readWorkbookFile(file);
+        const worksheet=workbook.Sheets[workbook.SheetNames[0]];
+        const parsed=parseNewCarePlanSheet(worksheet,file.name);
+        if (!parsed.longTermNumber || !parsed.recipientName) throw new Error("수급자 성명 또는 장기요양인정번호를 찾지 못했습니다.");
+        if (!parsed.applicationStartDate) throw new Error("적용기간 시작일을 찾지 못했습니다.");
+        if (!parsed.rows.length) throw new Error("급여 제공계획 목록을 찾지 못했습니다.");
+        const existing=findExistingPlan(parsed,file.name);
+        // 같은 파일명 또는 같은 인정번호+적용시작일 자료가 있으면 새 중복행을 만들지 않고 교체합니다.
+        // 과거 파서가 '성명/장기요양인정번호/장기요양등급' 헤더를 값으로 저장한 자료도 재업로드만으로 바로잡힙니다.
+        const replacementId=existing ? String(existing.firestoreId || existing.id) : "";
+        const newPlan={id:replacementId || `${Date.now()}_${i}_${Math.random().toString(36).slice(2,8)}`,...parsed,fileName:file.name,uploadedAt:new Date().toLocaleString("ko-KR"),uploadedBy:getLoginName(),itemCount:getCareItemCount(parsed.rows),checked:false};
+        await addPlanToFirestore(newPlan);
+        carePlanLibrary.push({...newPlan, firestoreId:newPlan.id});
+        success++;
+      } catch(error) {
+        console.error(file.name,error);
+        failed.push(`${file.name} : ${error.message||error}`);
+      }
+    }
+    elPlanFileSelector.value="";
+    if (elPlanFileCount) elPlanFileCount.textContent="여러 파일을 한 번에 선택할 수 있습니다.";
+    await loadLibrary();
+    const summary=`일괄 등록 완료\n\n성공 ${success}건 / 중복 건너뜀 ${skipped}건 / 실패 ${failed.length}건` + (failed.length ? `\n\n실패 파일\n${failed.join("\n")}` : "");
+    if (elPlanUploadProgress) elPlanUploadProgress.textContent=`완료 · 성공 ${success}건 / 중복 ${skipped}건 / 실패 ${failed.length}건`;
+    alert(summary);
+  } finally {
+    elPlanUploadTrigger.disabled=false;
+    elPlanUploadTrigger.textContent=originalText || "계획서 등록";
   }
+});
 
-  body.innerHTML = rows.map((r) => `
-    <tr>
-      <td><span class="pill">${escapeHtml(r.month)}</span></td>
-      <td>${escapeHtml(r.recipientName)}</td>
-      <td>${escapeHtml(r.longTermNumber || r.certNumber)}</td>
-      <td>${escapeHtml(r.birthDate)}</td>
-      <td>${escapeHtml(r.serviceType)}</td>
-      <td>${escapeHtml(r.serviceCode)}</td>
-      <td>${escapeHtml(r.serviceName)}</td>
-      <td>${toNumber(r.unitPrice).toLocaleString()}</td>
-      <td>${toNumber(r.serviceDays).toLocaleString()}</td>
-      <td>${toNumber(r.totalAmount).toLocaleString()}</td>
-    </tr>
-  `).join("");
-}
+if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.addEventListener("change", e => { carePlanLibrary=carePlanLibrary.map(p => (currentFilter === "all" || getPlanVersion(p) === currentFilter) ? {...p,checked:e.target.checked} : p); renderLibrary(); });
+elPlanFilterButtons.forEach(btn => btn.addEventListener("click", () => {
+  currentFilter = btn.dataset.filter || "all";
+  elPlanFilterButtons.forEach(b => b.classList.toggle("active", b === btn));
+  if (elPlanSelectAllTrigger) elPlanSelectAllTrigger.checked = false;
+  carePlanLibrary = carePlanLibrary.map(p => ({...p, checked:false}));
+  renderLibrary();
+}));
+if (elPlanExportTrigger) elPlanExportTrigger.addEventListener("click", exportPlansToExcel);
 
-function normalizeMonth(value) {
-  const text = String(value || "").trim().replace(/[./]/g, "-");
-  const m = text.match(/(\d{4})-(\d{1,2})/);
-
-  return m ? `${m[1]}-${String(m[2]).padStart(2, "0")}` : text;
-}
-
-function normalizeDate(value) {
-  if (Object.prototype.toString.call(value) === "[object Date]" && !isNaN(value)) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, "0");
-    const d = String(value.getDate()).padStart(2, "0");
-
-    return `${y}-${m}-${d}`;
+if (elPlanDeleteTrigger) elPlanDeleteTrigger.addEventListener("click", async () => {
+  if (currentUser) {
+    try { const snap = await getDoc(doc(db, "users", currentUser.uid)); isPortalAdmin = snap.exists() && snap.data().role === "admin"; }
+    catch (error) { isPortalAdmin = false; console.error(error); }
   }
+  const selected=carePlanLibrary.filter(p=>p.checked);
+  if (!selected.length) return alert("삭제할 계획서를 선택해주세요.");
+  const unauthorized = selected.filter(p => !mayDeletePlan(p));
+  if (unauthorized.length) return alert(`삭제 권한이 없는 문서 ${unauthorized.length}건이 포함되어 있습니다.\n일반 직원은 본인이 업로드한 문서만 삭제할 수 있습니다.`);
+  if (!confirm(`선택한 ${selected.length}개의 계획서를 삭제하시겠습니까?\n${isPortalAdmin ? "관리자 권한으로 삭제합니다." : "본인이 등록한 자료만 삭제합니다."}`)) return;
+  try { elPlanDeleteTrigger.disabled=true; await deleteSelectedFromFirestore(selected); await loadLibrary(); alert("삭제되었습니다."); }
+  catch(error) { console.error(error); alert("삭제 권한이 없거나 삭제 중 오류가 발생했습니다."); }
+  finally { elPlanDeleteTrigger.disabled=false; }
+});
 
-  const text = String(value || "").trim().replace(/^'/, "");
-  if (!text) return "";
+if (elMigrationBtn) elMigrationBtn.addEventListener("click", async () => {
+  const file=elMigrationFile?.files?.[0];
+  if (!file) return alert("기존 Google Sheets에서 내려받은 DB 엑셀 파일을 선택해주세요.");
+  if (!currentUser) return alert("로그인 후 이용해주세요.");
+  if (!confirm("선택한 DB 엑셀의 '급여제공계획서' 시트를 Firebase로 이전합니다.\n계획서를 한 건씩 순서대로 저장하며, 기존 시트의 id가 같아도 계획서별로 별도 저장됩니다. 계속할까요?")) return;
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-  if (/^\d{4}\.\d{2}\.\d{2}$/.test(text)) return text.replace(/\./g, "-");
-  if (/^\d{4}\/\d{2}\/\d{2}$/.test(text)) return text.replace(/\//g, "-");
+  elMigrationBtn.disabled=true;
+  let done=0;
+  let failed=[];
+  try {
+    setMigrationStatus("엑셀 파일을 읽는 중...");
+    const buf=await file.arrayBuffer();
+    const wb=XLSX.read(new Uint8Array(buf),{type:"array",cellDates:true});
+    const ws=wb.Sheets["급여제공계획서"];
+    if (!ws) throw new Error("'급여제공계획서' 시트를 찾을 수 없습니다.");
 
-  const iso = text.match(/(\d{4})[-./년\s]*(\d{1,2})[-./월\s]*(\d{1,2})/);
-  if (iso) {
-    return `${iso[1]}-${String(iso[2]).padStart(2, "0")}-${String(iso[3]).padStart(2, "0")}`;
+    const rows=XLSX.utils.sheet_to_json(ws,{defval:"",raw:false});
+    const valid=rows.filter(r=>r.id && (r.longTermNumber || r.recipientName));
+    if (!valid.length) throw new Error("이전할 계획서 데이터가 없습니다.");
+
+    for (let i=0; i<valid.length; i++) {
+      const r=valid[i];
+      const sourceId=String(r.id || '').trim();
+      // 기존 시트에서 id가 중복되어도 서로 다른 계획서가 덮어써지지 않도록
+      // 장기요양번호 + 작성일자 + 원본 행번호를 포함한 고유 문서 ID를 사용합니다.
+      const uniqueKey = [
+        sourceId || 'legacy',
+        String(r.longTermNumber || '').trim(),
+        normalizeDateString(r.writtenDate) || 'nodate',
+        String(i + 2)
+      ].join('__').replace(/[^a-zA-Z0-9가-힣_-]/g, '_');
+      const id=uniqueKey;
+      try {
+        const parsedRows=safeRows(r.rowsJson);
+        // rowsJson 문자열과 rows 배열을 동시에 저장하면 같은 데이터가 두 번 들어가
+        // 문서 크기가 커지므로 Firestore에는 rows 배열만 저장합니다.
+        await setDoc(doc(db,"carePlans",id),{
+          id,
+          longTermNumber:String(r.longTermNumber||"").trim(),
+          recipientName:String(r.recipientName||"").trim(),
+          writtenDate:normalizeDateString(r.writtenDate),
+          fileName:String(r.fileName||""),
+          itemCount:Number(r.itemCount||parsedRows.length||0),
+          uploadedAt:String(r.uploadedAt||""),
+          uploadedBy:String(r.uploadedBy||""),
+          ownerUid:currentUser.uid,
+          rows:parsedRows,
+          migratedFrom:"googleSheets",
+          sourceId
+        },{merge:true});
+        done++;
+      } catch (itemError) {
+        console.error(`계획서 이전 실패 (${id})`, itemError);
+        failed.push({id, name:String(r.recipientName||""), error:itemError?.message||String(itemError)});
+      }
+      setMigrationStatus(`Firebase 이전 중... ${i+1} / ${valid.length}건 · 성공 ${done}건${failed.length ? ` · 실패 ${failed.length}건` : ""}`);
+    }
+
+    await loadLibrary();
+    if (failed.length) {
+      const preview=failed.slice(0,5).map(x=>`${x.name||x.id}: ${x.error}`).join("\n");
+      setMigrationStatus(`이전 완료: 성공 ${done}건 / 실패 ${failed.length}건. 실패 건은 다시 확인해주세요.`,true);
+      alert(`이전 작업이 끝났습니다.\n성공: ${done}건\n실패: ${failed.length}건\n\n${preview}${failed.length>5?"\n외 실패 건이 더 있습니다.":""}`);
+    } else {
+      setMigrationStatus(`이전 완료: ${done}건. Firestore 목록을 다시 불러왔습니다.`);
+      alert(`급여제공계획서 ${done}건을 Firebase로 이전했습니다.`);
+    }
+  } catch(error) {
+    console.error("이전 오류:",error);
+    setMigrationStatus(`이전 실패: ${error.message || error}`,true);
+    alert("이전 중 오류가 발생했습니다. 화면의 상태 메시지를 확인해주세요.");
+  } finally {
+    elMigrationBtn.disabled=false;
   }
+});
 
-  return text.split("T")[0];
-}
-
-function toNumber(value) {
-  const n = Number(String(value || "0").replace(/[^0-9.-]/g, ""));
-
-  return Number.isFinite(n) ? n : 0;
-}
-
-function escapeHtml(value) {
-  return String(value || "").replace(/[&<>'"]/g, (ch) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "'": "&#39;",
-    '"': "&quot;"
-  }[ch]));
-}
+onAuthStateChanged(auth, async user => {
+  currentUser = user;
+  isPortalAdmin = false;
+  if (!user) return;
+  try {
+    const userSnap = await getDoc(doc(db, "users", user.uid));
+    if (auth.currentUser?.uid !== user.uid) return;
+    isPortalAdmin = userSnap.exists() && userSnap.data().role === "admin";
+  } catch (error) { console.error("관리자 권한 확인 실패:", error); }
+  if (auth.currentUser?.uid === user.uid) loadLibrary();
+});
