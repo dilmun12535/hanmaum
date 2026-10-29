@@ -554,21 +554,19 @@ function renderAttendanceRegistration(items) {
     else attendanceTableHead.parentElement?.insertBefore(panel, attendanceTableHead);
   }
   const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const registrations = new Map();
-  for (const item of items || []) {
-    const key = [item.uploadedBy || '', item.uploadedAt || '', item.fileName || ''].join('|');
-    if (!registrations.has(key)) registrations.set(key, item);
-  }
   if (!items?.length) {
     panel.textContent = '등록 정보: 해당 월에 저장된 출석 자료가 없습니다.';
     return;
   }
-  const details = [...registrations.values()].map(item => {
-    const date = item.uploadedAt ? new Date(item.uploadedAt) : null;
-    const dateText = date && !Number.isNaN(date.getTime()) ? date.toLocaleString('ko-KR', {timeZone:'Asia/Seoul'}) : '기록 없음';
-    return `등록자: <strong>${escapeHtml(item.uploadedBy || '기록 없음')}</strong> · 등록일시: ${escapeHtml(dateText)} · 파일: ${escapeHtml(item.fileName || '기록 없음')}`;
-  });
-  panel.innerHTML = '<strong>출석 보관함 등록 정보</strong><div>' + details.join('</div><div>') + '</div>';
+  // 한 달의 출석 자료는 어르신별 문서로 저장되지만 등록 정보는 월별 1건만 표시합니다.
+  // 기존 자료에서 초 단위 차이가 발생한 경우에도 반복 표시하지 않습니다.
+  const item = items.find(x => x.uploadedBy || x.uploadedAt || x.fileName) || items[0];
+  const date = item.uploadedAt ? new Date(item.uploadedAt) : null;
+  const dateText = date && !Number.isNaN(date.getTime())
+    ? date.toLocaleString('ko-KR', {timeZone:'Asia/Seoul'}) : '기록 없음';
+  const month = String(attendanceMonthInput.value || item.month || '').slice(0, 7);
+  const monthText = /^\d{4}-\d{2}$/.test(month) ? month.replace('-', '년 ') + '월' : month;
+  panel.innerHTML = `<strong>출석 보관함 등록 정보</strong><div>등록 월: <strong>${escapeHtml(monthText)}</strong> · 등록자: <strong>${escapeHtml(item.uploadedBy || '기록 없음')}</strong> · 등록일시: ${escapeHtml(dateText)} · 파일: ${escapeHtml(item.fileName || '기록 없음')}</div>`;
 }
 
 function renderAttendance(items) {
