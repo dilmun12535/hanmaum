@@ -404,49 +404,41 @@ function safeFirestoreId(value) {
     .slice(0, 1400);
 }
 
+async function attendanceMonthExists(monthValue) {
+  const { db, fs } = await getFirestoreModules();
+  const month = String(monthValue || '').slice(0, 7);
+  const snap = await fs.getDocs(fs.query(fs.collection(db, 'attendance'), fs.where('month', '==', month), fs.limit(1)));
+  return !snap.empty;
+}
+
 async function saveAttendanceMonth(monthValue, items, fileName) {
   const { auth, db, fs } = await getFirestoreModules();
   const user = auth.currentUser;
   if (!user) throw new Error('로그인 정보가 없습니다. 다시 로그인해주세요.');
-
-  // 같은 월은 기존 자료를 먼저 삭제한 뒤 새 파일 기준으로 저장합니다.
-  await deleteAttendanceMonth(monthValue);
-
-  const loginUser =
-    sessionStorage.getItem('loginUser') ||
-    localStorage.getItem('loginUser') ||
-    user.email ||
-    '알 수 없음';
-
-  for (let i = 0; i < items.length; i++) {
-    const item = items[i];
-    const id = safeFirestoreId([
-      'attendance', monthValue,
-      item.longTermNumber || item.name || 'recipient',
-      i + 1
-    ].join('__'));
-
-    await fs.setDoc(fs.doc(db, 'attendance', id), {
-      id,
-      month: monthValue,
-      recipientName: item.name || '',
-      name: item.name || '',
-      longTermNumber: item.longTermNumber || '',
-      certNumber: item.longTermNumber || '',
-      grade: item.grade || '',
-      serviceStartDate: item.startDate || '',
-      attendanceDates: item.dates || [],
-      dates: item.dates || [],
-      attendanceCount: Number(item.count || 0),
-      leaveTimes: item.leaveTimes || {},
-      attendanceTimeRows: item.attendanceTimeRows || {},
-      fileName: fileName || '',
-      uploadedAt: new Date().toISOString(),
-      uploadedBy: loginUser,
-      ownerUid: user.uid,
-      source: 'attendance-library'
-    }, { merge: true });
-  }
+  const month = String(monthValue || '').slice(0, 7);
+  if (await attendanceMonthExists(month)) throw new Error('ALREADY_REGISTERED');
+  if (items.length > 450) throw new Error('한 번에 등록할 수 있는 인원을 초과했습니다.');
+  const loginUser = sessionStorage.getItem('loginUser') || localStorage.getItem('loginUser') || user.email || '알 수 없음';
+  const lockRef = fs.doc(db, 'attendanceMonthLocks', month);
+  const uploadedAt = new Date().toISOString();
+  // 월별 잠금 문서를 트랜잭션으로 확인하여 서로 다른 등록자의 동시 등록도 차단합니다.
+  await fs.runTransaction(db, async transaction => {
+    const lock = await transaction.get(lockRef);
+    if (lock.exists()) throw new Error('ALREADY_REGISTERED');
+    transaction.set(lockRef, { month, uploadedAt, uploadedBy: loginUser, ownerUid: user.uid });
+    items.forEach((item, i) => {
+      const id = safeFirestoreId(['attendance', month, item.longTermNumber || item.name || 'recipient', i + 1].join('__'));
+      transaction.set(fs.doc(db, 'attendance', id), {
+        id, month, recipientName: item.name || '', name: item.name || '',
+        longTermNumber: item.longTermNumber || '', certNumber: item.longTermNumber || '',
+        grade: item.grade || '', serviceStartDate: item.startDate || '',
+        attendanceDates: item.dates || [], dates: item.dates || [],
+        attendanceCount: Number(item.count || 0), leaveTimes: item.leaveTimes || {},
+        attendanceTimeRows: item.attendanceTimeRows || {}, fileName: fileName || '',
+        uploadedAt, uploadedBy: loginUser, ownerUid: user.uid, source: 'attendance-library'
+      });
+    });
+  });
 }
 
 async function loadAttendanceMonth(monthValue) {
@@ -466,7 +458,11 @@ async function loadAttendanceMonth(monthValue) {
       dates: Array.isArray(item.attendanceDates) ? item.attendanceDates : (Array.isArray(item.dates) ? item.dates : []),
       count: Number(item.attendanceCount || (Array.isArray(item.attendanceDates) ? item.attendanceDates.length : 0)),
       leaveTimes: item.leaveTimes || {},
-      attendanceTimeRows: item.attendanceTimeRows || {}
+      attendanceTimeRows: item.attendanceTimeRows || {},
+      uploadedBy: item.uploadedBy || '',
+      uploadedAt: item.uploadedAt || '',
+      ownerUid: item.ownerUid || '',
+      fileName: item.fileName || ''
     }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 }
@@ -478,6 +474,7 @@ async function deleteAttendanceMonth(monthValue) {
   const snap = await fs.getDocs(q);
   const targets = snap.docs;
   for (const d of targets) await fs.deleteDoc(fs.doc(db, 'attendance', d.id));
+  await fs.deleteDoc(fs.doc(db, 'attendanceMonthLocks', month));
 }
 
 function getDaysInMonth(monthValue) {
@@ -546,8 +543,37 @@ function renderAttendanceHeader(monthValue) {
   `;
 }
 
+function renderAttendanceRegistration(items) {
+  let panel = document.getElementById('attendanceRegistrationInfo');
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.id = 'attendanceRegistrationInfo';
+    panel.style.cssText = 'margin:12px 0;padding:12px 16px;background:#f4f7fc;border:1px solid #dbe4f0;border-radius:8px;font-size:13px;color:#263b60;line-height:1.8;';
+    const table = attendanceTableHead.closest('table');
+    if (table && table.parentElement) table.parentElement.insertBefore(panel, table);
+    else attendanceTableHead.parentElement?.insertBefore(panel, attendanceTableHead);
+  }
+  const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const registrations = new Map();
+  for (const item of items || []) {
+    const key = [item.uploadedBy || '', item.uploadedAt || '', item.fileName || ''].join('|');
+    if (!registrations.has(key)) registrations.set(key, item);
+  }
+  if (!items?.length) {
+    panel.textContent = '등록 정보: 해당 월에 저장된 출석 자료가 없습니다.';
+    return;
+  }
+  const details = [...registrations.values()].map(item => {
+    const date = item.uploadedAt ? new Date(item.uploadedAt) : null;
+    const dateText = date && !Number.isNaN(date.getTime()) ? date.toLocaleString('ko-KR', {timeZone:'Asia/Seoul'}) : '기록 없음';
+    return `등록자: <strong>${escapeHtml(item.uploadedBy || '기록 없음')}</strong> · 등록일시: ${escapeHtml(dateText)} · 파일: ${escapeHtml(item.fileName || '기록 없음')}`;
+  });
+  panel.innerHTML = '<strong>출석 보관함 등록 정보</strong><div>' + details.join('</div><div>') + '</div>';
+}
+
 function renderAttendance(items) {
   attendanceResultBody.innerHTML = "";
+  renderAttendanceRegistration(items);
 
   const monthValue =
     attendanceMonthInput.value ||
@@ -751,7 +777,16 @@ function hideAttendanceUploadStatus() {
 }
 
 
-registerAttendanceBtn.addEventListener("click", () => {
+registerAttendanceBtn.addEventListener("click", async () => {
+  if (registerAttendanceBtn.disabled) return;
+  registerAttendanceBtn.disabled = true;
+  try {
+    if (await attendanceMonthExists(attendanceMonthInput.value)) {
+      alert(`${attendanceMonthInput.value} 출석 자료는 이미 등록되어 있습니다. 등록자와 관계없이 추가 등록할 수 없습니다.`);
+      return;
+    }
+  } catch (error) { console.error(error); alert("기존 등록 여부를 확인하지 못했습니다. 등록을 중단합니다."); return; }
+  finally { registerAttendanceBtn.disabled = false; }
   applyAttendanceStyle();
 
   const monthValue = attendanceMonthInput.value;
@@ -803,16 +838,17 @@ registerAttendanceBtn.addEventListener("click", () => {
 
       updateAttendanceUploadStatus("저장 완료 후 화면을 정리하는 중입니다...");
 
-      renderAttendance(items);
+      const savedItems = await loadAttendanceMonth(monthValue);
+      renderAttendance(savedItems);
 
       attendanceFileInput.value = "";
       hideAttendanceUploadStatus();
 
-      alert("출석 내역이 Firebase에 업데이트 및 저장되었습니다.");
+      alert("출석 내역이 Firebase에 최초 등록되었습니다.");
     } catch (error) {
       hideAttendanceUploadStatus();
       console.error("출석 등록 오류:", error);
-      alert("출석 등록 중 오류가 발생했습니다.");
+      alert(error.message === "ALREADY_REGISTERED" ? `${monthValue} 출석 자료는 이미 등록되어 있습니다. 다른 등록자도 추가 등록할 수 없습니다.` : "출석 등록 중 오류가 발생했습니다: " + error.message);
     }
   };
 
@@ -862,3 +898,21 @@ clearAttendanceBtn.addEventListener("click", async () => {
     alert("삭제 중 오류가 발생했습니다.");
   }
 });
+// 사용 종료된 Google Sheets → Firebase 이전 안내 영역 숨기기
+function removeLegacyAttendanceMigration() {
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.children.length > 0) continue;
+    const t = (el.textContent || '').trim();
+    if (!t.includes('기존 Google Sheets 출석 보관함') && t !== '기존 출석 Firebase로 이전') continue;
+    let target = el;
+    for (let i = 0; i < 5 && target.parentElement; i++) {
+      const parent = target.parentElement;
+      const text = (parent.textContent || '');
+      if (text.includes('기존 Google Sheets 출석 보관함') && text.includes('기존 출석 Firebase로 이전')) { target = parent; break; }
+      target = parent;
+    }
+    if (target !== document.body && !target.contains(registerAttendanceBtn)) target.remove();
+  }
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', removeLegacyAttendanceMigration);
+else removeLegacyAttendanceMigration();
