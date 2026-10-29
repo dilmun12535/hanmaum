@@ -189,22 +189,36 @@ function readPlanRows(plan) {
   return [];
 }
 
+let therapyLookupIndex = null;
+function prepareTherapyLookupIndex() {
+  const plans = new Map(), counsels = new Map();
+  for (const plan of carePlanLibraryCache || []) {
+    const key = normalizeText(plan.recipientName || plan.name);
+    if (!key) continue;
+    if (!plans.has(key)) plans.set(key, []);
+    plans.get(key).push(plan);
+  }
+  for (const counsel of counselLibraryCache || []) {
+    const key = normalizeText(counsel.recipientName || counsel.name);
+    if (!key) continue;
+    const content = normalizeText(`${counsel.category || ""} ${counsel.careContent || ""} ${counsel.reason || ""} ${counsel.changeType || ""}`);
+    if (!["물리치료","물이치료","기능회복","재활훈련","운동치료","작업치료"].some(term => content.includes(term))) continue;
+    if (!counsels.has(key)) counsels.set(key, []);
+    counsels.get(key).push(counsel);
+  }
+  for (const arr of plans.values()) arr.sort((a,b) => (parseDate(b.writtenDate) || "").localeCompare(parseDate(a.writtenDate) || ""));
+  for (const arr of counsels.values()) arr.sort((a,b) => (parseDate(b.reflectionDate) || "").localeCompare(parseDate(a.reflectionDate) || ""));
+  therapyLookupIndex = { plans, counsels };
+}
+
 function getLatestPlansByRecipient(name, checkDate) {
-  const library = carePlanLibraryCache || [];
-  const targetDate = new Date(checkDate);
-
-  const validPlans = library.filter((plan) => {
-    const planDate = parseDate(plan.writtenDate) || String(plan.writtenDate || "").substring(0, 10);
-    return planDate && new Date(planDate) <= targetDate && isSameRecipient(plan.recipientName || plan.name, name);
-  });
-
-  validPlans.sort((a, b) => {
-    const dateA = new Date(parseDate(a.writtenDate) || a.writtenDate || "1900-01-01");
-    const dateB = new Date(parseDate(b.writtenDate) || b.writtenDate || "1900-01-01");
-    return dateB - dateA;
-  });
-
-  return validPlans[0] || null;
+  if (!therapyLookupIndex) prepareTherapyLookupIndex();
+  const list = therapyLookupIndex.plans.get(normalizeText(name)) || [];
+  const date = normalizeDateText(checkDate);
+  return list.find(plan => {
+    const written = parseDate(plan.writtenDate);
+    return written && written <= date;
+  }) || null;
 }
 
 function hasTherapyPlan(plan) {
@@ -233,33 +247,13 @@ function hasTherapyPlan(plan) {
 }
 
 function getLatestTherapyCounsel(name, targetDate) {
-  const counselLibrary = counselLibraryCache || [];
-  const target = new Date(targetDate);
-
-  const counsels = counselLibrary
-    .filter((item) => {
-      const sameName = isSameRecipient(item.recipientName || item.name, name);
-      const reflectionDateText = parseDate(item.reflectionDate) || String(item.reflectionDate || "").substring(0, 10);
-      const reflectionDate = new Date(reflectionDateText);
-      const text = normalizeText(`${item.category || ""} ${item.careContent || ""} ${item.reason || ""} ${item.changeType || ""}`);
-
-      const isTherapyText =
-        text.includes("물리치료") ||
-        text.includes("물이치료") ||
-        text.includes("기능회복") ||
-        text.includes("재활훈련") ||
-        text.includes("운동치료") ||
-        text.includes("작업치료");
-
-      return sameName && isTherapyText && reflectionDateText && reflectionDate <= target;
-    })
-    .sort((a, b) => {
-      const dateA = new Date(parseDate(a.reflectionDate) || a.reflectionDate || "1900-01-01");
-      const dateB = new Date(parseDate(b.reflectionDate) || b.reflectionDate || "1900-01-01");
-      return dateB - dateA;
-    });
-
-  return counsels[0] || null;
+  if (!therapyLookupIndex) prepareTherapyLookupIndex();
+  const list = therapyLookupIndex.counsels.get(normalizeText(name)) || [];
+  const date = normalizeDateText(targetDate);
+  return list.find(item => {
+    const reflected = parseDate(item.reflectionDate);
+    return reflected && reflected <= date;
+  }) || null;
 }
 
 function isRemoveCounsel(counsel) {
@@ -557,6 +551,7 @@ function collectTherapyTargetNames(monthEndDate) {
 }
 
 function buildResults(monthValue, therapyRows) {
+  prepareTherapyLookupIndex();
   const monthEndDate = getMonthEndDate(monthValue);
   const weekEndDates = getWeekEndDates(monthValue);
   const attendanceRows = getAttendanceMonth(monthValue);
@@ -722,7 +717,9 @@ function ensureTherapyResultFilterButtons() {
     </button>
   `;
 
-  table.parentNode.insertBefore(bar, table);
+  const scrollContainer = table.closest("#therapyTableScroller");
+  const reference = scrollContainer || table;
+  reference.parentNode.insertBefore(bar, reference);
 
   document.getElementById("therapyFilterAllBtn").addEventListener("click", () => {
     therapyResultFilterMode = "all";
@@ -773,8 +770,33 @@ function updateTherapyWeekHeaders(monthValue) {
   }
 }
 
+function ensureTherapyTableScroller() {
+  if (!therapyResultBody) return;
+  const table = therapyResultBody.closest("table");
+  if (!table) return;
+  let scroller = document.getElementById("therapyTableScroller");
+  if (!scroller) {
+    scroller = document.createElement("div");
+    scroller.id = "therapyTableScroller";
+    table.parentNode.insertBefore(scroller, table);
+    scroller.appendChild(table);
+  }
+  scroller.style.cssText = "max-height:580px;overflow:auto;max-width:100%;position:relative;border:1px solid #e2e8f0;border-radius:8px;";
+  table.style.width = "100%";
+  table.style.borderCollapse = "separate";
+  table.style.borderSpacing = "0";
+  const styleId = "therapyStickyHeaderStyle";
+  if (!document.getElementById(styleId)) {
+    const style = document.createElement("style");
+    style.id = styleId;
+    style.textContent = "#therapyTableScroller thead th,#therapyTableScroller thead td{position:sticky;top:0;z-index:3;background:#edf2ff;}";
+    document.head.appendChild(style);
+  }
+}
+
 function renderResults(monthValue, results, fromFilter = false) {
   applyTherapyReadableStyle();
+  ensureTherapyTableScroller();
   updateTherapyWeekHeaders(monthValue);
 
   if (!fromFilter) {
@@ -854,9 +876,23 @@ checkTherapyBtn.addEventListener("click", async () => {
     return;
   }
 
-  await loadCarePlanLibraryFromFirestore(checkMonth);
-  await loadCounselLibraryFromFirestore(checkMonth);
-  await loadAttendanceMonthFromFirestore(checkMonth);
+  checkTherapyBtn.disabled = true;
+  const previousButtonText = checkTherapyBtn.textContent;
+  checkTherapyBtn.textContent = "자료 불러오는 중...";
+  try {
+    await Promise.all([
+      loadCarePlanLibraryFromFirestore(checkMonth),
+      loadCounselLibraryFromFirestore(checkMonth),
+      loadAttendanceMonthFromFirestore(checkMonth)
+    ]);
+  } catch (error) {
+    console.error("물리치료 확인 자료 조회 실패:", error);
+    alert("자료를 불러오지 못했습니다. 다시 시도해주세요.");
+    return;
+  } finally {
+    checkTherapyBtn.disabled = false;
+    checkTherapyBtn.textContent = previousButtonText;
+  }
   applyTherapyReadableStyle();
 
   const attendanceRows = getAttendanceMonth(checkMonth);
