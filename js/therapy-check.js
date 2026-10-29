@@ -28,7 +28,13 @@ async function loadCounselLibraryFromFirestore(monthValue) {
 
 async function loadAttendanceMonthFromFirestore(monthValue) {
   try {
-    attendanceLibraryCache = await window.HanmaumFirestore.attendance(monthValue);
+    const [y, m] = monthValue.split('-').map(Number);
+    const previous = new Date(y, m - 2, 1);
+    const next = new Date(y, m, 1);
+    const monthString = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const months = [...new Set([monthString(previous), monthValue, monthString(next)])];
+    const batches = await Promise.all(months.map(month => window.HanmaumFirestore.attendance(month)));
+    attendanceLibraryCache = batches.flat();
     return attendanceLibraryCache;
   } catch (error) {
     console.error("Firebase 출석관리 조회 오류:", error);
@@ -130,7 +136,7 @@ function getDaysInWeekRange(monthValue, weekKey) {
   weekStart.setDate(anchorMonday.getDate() + weekIdx * 7);
 
   const days = [];
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 7; i++) {
     const current = new Date(weekStart);
     current.setDate(weekStart.getDate() + i);
     days.push(`${current.getFullYear()}-${String(current.getMonth()+1).padStart(2,"0")}-${String(current.getDate()).padStart(2,"0")}`);
@@ -338,13 +344,21 @@ function getCounselTextForMonth(name, monthEndDate) {
 }
 
 function getAttendanceMonth(monthValue) {
-  return (attendanceLibraryCache || [])
-    .filter((item) => item.month === monthValue)
-    .map((item) => ({
-      name: String(item.name || item.recipientName || "").trim(),
-      dates: Array.isArray(item.dates) ? item.dates : (Array.isArray(item.attendanceDates) ? item.attendanceDates : [])
-    }))
-    .filter((item) => item.name !== "");
+  const relevantWeeks = new Set(["week1", "week2", "week3", "week4", "week5"]
+    .flatMap(wk => getDaysInWeekRange(monthValue, wk)));
+  const merged = new Map();
+  (attendanceLibraryCache || []).forEach(item => {
+    const name = String(item.name || item.recipientName || "").trim();
+    const key = normalizeText(name).toLowerCase();
+    if (!key) return;
+    const dates = Array.isArray(item.dates) ? item.dates :
+      (Array.isArray(item.attendanceDates) ? item.attendanceDates : []);
+    const validDates = dates.map(date => parseDate(date)).filter(date => relevantWeeks.has(date));
+    if (!validDates.length && item.month !== monthValue) return;
+    if (!merged.has(key)) merged.set(key, {name, dates: []});
+    merged.get(key).dates.push(...validDates);
+  });
+  return [...merged.values()].map(item => ({...item, dates: [...new Set(item.dates)]}));
 }
 
 function sheetToRowsWithMerges(sheet) {
@@ -746,19 +760,16 @@ function updateTherapyWeekHeaders(monthValue) {
   const [year, month] = monthValue.split("-").map(Number);
   const first = new Date(year, month - 1, 1);
   const monday = new Date(year, month - 1, 1 - ((first.getDay() + 6) % 7));
-  const last = new Date(year, month, 0);
   const fmt = d => `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
   const headerCells = Array.from(table.querySelectorAll("thead th, thead td"));
   for (let i = 1; i <= 5; i++) {
     const start = new Date(monday);
     start.setDate(monday.getDate() + (i - 1) * 7);
     const end = new Date(start);
-    end.setDate(start.getDate() + 5); // 월~토 기준
-    const clippedStart = new Date(Math.max(start.getTime(), first.getTime()));
-    const clippedEnd = new Date(Math.min(end.getTime(), last.getTime()));
+    end.setDate(start.getDate() + 6); // 월~일, 월 경계 주차 포함
     const cell = headerCells.find(el => new RegExp(`^${i}주차`).test(el.textContent.trim().replace(/\s/g, "")));
     if (!cell) continue;
-    cell.innerHTML = `<div style="font-weight:800">${i}주차</div><div style="font-size:11px;color:#64748b;font-weight:600;margin-top:4px;white-space:nowrap">${clippedStart <= clippedEnd ? `${fmt(clippedStart)} ~ ${fmt(clippedEnd)}` : "해당 월 없음"}</div>`;
+    cell.innerHTML = `<div style="font-weight:800">${i}주차</div><div style="font-size:11px;color:#64748b;font-weight:600;margin-top:4px;white-space:nowrap">${fmt(start)} ~ ${fmt(end)}</div>`;
   }
 }
 
