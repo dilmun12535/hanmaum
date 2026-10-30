@@ -14,20 +14,45 @@ async function loadCarePlanLibraryFromFirestore(monthValue) {
 }
 
 
+function expandTherapyCounselDocuments(documents) {
+  const result = [];
+  const fields = ['rows', 'rowsJson', 'records', 'items', 'data'];
+  const parseRows = value => {
+    if (typeof value === 'string') {
+      try { value = JSON.parse(value); } catch (_) { return []; }
+    }
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object') return Object.values(value).filter(x => x && typeof x === 'object');
+    return [];
+  };
+  for (const doc of Array.isArray(documents) ? documents : []) {
+    if (!doc || typeof doc !== 'object') continue;
+    result.push(doc);
+    for (const field of fields) {
+      for (const row of parseRows(doc[field])) {
+        if (row && typeof row === 'object' && !Array.isArray(row)) {
+          result.push({ ...doc, ...row });
+        }
+      }
+    }
+  }
+  return result;
+}
+
 async function loadCounselLibraryFromFirestore(monthValue) {
   try {
-    // 월별 출석자 이름 검색만으로는 과거 상담일지와 일부 저장 형식이 누락될 수 있습니다.
-    // 월 인수를 생략하면 어댑터의 전체 counsels 조회 경로를 사용합니다.
-    counselLibraryCache = await window.HanmaumFirestore.counsels();
-    console.info('물리치료 상담일지 조회 건수:', counselLibraryCache.length);
+    const documents = await window.HanmaumFirestore.counsels();
+    counselLibraryCache = expandTherapyCounselDocuments(documents);
+    console.info('[물리치료] 상담일지 문서/확장행:', documents.length, counselLibraryCache.length);
+    console.info('[물리치료] 손성임 관련 상담일지:', counselLibraryCache.filter(x =>
+      normalizeText(getTherapyCounselName(x)) === normalizeText('손성임')));
     return counselLibraryCache;
   } catch (error) {
-    console.error("Firebase 상담일지 조회 오류:", error);
+    console.error('Firebase 상담일지 조회 오류:', error);
     counselLibraryCache = [];
     throw error;
   }
 }
-
 
 async function loadAttendanceMonthFromFirestore(monthValue) {
   try {
@@ -202,7 +227,7 @@ function prepareTherapyLookupIndex() {
     plans.get(key).push(plan);
   }
   for (const counsel of counselLibraryCache || []) {
-    const key = normalizeText(counsel.recipientName || counsel.name);
+    const key = normalizeText(getTherapyCounselName(counsel));
     if (!key) continue;
     const content = normalizeText(getTherapyCounselContent(counsel));
     if (!["물리치료","물이치료","기능회복","재활훈련","운동치료","작업치료"].some(term => content.includes(term))) continue;
@@ -249,15 +274,21 @@ function hasTherapyPlan(plan) {
   return rows.some(inspect);
 }
 
-// 구형/신형 상담일지의 서로 다른 필드명을 통합합니다.
+// 상담일지 보관함의 구형/신형 필드 및 엑셀 이관 필드 통합
+function getTherapyCounselName(item) {
+  return item?.recipientName || item?.name || item?.recipient || item?.수급자명 || item?.성명 || '';
+}
 function getTherapyCounselDate(item) {
   return parseDate(item?.reflectionDate || item?.reflection || item?.reflectedDate ||
-    item?.applyDate || item?.effectiveDate || item?.counselDate || item?.writtenDate || item?.date);
+    item?.applyDate || item?.effectiveDate || item?.counselDate || item?.counselingDate ||
+    item?.consultDate || item?.writtenDate || item?.date || item?.상담일자 || item?.상담일 || item?.반영일);
 }
 function getTherapyCounselContent(item) {
-  return [item?.category, item?.classification, item?.careContent, item?.benefitContent,
-    item?.serviceContent, item?.changeContent, item?.reason, item?.changeType,
-    item?.changeKind].filter(Boolean).join(' ');
+  return [item?.category, item?.classification, item?.type, item?.분류,
+    item?.careContent, item?.benefitContent, item?.serviceContent,
+    item?.changeContent, item?.benefit, item?.급여내용, item?.급여제공반영,
+    item?.reason, item?.memo, item?.조치내용, item?.changeType,
+    item?.changeKind, item?.변경유형].filter(Boolean).join(' ');
 }
 function isTherapyRelatedCounsel(item) {
   const text = normalizeText(getTherapyCounselContent(item));
@@ -274,7 +305,7 @@ function getLatestTherapyCounsel(name, targetDate) {
 }
 function isRemoveCounsel(counsel) {
   if (!counsel || !isTherapyRelatedCounsel(counsel)) return false;
-  const kind = normalizeText(counsel.changeType || counsel.changeKind || '');
+  const kind = normalizeText(counsel.changeType || counsel.changeKind || counsel.변경유형 || '');
   const content = normalizeText(getTherapyCounselContent(counsel));
   // 변경유형이 명시된 경우 원문 사유의 '제외' 단어보다 변경유형을 우선합니다.
   if (['제외','삭제','중단'].some(x => kind.includes(x))) return true;
@@ -283,7 +314,7 @@ function isRemoveCounsel(counsel) {
 }
 function isAddCounsel(counsel) {
   if (!counsel || !isTherapyRelatedCounsel(counsel) || isRemoveCounsel(counsel)) return false;
-  const kind = normalizeText(counsel.changeType || counsel.changeKind || '');
+  const kind = normalizeText(counsel.changeType || counsel.changeKind || counsel.변경유형 || '');
   const text = normalizeText(getTherapyCounselContent(counsel));
   return kind.includes('추가') || ['추가','시작','제공','반영','실시'].some(x => text.includes(x));
 }
@@ -299,7 +330,7 @@ function getTherapyRuleAtDate(plan, name, targetDate) {
   let source = "계획서";
 
   const shouldApplyCounsel =
-    counsel && (!planDate || !counselDate || counselDate > planDate);
+    counsel && (!planDate || (counselDate && counselDate >= planDate));
 
   if (shouldApplyCounsel) {
     if (isRemoveCounsel(counsel)) required = false;
@@ -330,8 +361,8 @@ function getCounselTextForMonth(name, monthEndDate) {
   if (!counsel) return "없음";
 
   const rawDate = getTherapyCounselDate(counsel) || "-";
-  const changeType = counsel.changeType || "-";
-  let content = counsel.careContent || counsel.reason || "-";
+  const changeType = counsel.changeType || counsel.changeKind || counsel.변경유형 || "-";
+  let content = counsel.careContent || counsel.benefitContent || counsel.changeContent || counsel.급여내용 || counsel.reason || "-";
 
   if (content.includes("물리치료") && content.includes("작업치료")) {
     content = content.replace(", 작업치료", "<br>작업치료").replace("), 작업치료", ")<br>작업치료");
@@ -479,7 +510,7 @@ function hasTherapyExclusionInWeek(name, weekDays) {
   sundayDate.setDate(sundayDate.getDate() + 6);
   const sunday = `${sundayDate.getFullYear()}-${String(sundayDate.getMonth() + 1).padStart(2, '0')}-${String(sundayDate.getDate()).padStart(2, '0')}`;
   return (counselLibraryCache || []).some(item => {
-    if (!isSameRecipient(item.recipientName || item.name, name)) return false;
+    if (!isSameRecipient(getTherapyCounselName(item), name)) return false;
     const date = getTherapyCounselDate(item);
     if (!date || date < monday || date > sunday || !isRemoveCounsel(item)) return false;
     const text = normalizeText(getTherapyCounselContent(item));
@@ -546,7 +577,7 @@ function addRecipientName(map, name) {
 function collectTherapyTargetNames(monthEndDate) {
   const names = {};
   (carePlanLibraryCache || []).forEach(plan => addRecipientName(names, plan.recipientName || plan.name));
-  (counselLibraryCache || []).forEach(counsel => addRecipientName(names, counsel.recipientName || counsel.name));
+  (counselLibraryCache || []).forEach(counsel => addRecipientName(names, getTherapyCounselName(counsel)));
   return Object.values(names).filter(name => {
     const plan = getLatestPlansByRecipient(name, monthEndDate);
     return getTherapyRuleAtDate(plan, name, monthEndDate).required;
