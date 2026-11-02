@@ -85,13 +85,13 @@ function detectCareCategory(text) {
 function detectChangeType(text, reason = "") {
   const content = normalizeText(text);
   const explanation = normalizeText(reason);
-  // 급여내용의 명시적인 변경 지시가 반영사유보다 우선합니다.
-  if (/제외|중단|삭제|미제공|하지않|중지/.test(content)) return "제외";
-  if (/추가|시작|신설|제공|반영/.test(content)) return "추가";
-  // 반영사유는 해당 급여에 대한 변경 의사가 분명할 때만 보조적으로 활용합니다.
-  // 단순히 '반영'이라는 단어만으로는 추가로 판단하지 않습니다.
-  if (/급여.{0,16}(제외|중단|삭제|중지)|(?:제외|중단|삭제|중지).{0,16}급여|제공하지않|제공안함/.test(explanation)) return "제외";
-  if (/급여.{0,16}(추가|시작|신설)|(?:추가|시작|신설).{0,16}급여|(?:급여|서비스|복약|약).{0,30}(?:반영하여|반영해|반영해서).{0,20}제공|(?:급여|서비스|복약|약).{0,30}제공하도록/.test(explanation)) return "추가";
+  // 급여내용에 명시된 변경 지시를 최우선으로 판단합니다.
+  if (/제외|중단|삭제|미제공|하지않|중지|취소/.test(content)) return "제외";
+  if (/추가|시작|신설|제공|반영|실시/.test(content)) return "추가";
+  // 반영사유의 실제 조치 문구로 판정합니다. '급여 반영함'도 추가입니다.
+  if (/제외|중단|삭제|중지|취소|제공하지않|제공안함|미제공/.test(explanation)) return "제외";
+  if (/추가|시작|신설|제공|반영|실시|적용|시행/.test(explanation)) return "추가";
+  // 근거가 없는 경우 임의로 추가/제외를 추측하지 않습니다.
   return "기타";
 }
 
