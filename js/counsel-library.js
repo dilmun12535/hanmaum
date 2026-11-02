@@ -1,7 +1,7 @@
 // 상담일지 데이터는 Firebase Firestore(counsels)에서 관리합니다.
 
 const counselFileInput = document.getElementById("counselFile");
-const uploadCounselBtn = document.getElementById("uploadCounselBtn");
+const uploadCounselBtn = document.getElementById("uploadCounselBtnA");
 const deleteSelectedCounselBtn = document.getElementById("deleteSelectedCounselBtn");
 const selectAllCounselCheckbox = document.getElementById("selectAllCounselCheckbox");
 
@@ -82,11 +82,25 @@ function detectCareCategory(text) {
   return "기타";
 }
 
-function detectChangeType(text) {
-  const clean = normalizeText(text);
-  if (/제외|중단|삭제|미제공|하지않/.test(clean)) return "제외";
-  if (/추가|시작|제공|반영/.test(clean)) return "추가";
+function detectChangeType(text, reason = "") {
+  const content = normalizeText(text);
+  const explanation = normalizeText(reason);
+  // 급여내용의 명시적인 변경 지시가 반영사유보다 우선합니다.
+  if (/제외|중단|삭제|미제공|하지않|중지/.test(content)) return "제외";
+  if (/추가|시작|신설|제공|반영/.test(content)) return "추가";
+  // 반영사유는 해당 급여에 대한 변경 의사가 분명할 때만 보조적으로 활용합니다.
+  // 단순히 '반영'이라는 단어만으로는 추가로 판단하지 않습니다.
+  if (/급여.{0,16}(제외|중단|삭제|중지)|(?:제외|중단|삭제|중지).{0,16}급여|제공하지않|제공안함/.test(explanation)) return "제외";
+  if (/급여.{0,16}(추가|시작|신설)|(?:추가|시작|신설).{0,16}급여|(?:급여|서비스|복약|약).{0,30}(?:반영하여|반영해|반영해서).{0,20}제공|(?:급여|서비스|복약|약).{0,30}제공하도록/.test(explanation)) return "추가";
   return "기타";
+}
+
+function correctedCounselChangeType(item) {
+  const current = String(item.changeType || "").trim();
+  if (current !== "기타") return current;
+  const content = String(item.row?.careContent || item.careContent || "").replace(/<br\s*\/?\s*>/gi, " ");
+  const reason = String(item.row?.reason || item.reason || "");
+  return detectChangeType(content, reason);
 }
 
 function findBenefitReflectionStartRow(rows) {
@@ -147,7 +161,7 @@ function parseReflectionRows(rows) {
     if (!category) continue;
     const changeSource = [rawType, content].join(" ");
     result.push({reflectionDateRaw: rawDate || lastDate, category,
-      changeType: detectChangeType(changeSource), careType: String(rawType || lastType || "").trim(),
+      changeType: detectChangeType(changeSource, reason), careType: String(rawType || lastType || "").trim(),
       careContent: String(content).trim(), reason: String(reason || "").trim(),
       joined: [rawDate || lastDate, rawType || lastType, content, reason].join(" "), sourceRow: r + 1});
   }
@@ -371,7 +385,7 @@ function renderCounselLibrary() {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td class="checkbox-col"><input type="checkbox" class="counsel-checkbox" data-key="${item.firestoreId || item.id}" ${item.checked ? "checked" : ""} /></td>
-      <td>${item.recipientName || "-"}</td><td>${item.consultDate || "-"}</td><td>${item.category || "-"}</td><td>${item.changeType || "-"}</td>
+      <td>${item.recipientName || "-"}</td><td>${item.consultDate || "-"}</td><td>${item.category || "-"}</td><td>${correctedCounselChangeType(item) || "-"}</td>
       <td style="text-align:left;padding:10px;line-height:1.4;">${item.careContent || "-"}</td>
       <td style="text-align:left;padding:10px;">${item.reason || "-"}</td><td>${item.sheetName || "-"}</td><td>${item.fileName || "-"}</td><td>${item.uploadedAt || "-"}</td>`;
     counselLibraryTableBody.appendChild(row);
@@ -392,9 +406,13 @@ uploadCounselBtn.addEventListener("click", () => {
       const workbook = XLSX.read(new Uint8Array(event.target.result), { type:"array" });
       const parsed = parseCounselWorkbook(workbook, file.name);
       if (!parsed.length) return alert("모든 시트를 확인했지만 급여제공반영 정보를 찾지 못했습니다.");
-      await addCounselsToFirestore(parsed);
-      counselFileInput.value = "";
-      alert(`${parsed.length}건의 급여제공반영 정보가 Firebase에 등록되었습니다.`);
+      const result = await addCounselsToFirestore(parsed);
+      if (result.failures.length) {
+        alert(`저장 완료 ${result.saved}건 · 중복 ${result.duplicateCount}건 · 실패 ${result.failures.reduce((n,x)=>n+x.count,0)}건\n${result.failures[0].message}`);
+      } else {
+        counselFileInput.value = "";
+        alert(`저장 완료 ${result.saved}건 · 중복 ${result.duplicateCount}건`);
+      }
       await loadCounselLibrary();
     } catch (error) {
       console.error(error); alert("상담일지 Firebase 등록 중 오류가 발생했습니다.\n" + (error.message || error));
@@ -417,6 +435,53 @@ deleteSelectedCounselBtn.addEventListener("click", async () => {
   try { await deleteCounselsFromFirestore(selected); alert("삭제되었습니다."); await loadCounselLibrary(); }
   catch(e){ console.error(e); alert("삭제 중 오류가 발생했습니다.\n"+(e.message||e)); }
 });
+
+// 이전 저장 자료의 '기타' 변경유형을 명시적 근거가 있을 때만 수정합니다.
+// Firestore 보안 규칙상 본인이 업로드한 자료만 수정할 수 있습니다.
+async function repairExistingCounselChangeTypes() {
+  const user = auth.currentUser;
+  if (!user) return alert("로그인이 필요합니다.");
+  const candidates = counselLibrary.filter(item =>
+    item.changeType === "기타" &&
+    correctedCounselChangeType(item) !== "기타" &&
+    item.ownerUid === user.uid &&
+    item.firestoreId
+  );
+  const otherCount = counselLibrary.filter(item =>
+    item.changeType === "기타" && correctedCounselChangeType(item) !== "기타" && item.ownerUid !== user.uid
+  ).length;
+  if (!candidates.length) return alert(`수정 가능한 본인 자료가 없습니다.\n다른 업로드자 자료 ${otherCount}건은 현재 보안 규칙상 수정할 수 없습니다.`);
+  if (!confirm(`본인이 업로드한 기존 자료 ${candidates.length}건의 변경유형을 수정할까요?\n다른 업로드자 자료 ${otherCount}건은 변경하지 않습니다.`)) return;
+  let changed = 0;
+  try {
+    for (let i=0; i<candidates.length; i+=200) {
+      const batch=writeBatch(db);
+      candidates.slice(i,i+200).forEach(item=>batch.update(doc(db, COUNSEL_COLLECTION, item.firestoreId), {
+        changeType: correctedCounselChangeType(item)
+      }));
+      await batch.commit();
+      changed += Math.min(200,candidates.length-i);
+    }
+    await loadCounselLibrary();
+    alert(`${changed}건 수정 완료. 다른 업로드자 자료 ${otherCount}건은 그대로 유지했습니다.`);
+  } catch(error) {
+    console.error("기존 변경유형 수정 오류:", error);
+    alert(`수정 중 오류가 발생했습니다. 성공 ${changed}건.\n${error.message || error}`);
+    await loadCounselLibrary();
+  }
+}
+
+function installCounselRepairButton() {
+  if (document.getElementById("repairCounselTypesBtn")) return;
+  const btn=document.createElement("button");
+  btn.id="repairCounselTypesBtn";
+  btn.type="button";
+  btn.textContent="기존 기타 분류 수정";
+  btn.style.cssText="margin-left:8px;padding:9px 14px;border:1px solid #1e3a8a;border-radius:7px;background:white;color:#1e3a8a;cursor:pointer;font-weight:600";
+  btn.addEventListener("click", repairExistingCounselChangeTypes);
+  deleteSelectedCounselBtn.insertAdjacentElement("afterend",btn);
+}
+installCounselRepairButton();
 
 // 기존 Google Sheets → Firebase 1회 이전 기능은 이전 완료에 따라 비활성화했습니다.
 // Firestore의 기존 counsels 문서는 삭제하거나 변경하지 않습니다.
