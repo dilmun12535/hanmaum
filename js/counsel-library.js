@@ -380,29 +380,80 @@ async function deleteCounselsFromFirestore(items) {
   }
 }
 
+let activeCounselYear = "all";
+function counselYear(item) {
+  const date = normalizeDateText(item.consultDate || item.reflectionDate || item.counselDate || "");
+  const match = String(date).match(/^(\d{4})/);
+  return match ? match[1] : "unknown";
+}
+function renderCounselYearTabs() {
+  const table = counselLibraryTableBody.closest("table");
+  if (!table) return;
+  let tabs = document.getElementById("counselYearTabs");
+  if (!tabs) {
+    tabs = document.createElement("div");
+    tabs.id = "counselYearTabs";
+    tabs.setAttribute("aria-label", "상담일지 연도별 조회");
+    tabs.style.cssText = "display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 12px;padding:4px 0;";
+    const scrollParent = table.parentElement;
+    // 스크롤 영역 바깥쪽에 탭을 배치하여 목록 스크롤 시에도 접근할 수 있게 합니다.
+    (scrollParent || table).insertAdjacentElement("beforebegin", tabs);
+  }
+  const counts = new Map();
+  counselLibrary.forEach(item => { const y = counselYear(item); counts.set(y, (counts.get(y)||0)+1); });
+  const years = [...new Set(["2023","2024","2025","2026",...counts.keys()].filter(y=>y!=="unknown"))].sort();
+  const choices = [{value:"all",label:"전체",count:counselLibrary.length},...years.map(y=>({value:y,label:y+"년",count:counts.get(y)||0}))];
+  if (counts.get("unknown")) choices.push({value:"unknown",label:"연도 미확인",count:counts.get("unknown")});
+  tabs.replaceChildren();
+  choices.forEach(choice => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = `${choice.label} (${choice.count})`;
+    const selected = activeCounselYear === choice.value;
+    btn.setAttribute("aria-pressed", String(selected));
+    btn.style.cssText = `border:1px solid ${selected?'#203e8d':'#cbd5e1'};border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;background:${selected?'#203e8d':'#fff'};color:${selected?'#fff':'#203e8d'};`;
+    btn.addEventListener("click",()=>{activeCounselYear=choice.value;renderCounselLibrary();});
+    tabs.appendChild(btn);
+  });
+}
 function renderCounselLibrary() {
+  renderCounselYearTabs();
+  // 선택 체크박스 다음 열에 연번을 표시합니다.
+  const table = counselLibraryTableBody.closest("table");
+  const headerRow = table?.querySelector("thead tr");
+  if (headerRow && !headerRow.querySelector(".counsel-row-number-header")) {
+    const th = document.createElement("th");
+    th.className = "counsel-row-number-header";
+    th.textContent = "연번";
+    th.style.cssText = "width:56px;min-width:56px;text-align:center;";
+    headerRow.children[0]?.insertAdjacentElement("afterend", th);
+  }
   counselLibraryTableBody.innerHTML = "";
-  if (counselLibrary.length === 0) {
-    counselLibraryTableBody.innerHTML = `<tr class="empty-row"><td colspan="10" style="text-align:center;">등록된 급여제공반영 상담일지가 없습니다.</td></tr>`;
+  const visibleCounsels = activeCounselYear === "all" ? counselLibrary : counselLibrary.filter(item => counselYear(item) === activeCounselYear);
+  if (visibleCounsels.length === 0) {
+    counselLibraryTableBody.innerHTML = `<tr class="empty-row"><td colspan="11" style="text-align:center;">해당 연도에 등록된 급여제공반영 상담일지가 없습니다.</td></tr>`;
     selectAllCounselCheckbox.checked = false;
     return;
   }
-  const sortedList = [...counselLibrary].sort((a,b) => {
+  const sortedList = [...visibleCounsels].sort((a,b) => {
     if (String(a.recipientName||"") === String(b.recipientName||"")) return String(b.consultDate||"").localeCompare(String(a.consultDate||""));
     return String(a.recipientName||"").localeCompare(String(b.recipientName||""), "ko");
   });
-  sortedList.forEach(item => {
+  sortedList.forEach((item, index) => {
     const row = document.createElement("tr");
     row.innerHTML = `
       <td class="checkbox-col"><input type="checkbox" class="counsel-checkbox" data-key="${item.firestoreId || item.id}" ${item.checked ? "checked" : ""} /></td>
+      <td style="text-align:center;white-space:nowrap;">${index + 1}</td>
       <td>${item.recipientName || "-"}</td><td>${item.consultDate || "-"}</td><td>${item.category || "-"}</td><td>${correctedCounselChangeType(item) || "-"}</td>
       <td style="text-align:left;padding:10px;line-height:1.4;">${item.careContent || "-"}</td>
       <td style="text-align:left;padding:10px;">${item.reason || "-"}</td><td>${item.sheetName || "-"}</td><td>${item.fileName || "-"}</td><td>${item.uploadedAt || "-"}</td>`;
     counselLibraryTableBody.appendChild(row);
   });
+  selectAllCounselCheckbox.checked = visibleCounsels.length > 0 && visibleCounsels.every(x=>x.checked);
   document.querySelectorAll(".counsel-checkbox").forEach(cb => cb.addEventListener("change", e => {
     const key = String(e.target.dataset.key);
     counselLibrary = counselLibrary.map(x => String(x.firestoreId || x.id) === key ? {...x, checked:e.target.checked} : x);
+    selectAllCounselCheckbox.checked = visibleCounsels.length > 0 && visibleCounsels.every(x => String(x.firestoreId || x.id) === key ? e.target.checked : x.checked);
   }));
 }
 
@@ -432,7 +483,7 @@ uploadCounselBtn.addEventListener("click", () => {
 });
 
 selectAllCounselCheckbox.addEventListener("change", e => {
-  counselLibrary = counselLibrary.map(x => ({...x, checked:e.target.checked})); renderCounselLibrary();
+  counselLibrary = counselLibrary.map(x => (activeCounselYear === "all" || counselYear(x) === activeCounselYear) ? {...x, checked:e.target.checked} : x); renderCounselLibrary();
 });
 
 deleteSelectedCounselBtn.addEventListener("click", async () => {
