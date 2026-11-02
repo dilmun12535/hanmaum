@@ -1,7 +1,7 @@
 // 상담일지 데이터는 Firebase Firestore(counsels)에서 관리합니다.
 
 const counselFileInput = document.getElementById("counselFile");
-const uploadCounselBtn = document.getElementById("uploadCounselBtnA");
+const uploadCounselBtn = document.getElementById("uploadCounselBtn");
 const deleteSelectedCounselBtn = document.getElementById("deleteSelectedCounselBtn");
 const selectAllCounselCheckbox = document.getElementById("selectAllCounselCheckbox");
 
@@ -244,6 +244,7 @@ function parseCounselWorkbook(workbook, fileName) {
 }
 
 import { auth, db } from "./firebase-config.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
 import { collection, getDocs, getDoc, doc, setDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
 
 const COUNSEL_COLLECTION = "counsels";
@@ -276,6 +277,14 @@ function firestoreSafe(value) {
 
 async function loadCounselLibrary() {
   try {
+    if (!auth.currentUser) {
+      await new Promise((resolve, reject) => {
+        const unsubscribe = onAuthStateChanged(auth, user => {
+          if (user) { unsubscribe(); resolve(); }
+          else { unsubscribe(); reject(new Error("로그인이 필요합니다.")); }
+        }, reject);
+      });
+    }
     const snap = await getDocs(collection(db, COUNSEL_COLLECTION));
     counselLibrary = snap.docs.map(d => ({
       ...d.data(),
@@ -285,9 +294,10 @@ async function loadCounselLibrary() {
       checked: false
     }));
     renderCounselLibrary();
+    console.info("상담일지 조회 완료:", counselLibrary.length, "건");
   } catch (error) {
     console.error("상담일지 Firestore 불러오기 오류:", error);
-    alert("Firebase에서 상담일지 데이터를 불러오지 못했습니다. Firestore 규칙을 확인해주세요.");
+    alert("상담일지 조회 실패: " + (error.message || error));
   }
 }
 
