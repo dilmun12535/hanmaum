@@ -76,7 +76,9 @@ function detectCareCategory(text) {
   if (/기저귀|기저귀교환|기저귀갈기/.test(clean)) return "기저귀";
   if (/물리치료|기능회복훈련|작업치료/.test(clean)) return "물리치료";
   if (/정확한복약도움|복약|투약|약복용|약챙겨/.test(clean)) return "간호";
-  if (/기능상태에맞는음식준비|균형잡힌식단관리|식사|음식준비|다진식|죽식|일반식|연식/.test(clean)) return "식사";
+  // 행동변화 관련 영양문제 관리는 식사 체크 대상이 아닙니다.
+  if (/행동변화.*(?:영양문제|영양관리)/.test(clean)) return "기타";
+  if (/기능상태에맞는음식준비|균형잡힌식단(?:관리|제공)|균형잡힌식사|식사(?:제공|도움)?|음식준비|다진식|죽식|일반식|연식/.test(clean)) return "식사";
   if (/화장실|대변|소변|배설|배변|배뇨/.test(clean)) return "화장실";
   if (/인지활동|인지지원|인지훈련/.test(clean)) return "인지활동";
   return "기타";
@@ -93,6 +95,18 @@ function detectChangeType(text, reason = "") {
   if (/추가|시작|신설|제공|반영|실시|적용|시행/.test(explanation)) return "추가";
   // 근거가 없는 경우 임의로 추가/제외를 추측하지 않습니다.
   return "기타";
+}
+
+// 저장된 예전 '기타' 분류는 실제 급여내용으로 재판정합니다.
+// 반영사유에 적힌 단순한 식사/영양 언급은 사용하지 않습니다.
+function correctedCounselCategory(item) {
+  const current = String(item.category || "").trim();
+  const content = String(item.row?.careContent || item.careContent || "")
+    .replace(/<br\s*\/?\s*>/gi, " ");
+  const detected = detectCareCategory(content);
+  if (current === "식사" && /행동변화.*(?:영양문제|영양관리)/.test(normalizeText(content))) return "기타";
+  if (current === "기타" && detected === "식사") return "식사";
+  return current || detected || "기타";
 }
 
 function correctedCounselChangeType(item) {
@@ -444,7 +458,7 @@ function renderCounselLibrary() {
     row.innerHTML = `
       <td class="checkbox-col"><input type="checkbox" class="counsel-checkbox" data-key="${item.firestoreId || item.id}" ${item.checked ? "checked" : ""} /></td>
       <td style="text-align:center;white-space:nowrap;">${index + 1}</td>
-      <td>${item.recipientName || "-"}</td><td>${item.consultDate || "-"}</td><td>${item.category || "-"}</td><td>${correctedCounselChangeType(item) || "-"}</td>
+      <td>${item.recipientName || "-"}</td><td>${item.consultDate || "-"}</td><td>${correctedCounselCategory(item) || "-"}</td><td>${correctedCounselChangeType(item) || "-"}</td>
       <td style="text-align:left;padding:10px;line-height:1.4;">${item.careContent || "-"}</td>
       <td style="text-align:left;padding:10px;">${item.reason || "-"}</td><td>${item.sheetName || "-"}</td><td>${item.fileName || "-"}</td><td>${item.uploadedAt || "-"}</td>`;
     counselLibraryTableBody.appendChild(row);
@@ -543,6 +557,52 @@ function installCounselRepairButton() {
   deleteSelectedCounselBtn.insertAdjacentElement("afterend",btn);
 }
 installCounselRepairButton();
+// 기존 데이터의 category 필드를 안전하게 수정하는 별도 기능입니다.
+// 화면 표시 보정만으로 끝나지 않도록 Firestore에도 반영할 수 있습니다.
+async function repairExistingCounselCategories() {
+  const user = auth.currentUser;
+  if (!user) return alert("로그인이 필요합니다.");
+  await refreshCounselAdmin();
+  const changed = counselLibrary.filter(item =>
+    correctedCounselCategory(item) !== String(item.category || "").trim() && item.firestoreId
+  );
+  const permitted = changed.filter(item => mayDeleteCounsel(item));
+  const excluded = changed.length - permitted.length;
+  if (!permitted.length) return alert(`수정 가능한 분류가 없습니다.\n권한 없는 자료 ${excluded}건`);
+  if (!confirm(`기존 상담일지 ${permitted.length}건의 급여 분류를 수정할까요?\n권한 없는 자료 ${excluded}건은 변경하지 않습니다.\n기존 기록의 내용·건수·변경유형은 그대로 유지됩니다.`)) return;
+  let saved = 0;
+  try {
+    for (let i = 0; i < permitted.length; i += 200) {
+      const batch = writeBatch(db);
+      permitted.slice(i, i + 200).forEach(item => {
+        batch.update(doc(db, COUNSEL_COLLECTION, item.firestoreId), {
+          category: correctedCounselCategory(item)
+        });
+      });
+      await batch.commit();
+      saved += Math.min(200, permitted.length - i);
+    }
+    await loadCounselLibrary();
+    alert(`급여 분류 ${saved}건 수정 완료.\n권한 없는 자료 ${excluded}건은 그대로 유지했습니다.`);
+  } catch (error) {
+    console.error("급여 분류 수정 실패:", error);
+    alert(`분류 수정 중 오류가 발생했습니다. 완료 ${saved}건.\n${error.message || error}`);
+    await loadCounselLibrary();
+  }
+}
+function installCounselCategoryRepairButton() {
+  if (document.getElementById("repairCounselCategoriesBtn")) return;
+  const btn = document.createElement("button");
+  btn.id = "repairCounselCategoriesBtn";
+  btn.type = "button";
+  btn.textContent = "기존 급여 분류 수정";
+  btn.style.cssText = "margin-left:8px;padding:9px 14px;border:1px solid #1e3a8a;border-radius:7px;background:#eff6ff;color:#1e3a8a;cursor:pointer;font-weight:700";
+  btn.addEventListener("click", repairExistingCounselCategories);
+  deleteSelectedCounselBtn.insertAdjacentElement("afterend", btn);
+}
+installCounselCategoryRepairButton();
+
+
 
 // 기존 Google Sheets → Firebase 1회 이전 기능은 이전 완료에 따라 비활성화했습니다.
 // Firestore의 기존 counsels 문서는 삭제하거나 변경하지 않습니다.
