@@ -555,6 +555,7 @@ function getMealCountFromPlan(plan) {
   // rowsJson 한 칸 안에서 '균형잡힌 식단 관리' 또는 식사 관련 행만 골라서 확인
   const mealObjects = sourceObjects.filter((obj) => {
     const text = objectToCleanText(obj);
+    if (isBehaviorNutritionCare(text)) return false;
     return (
       text.includes("균형잡힌식단관리") ||
       text.includes("균형잡힌식사") ||
@@ -661,6 +662,12 @@ function getCounselDate(counsel) {
   );
 }
 
+// 행동변화 관련 영양문제 관리는 식사 횟수/음식 준비 검증 급여가 아닙니다.
+function isBehaviorNutritionCare(value) {
+  const text = normalizeText(value).replace(/[^a-zA-Z0-9가-힣]/g, "");
+  return /행동변화.*영양문제.*관리/.test(text) || /행동변화.*영양관리/.test(text);
+}
+
 function getLatestMealCounsel(name, targetDate, careGrade = "") {
   const targetDateText = normalizeDateText(targetDate);
   const cleanCareGrade = normalizeCareGrade(careGrade);
@@ -671,8 +678,13 @@ function getLatestMealCounsel(name, targetDate, careGrade = "") {
     if (!refDate || refDate > targetDateText) return false;
 
     const category = item.category || "";
-    const text = normalizeText(`${item.careContent || ""} ${item.reason || ""} ${item.changeType || ""}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
-    return category === "식사" || text.includes("식단") || text.includes("식사") || text.includes("음식준비") || text.includes("다진식") || text.includes("죽식");
+    const careContent = String(item.careContent || item.row?.careContent || "");
+    const careType = String(item.row?.careType || item.careType || "");
+    const serviceText = normalizeText(`${careType} ${careContent}`).replace(/[^a-zA-Z0-9가-힣]/g, "");
+    // 반영사유의 일반적인 영양·식사 언급만으로 식사 급여를 생성하지 않습니다.
+    // '행동변화와 관련된 영양문제 관리'는 식사 급여로 분류되어 저장됐어도 제외합니다.
+    if (isBehaviorNutritionCare(careContent) || isBehaviorNutritionCare(careType)) return false;
+    return category === "식사" || /균형잡힌식단관리|기능상태에맞는음식준비|식사제공|식사횟수|식사도움|중식|석식|점심|저녁|다진식|죽식|일반식|미음/.test(serviceText);
   });
 
   if (baseCounsels.length === 0) return null;
