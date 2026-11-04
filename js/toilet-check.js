@@ -236,41 +236,43 @@ function getLatestPlanForRecipientAtDate(name, targetDate) {
 
 function hasDiaperPlan(plan) {
   if (!plan) return false;
-  const nameKeys = ["장기요양필요내용", "필요내용", "필요내용_수기(250)",
-    "급여내용", "급여항목", "급여명", "서비스명", "세부급여내용",
-    "급여제공내용", "serviceName", "itemName", "benefitName"];
-  const excludeKeys = ["제공여부", "급여여부", "적용여부", "status",
+
+  // 종합의견, 세부 제공내용, 목표 등 설명문은 절대로 급여 판정에 사용하지 않습니다.
+  // Firestore에 저장된 실제 급여 항목명(장기요양 필요내용)만 검사합니다.
+  const itemKeys = [
+    "장기요양필요내용", "장기요양 필요내용", "필요내용", "필요내용_수기(250)",
+    "급여항목", "급여명", "serviceName", "itemName", "benefitName"
+  ];
+  const excludedKeys = ["제공여부", "급여여부", "적용여부", "status",
     "provided", "useYn", "isExcluded", "excluded"];
-  const excludedSections = /종합의견|총평|반영사유|상담내용|특이사항|목표|비고|설명|opinion|reason|summary/i;
-  const servicePattern = /기저귀(?:교환|교체|갈기|착용|관리)(?:도움|지원|제공)?/;
-  const normalize = value => String(value ?? "").replace(/\\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
+  const containerKeys = ["rows", "items", "benefits", "services", "data", "list"];
+  const norm = value => String(value ?? "").replace(/\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
+  const diaperItem = /기저귀(?:교환|교체|갈기|착용|관리)(?:도움|지원|제공)?/;
   const parse = value => {
     if (typeof value !== "string") return value;
-    try { return JSON.parse(value); } catch (_) { return value; }
+    try { return JSON.parse(value); } catch (_) { return null; }
   };
   const seen = new WeakSet();
-  function scan(value, parentKey = "") {
+  function scan(value) {
     value = parse(value);
-    if (!value || excludedSections.test(parentKey)) return false;
-    if (typeof value !== "object") return false;
-    if (seen.has(value)) return false;
+    if (!value || typeof value !== "object" || seen.has(value)) return false;
     seen.add(value);
     if (Array.isArray(value)) {
-      // 구형 행 배열: 항목명이 독립 셀에 기록된 경우
-      if (value.every(v => v == null || typeof v !== "object") &&
-          value.some(v => servicePattern.test(normalize(v)))) return true;
-      return value.some(v => scan(v, parentKey));
+      // 구형 배열 형태도 항목명 열이 명시된 객체만 인정합니다.
+      return value.some(scan);
     }
-    const states = excludeKeys.map(k => value[k]).filter(v => v !== undefined && v !== null && v !== "");
-    const isExcluded = states.some(v => v === false || v === 0 ||
-      /^(false|0|n|no)$/i.test(String(v).trim()) ||
-      /제외|미제공|삭제|중단|없음|미실시|미적용/.test(normalize(v)));
-    if (isExcluded) return false;
-    if (nameKeys.some(k => servicePattern.test(normalize(value[k])))) return true;
-    return Object.entries(value).some(([key, child]) =>
-      !excludedSections.test(key) && scan(child, key));
+    const states = excludedKeys.map(key => value[key]).filter(v => v !== undefined && v !== null && v !== "");
+    if (states.some(v => v === false || v === 0 ||
+        /^(false|0|n|no)$/i.test(String(v).trim()) ||
+        /제외|미제공|삭제|중단|없음|미실시|미적용/.test(norm(v)))) return false;
+
+    // 단순 '급여내용'은 종합의견 문장이 저장될 수 있어 제외합니다.
+    if (itemKeys.some(key => diaperItem.test(norm(value[key])))) return true;
+
+    // 알려진 급여목록 컨테이너만 탐색. 종합의견 같은 다른 필드로 확장하지 않습니다.
+    return containerKeys.some(key => scan(value[key]));
   }
-  return scan(plan.rows, "rows") || scan(plan.rowsJson, "rowsJson");
+  return scan(plan.rows) || scan(plan.rowsJson);
 }
 
 function getCounselDate(counsel) {
