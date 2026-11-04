@@ -4,7 +4,10 @@ let attendanceLibraryCache = [];
 
 async function loadCarePlanLibraryFromFirestore(monthValue) {
   try {
-    carePlanLibraryCache = await window.HanmaumFirestore.carePlans(monthValue);
+    const allPlans = typeof window.HanmaumFirestore.allCarePlans === "function"
+      ? await window.HanmaumFirestore.allCarePlans()
+      : await window.HanmaumFirestore.carePlans(monthValue);
+    carePlanLibraryCache = Array.isArray(allPlans) ? allPlans : [];
     return carePlanLibraryCache;
   } catch (error) {
     console.error("Firebase 급여제공계획서 조회 오류:", error);
@@ -54,6 +57,7 @@ function hasToiletRowError(item, days) {
   return days.some((day) => {
     const dayData = item.days[day];
     if (!(item.attendanceDates || []).includes(day) || !dayData) return false;
+    if (item.daysPlanMissing && item.daysPlanMissing[day]) return true;
     return getResultText(
       dayData.stoolCount + dayData.urineCount + dayData.diaperCount,
       dayData.diaperCount,
@@ -232,27 +236,41 @@ function getLatestPlanForRecipientAtDate(name, targetDate) {
 
 function hasDiaperPlan(plan) {
   if (!plan) return false;
-  let rows = plan.rows || plan.rowsJson || [];
-  if (typeof rows === "string") {
-    try { rows = JSON.parse(rows); } catch (_) { return false; }
+  const nameKeys = ["장기요양필요내용", "필요내용", "필요내용_수기(250)",
+    "급여내용", "급여항목", "급여명", "서비스명", "세부급여내용",
+    "급여제공내용", "serviceName", "itemName", "benefitName"];
+  const excludeKeys = ["제공여부", "급여여부", "적용여부", "status",
+    "provided", "useYn", "isExcluded", "excluded"];
+  const excludedSections = /종합의견|총평|반영사유|상담내용|특이사항|목표|비고|설명|opinion|reason|summary/i;
+  const servicePattern = /기저귀(?:교환|교체|갈기|착용|관리)(?:도움|지원|제공)?/;
+  const normalize = value => String(value ?? "").replace(/\\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
+  const parse = value => {
+    if (typeof value !== "string") return value;
+    try { return JSON.parse(value); } catch (_) { return value; }
+  };
+  const seen = new WeakSet();
+  function scan(value, parentKey = "") {
+    value = parse(value);
+    if (!value || excludedSections.test(parentKey)) return false;
+    if (typeof value !== "object") return false;
+    if (seen.has(value)) return false;
+    seen.add(value);
+    if (Array.isArray(value)) {
+      // 구형 행 배열: 항목명이 독립 셀에 기록된 경우
+      if (value.every(v => v == null || typeof v !== "object") &&
+          value.some(v => servicePattern.test(normalize(v)))) return true;
+      return value.some(v => scan(v, parentKey));
+    }
+    const states = excludeKeys.map(k => value[k]).filter(v => v !== undefined && v !== null && v !== "");
+    const isExcluded = states.some(v => v === false || v === 0 ||
+      /^(false|0|n|no)$/i.test(String(v).trim()) ||
+      /제외|미제공|삭제|중단|없음|미실시|미적용/.test(normalize(v)));
+    if (isExcluded) return false;
+    if (nameKeys.some(k => servicePattern.test(normalize(value[k])))) return true;
+    return Object.entries(value).some(([key, child]) =>
+      !excludedSections.test(key) && scan(child, key));
   }
-  if (rows && !Array.isArray(rows) && Array.isArray(rows.rows)) rows = rows.rows;
-  if (!Array.isArray(rows)) return false;
-
-  // 실제 급여목록의 항목명만 검사한다. 종합의견/세부내용/참고문구는 제외.
-  const nameKeys = ["장기요양필요내용", "필요내용", "급여내용", "급여항목", "serviceName", "itemName"];
-  const excludeKeys = ["제공여부", "급여여부", "적용여부", "status", "provided", "useYn", "isExcluded", "excluded"];
-  const matched = rows.filter((row) => {
-    if (!row || typeof row !== "object" || Array.isArray(row)) return false;
-    const names = nameKeys.map(k => String(row[k] ?? "").trim()).filter(Boolean);
-    if (!names.some(v => /^기저귀(교환|교체|갈기)(도움)?$/.test(normalizeText(v)))) return false;
-    const states = excludeKeys.map(k => row[k]).filter(v => v !== undefined && v !== null && v !== "");
-    if (states.some(v => v === false || v === 0 || /^(false|0|n|no)$/i.test(String(v).trim()) || /제외|미제공|삭제|중단|없음|미실시|미적용/.test(normalizeText(v)))) return false;
-    return true;
-  });
-  // 저장된 실제 급여행을 콘솔에서 확인 가능하게 하여 잘못된 원본 데이터 식별
-  if (matched.length) console.debug("[화장실 검증] 기저귀 급여로 판정된 원본 행", plan.recipientName || plan.name, plan.writtenDate, matched);
-  return matched.length > 0;
+  return scan(plan.rows, "rows") || scan(plan.rowsJson, "rowsJson");
 }
 
 function getCounselDate(counsel) {
@@ -474,12 +492,15 @@ function parseToiletReport(workbook, monthValue) {
   return Object.values(resultMap);
 }
 
-function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true) {
+function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true, planMissing = false) {
   // [수정 핵심]: 출석부 데이터에 있더라도, 엑셀 화장실 기록 자체가 없으면 '결석(미이용)'으로 강제 분류합니다.
   if (!isAttendanceDay || !dayData) {
     return `<td style="background-color: #f8fafc; color: #64748b; font-weight: 600; text-align: center; vertical-align: middle; padding: 12px 6px; font-size: 13px; border: 1px solid #e2e8f0;">결석</td>`;
   }
   
+  if (planMissing) {
+    return `<td style="background:#fff7ed;text-align:center;padding:12px 6px;border:1px solid #e2e8f0;"><div style="color:#c2410c;font-weight:800;">계획서 확인</div><div style="font-size:11px;">해당 날짜 적용 계획서·상담일지 없음</div></td>`;
+  }
   const totalCount = dayData.stoolCount + dayData.urineCount + dayData.diaperCount;
   const resultText = getResultText(totalCount, dayData.diaperCount, hasDiaperBenefit);
 
@@ -530,8 +551,10 @@ function buildResults(monthValue, toiletRows) {
     item.attendanceDates = attendance ? attendance.dates : [];
     item.daysDiaperAllowed = {};
     item.daysDiaperBenefit = {};
+    item.daysPlanMissing = {};
     days.forEach((day) => {
       const dayPlan = getLatestPlanForRecipientAtDate(item.name, day);
+      item.daysPlanMissing[day] = !dayPlan && !getLatestDiaperCounsel(item.name, day);
       const benefit = getDiaperBenefitAtDate(dayPlan, item.name, day);
       item.daysDiaperBenefit[day] = benefit;
       item.daysDiaperAllowed[day] = benefit.allowed;
@@ -594,7 +617,7 @@ function renderResults(data) {
       <td style="font-weight: 500; vertical-align: middle; border: 1px solid #e2e8f0; text-align: center; font-size: 13px;">${buildBenefitSourceHtml(item.monthDiaperBenefit)}</td>
       ${days.map((day) => {
         const isAttendanceDay = (item.attendanceDates || []).includes(day);
-        return buildDayCell(item.days[day], item.daysDiaperAllowed[day], isAttendanceDay);
+        return buildDayCell(item.days[day], item.daysDiaperAllowed[day], isAttendanceDay, item.daysPlanMissing[day]);
       }).join("")}
     `;
     toiletResultBody.appendChild(row);
