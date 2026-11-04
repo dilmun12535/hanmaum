@@ -237,40 +237,33 @@ function getLatestPlanForRecipientAtDate(name, targetDate) {
 function hasDiaperPlan(plan) {
   if (!plan) return false;
 
-  // 종합의견, 세부 제공내용, 목표 등 설명문은 절대로 급여 판정에 사용하지 않습니다.
-  // Firestore에 저장된 실제 급여 항목명(장기요양 필요내용)만 검사합니다.
+  // 급여제공계획서의 '장기요양 필요내용'에 저장된 개별 급여명만 인정합니다.
+  // 종합의견·목표·세부 제공내용·반영사유 등 자유서술 필드는 검색하지 않습니다.
   const itemKeys = [
-    "장기요양필요내용", "장기요양 필요내용", "필요내용", "필요내용_수기(250)",
+    "장기요양필요내용", "장기요양 필요내용", "필요내용_수기(250)",
     "급여항목", "급여명", "serviceName", "itemName", "benefitName"
   ];
   const excludedKeys = ["제공여부", "급여여부", "적용여부", "status",
     "provided", "useYn", "isExcluded", "excluded"];
-  const containerKeys = ["rows", "items", "benefits", "services", "data", "list"];
-  const norm = value => String(value ?? "").replace(/\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
-  const diaperItem = /기저귀(?:교환|교체|갈기|착용|관리)(?:도움|지원|제공)?/;
-  const parse = value => {
-    if (typeof value !== "string") return value;
-    try { return JSON.parse(value); } catch (_) { return null; }
+  const listKeys = ["rows", "items", "benefits", "services", "data", "list"];
+  const normalize = v => String(v ?? "").replace(/\s/g, "").replace(/[^가-힣a-zA-Z0-9]/g, "");
+  const isDiaperService = v => /^기저귀(?:교환|교체|갈기|착용|관리)(?:도움|지원|제공)?$/.test(normalize(v));
+  const parse = v => {
+    if (typeof v !== "string") return v;
+    try { return JSON.parse(v); } catch (_) { return null; }
   };
   const seen = new WeakSet();
   function scan(value) {
     value = parse(value);
     if (!value || typeof value !== "object" || seen.has(value)) return false;
     seen.add(value);
-    if (Array.isArray(value)) {
-      // 구형 배열 형태도 항목명 열이 명시된 객체만 인정합니다.
-      return value.some(scan);
-    }
-    const states = excludedKeys.map(key => value[key]).filter(v => v !== undefined && v !== null && v !== "");
+    if (Array.isArray(value)) return value.some(scan);
+    const states = excludedKeys.map(k => value[k]).filter(v => v !== undefined && v !== null && v !== "");
     if (states.some(v => v === false || v === 0 ||
-        /^(false|0|n|no)$/i.test(String(v).trim()) ||
-        /제외|미제공|삭제|중단|없음|미실시|미적용/.test(norm(v)))) return false;
-
-    // 단순 '급여내용'은 종합의견 문장이 저장될 수 있어 제외합니다.
-    if (itemKeys.some(key => diaperItem.test(norm(value[key])))) return true;
-
-    // 알려진 급여목록 컨테이너만 탐색. 종합의견 같은 다른 필드로 확장하지 않습니다.
-    return containerKeys.some(key => scan(value[key]));
+      /^(false|0|n|no)$/i.test(String(v).trim()) ||
+      /제외|미제공|삭제|중단|없음|미실시|미적용/.test(normalize(v)))) return false;
+    if (itemKeys.some(k => isDiaperService(value[k]))) return true;
+    return listKeys.some(k => scan(value[k]));
   }
   return scan(plan.rows) || scan(plan.rowsJson);
 }
