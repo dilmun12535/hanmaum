@@ -112,7 +112,7 @@ function normalizeText(value) {
 }
 
 function normalizeRecipientName(value) {
-  return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim();
+  return String(value || "").replace(/[^a-zA-Z0-9가-힣]/g, "").trim().toLowerCase();
 }
 
 function isSameRecipient(nameA, nameB) {
@@ -499,7 +499,7 @@ function buildDayCell(dayData, hasDiaperBenefit, isAttendanceDay = true, planMis
   }
   
   if (planMissing) {
-    return `<td style="background:#fff7ed;text-align:center;padding:12px 6px;border:1px solid #e2e8f0;"><div style="color:#c2410c;font-weight:800;">계획서 확인</div><div style="font-size:11px;">해당 날짜 적용 계획서·상담일지 없음</div></td>`;
+    return `<td style="background:#fff7ed;text-align:center;padding:12px 6px;border:1px solid #e2e8f0;"><div style="color:#c2410c;font-weight:800;">계획서 없음</div></td>`;
   }
   const totalCount = dayData.stoolCount + dayData.urineCount + dayData.diaperCount;
   const resultText = getResultText(totalCount, dayData.diaperCount, hasDiaperBenefit);
