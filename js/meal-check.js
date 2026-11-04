@@ -443,6 +443,26 @@ function getLatestPlansByRecipient(name, checkDate, careGrade = '', longTermNumb
   return pool[0] || null;
 }
 
+// 화면 표시용: 유효한 계획서가 없다면 동일 수급자의 가장 최근 종료 계획서를 표시하되,
+// 종료 계획서를 실제 식사 판정 기준으로 사용하지 않습니다.
+function getPlanDisplayInfo(name, checkDate, careGrade = "", longTermNumber = "") {
+  const active = getLatestPlansByRecipient(name, checkDate, careGrade, longTermNumber);
+  if (active) return {plan: active, expired: false};
+  const number = String(longTermNumber || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+  const matches = (carePlanLibraryCache || []).filter(plan => {
+    const planName = plan.recipientName || plan.name || plan.recipient || "";
+    const planNumber = String(plan.longTermNumber || plan.certNumber || "").replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
+    if (number && planNumber && number !== planNumber) return false;
+    if (!isSameRecipient(planName, name)) return false;
+    const grade = plan.__careGrade || getCareGradeFromAny(plan);
+    if (careGrade && grade && normalizeCareGrade(careGrade) !== normalizeCareGrade(grade)) return false;
+    const dates = getPlanDateFields(plan);
+    return dates.start && dates.start <= checkDate && dates.end && dates.end < checkDate;
+  });
+  matches.sort((a, b) => getPlanDateFields(b).end.localeCompare(getPlanDateFields(a).end));
+  return {plan: matches[0] || null, expired: matches.length > 0};
+}
+
 function planToFullText(plan) {
   if (!plan) return "";
   if (typeof plan.rows === "string") return plan.rows;
@@ -668,7 +688,7 @@ function isBehaviorNutritionCare(value) {
   return /행동변화.*영양문제.*관리/.test(text) || /행동변화.*영양관리/.test(text);
 }
 
-function getLatestMealCounsel(name, targetDate, careGrade = "") {
+function getMealCounsels(name, targetDate, careGrade = "") {
   const targetDateText = normalizeDateText(targetDate);
   const cleanCareGrade = normalizeCareGrade(careGrade);
 
@@ -687,7 +707,7 @@ function getLatestMealCounsel(name, targetDate, careGrade = "") {
     return category === "식사" || /균형잡힌식단관리|기능상태에맞는음식준비|식사제공|식사횟수|식사도움|중식|석식|점심|저녁|다진식|죽식|일반식|미음/.test(serviceText);
   });
 
-  if (baseCounsels.length === 0) return null;
+  if (baseCounsels.length === 0) return [];
 
   let counsels = baseCounsels;
 
@@ -706,10 +726,17 @@ function getLatestMealCounsel(name, targetDate, careGrade = "") {
   counsels.sort((a, b) => {
     const dateA = getCounselDate(a);
     const dateB = getCounselDate(b);
-    return dateB.localeCompare(dateA);
+    return dateA.localeCompare(dateB);
   });
 
-  return counsels[0] || null;
+  return counsels;
+}
+
+
+// 기존 호출과의 호환성: 가장 최근 상담일지가 필요한 곳에서 사용합니다.
+function getLatestMealCounsel(name, targetDate, careGrade = "") {
+  const counsels = getMealCounsels(name, targetDate, careGrade);
+  return counsels.length ? counsels[counsels.length - 1] : null;
 }
 
 function isRemoveCounsel(counsel) {
@@ -764,19 +791,18 @@ function getMealRuleAtDate(plan, name, targetDate, careGrade = "", forMonthlySum
   const planMealCount = getMealCountFromPlan(plan);
   const planSpecialFood = hasFoodPrepPlan(plan);
 
-  const counsel = getLatestMealCounsel(name, targetDate, careGrade);
-  const counselDate = counsel ? getCounselDate(counsel) : "";
+  // 동일 적용기간의 상담일지를 모두 날짜순으로 반영합니다.
+  const applicableCounsels = getMealCounsels(name, targetDate, careGrade)
+    .filter(counsel => !planDate || getCounselDate(counsel) > planDate);
 
   let mealCount = planMealCount;
   let specialFood = planSpecialFood;
   let mealCountSource = "계획서";
   let specialFoodSource = "계획서";
 
-  // 상담일지가 있고, 상담일지가 계획서보다 최신일 때만 상담일지를 최종 기준으로 반영합니다.
-  // 예: 상담일지 2024-04-30 추가 → 계획서 2024-05-30 작성이면 계획서가 최종 기준입니다.
-  const shouldApplyCounsel = counsel && (!planDate || !counselDate || counselDate > planDate);
-
-  if (shouldApplyCounsel) {
+  // 식사 횟수와 음식 준비를 독립적으로 누적 적용합니다.
+  // 뒤에 작성된 음식 준비 상담이 앞선 식사 횟수 상담을 지우지 않습니다.
+  for (const counsel of applicableCounsels) {
     const text = normalizeText(`${counsel.changeType || ""} ${counsel.careContent || ""} ${counsel.reason || ""}`);
     const cleanText = text.replace(/[^a-zA-Z0-9가-힣]/g, "");
 
@@ -848,11 +874,19 @@ function buildMealRuleSourceHtml(mainText, sourceText, isActive = true) {
   `;
 }
 
-function getCounselTextForMonth(name, monthEndDate, careGrade = "") {
-  const counsel = getLatestMealCounsel(name, monthEndDate, careGrade);
-  if (!counsel) return "없음";
-  const refDate = getCounselDate(counsel) || "-";
-  return `${String(refDate).substring(0,10)}<br>[${counsel.changeType || "-"}]<br>${counsel.careContent || "-"}`;
+function getCounselTextForMonth(name, monthEndDate, careGrade = "", plan = null) {
+  const planDate = plan ? getPlanDateFields(plan).start : "";
+  const counsels = getMealCounsels(name, monthEndDate, careGrade)
+    .filter(counsel => !planDate || getCounselDate(counsel) > planDate);
+  if (!counsels.length) return "없음";
+
+  // 같은 적용기간의 여러 급여반영 상담을 한 셀에 각각 구분해 표시합니다.
+  return counsels.map((counsel, index) => {
+    const refDate = getCounselDate(counsel) || "-";
+    const content = String(counsel.careContent || "-");
+    return `<div style="padding:5px 0;${index ? 'border-top:1px solid #cbd5e1;margin-top:5px;' : ''}">` +
+      `${String(refDate).substring(0,10)}<br>[${counsel.changeType || "-"}]<br>${content}</div>`;
+  }).join("");
 }
 
 
@@ -998,15 +1032,19 @@ function buildResults(monthValue, mealRows) {
   return attendanceRows.map((attendance) => {
     const name = attendance.name;
     const careGrade = attendance.careGrade || "";
-    const plan = getLatestPlansByRecipient(name, monthEndDate, careGrade, attendance.longTermNumber);
+    const planInfo = getPlanDisplayInfo(name, monthEndDate, careGrade, attendance.longTermNumber);
+    const plan = planInfo.expired ? null : planInfo.plan;
+    const displayPlan = planInfo.plan;
     const meal = mealRows.find((item) => isSameRecipient(item.name, name));
 
     return {
       name,
       careGrade,
       longTermNumber: attendance.longTermNumber,
-      planDate: plan ? (getPlanDateFields(plan).written || getPlanDateFields(plan).start) : "-",
-      counselText: getCounselTextForMonth(name, monthEndDate, careGrade),
+      planDate: displayPlan ? (getPlanDateFields(displayPlan).written || getPlanDateFields(displayPlan).start) : "-",
+      planExpired: planInfo.expired,
+      planEndDate: displayPlan ? getPlanDateFields(displayPlan).end : "",
+      counselText: getCounselTextForMonth(name, monthEndDate, careGrade, plan),
       attendanceDates: attendance.dates || [],
       leaveTimes: attendance.leaveTimes || {},
       plan,
@@ -1107,6 +1145,10 @@ function renderResults(monthValue, results) {
     const monthEndDate = getMonthEndDate(monthValue);
     const monthEndPlan = getLatestPlansByRecipient(item.name, monthEndDate, item.careGrade, item.longTermNumber);
     const monthEndRule = getMealRuleAtDate(monthEndPlan, item.name, monthEndDate, item.careGrade, true);
+    if (!monthEndPlan) {
+      monthEndRule.mealCountSource = "유효 계획서 없음·확인 필요";
+      monthEndRule.specialFoodSource = "유효 계획서 없음·확인 필요";
+    }
 
     let problemCount = 0;
     const dayCells = days.map((day) => {
@@ -1114,9 +1156,11 @@ function renderResults(monthValue, results) {
       const dayPlan = getLatestPlansByRecipient(item.name, day, item.careGrade, item.longTermNumber);
       const rule = getMealRuleAtDate(dayPlan, item.name, day, item.careGrade);
       const leaveTime = item.leaveTimes ? item.leaveTimes[day] : "";
-      const result = isAttendanceDay ? getDayResult(item.mealDays[day], rule, leaveTime, day) : "정상";
+      const result = isAttendanceDay ? (dayPlan ? getDayResult(item.mealDays[day], rule, leaveTime, day) : "계획서 확인") : "정상";
       if (isAttendanceDay && result !== "정상" && result !== "일찍 하원") problemCount += 1;
-      return buildDayCell(isAttendanceDay, item.mealDays[day], rule, leaveTime, day);
+      return isAttendanceDay && !dayPlan
+        ? `<td class="meal-day-cell" style="background-color:#fff5f5 !important;"><div class="status-danger">계획서 확인</div><div class="small-cell-text">유효기간 확인 필요</div></td>`
+        : buildDayCell(isAttendanceDay, item.mealDays[day], rule, leaveTime, day);
     }).join("");
 
     const overallText = problemCount > 0 ? `확인 필요<br>${problemCount}일` : "정상";
@@ -1129,7 +1173,7 @@ function renderResults(monthValue, results) {
       <td style="font-weight:600; text-align:center; ${errorCellBg}">
         ${item.name || "-"}${item.careGrade ? `<br><span style="font-size:11px; color:#64748b; font-weight:700;">${item.careGrade}</span>` : ""}
       </td>
-      <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}</td>
+      <td style="text-align:center; ${errorCellBg}">${item.planDate ? String(item.planDate).substring(0,10) : "-"}${item.planExpired ? `<br><span style="color:#dc2626;font-size:11px;font-weight:700;">적용 종료 ${item.planEndDate || ""}</span>` : ""}</td>
       <td style="text-align:left; font-size:12px; line-height:1.4; padding:6px; ${errorCellBg}">${item.counselText || "없음"}</td>
       <td style="text-align:center; font-weight:700; ${errorCellBg}">${buildMealRuleSourceHtml(`${monthEndRule.mealCount || 0}회`, monthEndRule.mealCountSource, (monthEndRule.mealCount || 0) > 0)}</td>
       <td style="text-align:center; ${errorCellBg}">${buildMealRuleSourceHtml(monthEndRule.specialFood ? "기능상태" : "일반식", monthEndRule.specialFoodSource, monthEndRule.specialFood)}</td>
