@@ -1,0 +1,422 @@
+*{box-sizing:border-box}
+:root{--bg:#f4f7fb;--panel:#fff;--line:#d8e0e9;--text:#1f2937;--muted:#64748b;--blue:#2563eb;--green:#15803d;--orange:#c2410c;--red:#dc2626;--purple:#7e22ce;--beige:#efe4c9}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Pretendard","Noto Sans KR","Malgun Gothic",sans-serif}
+button,input,select{font:inherit}.wrap{width:min(1840px,calc(100% - 28px));margin:auto;padding:24px 0 50px}
+.page-head h1{margin:0 0 8px}.page-head p{margin:0 0 18px;color:var(--muted);line-height:1.65}
+.uploads{display:grid;grid-template-columns:1fr 1fr;gap:14px}.card{padding:16px;border:1px solid var(--line);border-radius:13px;background:#fff}.card h2{margin:0 0 5px;font-size:18px}.card p{margin:0 0 10px;color:var(--muted);font-size:12px}
+.file{display:block;padding:13px;border:1px dashed #94a3b8;border-radius:9px;background:#f8fafc;cursor:pointer}.file input{display:none}.file b,.file span{display:block}.file span{margin-top:4px;color:var(--muted);font-size:12px}.status{margin-top:7px;color:var(--muted);font-size:12px;font-weight:800}
+.buttons{display:flex;gap:8px;margin:15px 0}.buttons button{height:40px;padding:0 15px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-weight:800;cursor:pointer}.buttons .primary{background:var(--blue);border-color:var(--blue);color:#fff}.buttons button:disabled{opacity:.45}
+.month-bar{display:flex;justify-content:center;align-items:center;gap:7px;margin-bottom:12px;padding:10px;border:1px solid #cbb990;border-radius:9px;background:var(--beige)}.month-bar select,.month-bar button{height:37px;border:1px solid #b7a98a;border-radius:7px;font-weight:900}.month-bar select{padding:0 14px;background:#fff}.month-bar button{width:38px;background:#b59a67;color:#fff;font-size:22px}
+.main-grid{display:grid;grid-template-columns:365px minmax(0,1fr);gap:12px;align-items:start}.people-panel,.detail-panel,.note{border:1px solid #cbb990;border-radius:10px;background:#fff;overflow:hidden}
+.people-panel{position:sticky;top:10px}.people-head{padding:12px;background:#f6edd8;border-bottom:1px solid #cbb990}.people-head h2{margin:0 0 8px;font-size:18px}.people-head input{width:100%;height:35px;padding:0 9px;border:1px solid #cbd5e1;border-radius:7px}
+.people-table-wrap{max-height:650px;overflow:auto}.people-table{width:100%;border-collapse:collapse;font-size:12px}.people-table th,.people-table td{padding:8px 5px;border-right:1px solid #ddd4c1;border-bottom:1px solid #ddd4c1;text-align:center}.people-table th{position:sticky;top:0;background:#f2ead8;z-index:2}.people-table tbody tr{cursor:pointer}.people-table tbody tr:hover{background:#fff8df}.people-table tbody tr.active{background:#dff7c7}.people-table td.name{font-weight:900}.people-foot{padding:9px 11px;background:#faf6ec;color:#8a5a19;font-size:12px}
+.detail-head{display:flex;justify-content:space-between;align-items:center;padding:13px 15px;background:#f7efd9;border-bottom:1px solid #cbb990}.detail-head h2{margin:0}.detail-head p{margin:4px 0 0;color:#665b47;font-size:12px}.legend{display:flex;gap:6px;flex-wrap:wrap}.legend-item{padding:4px 7px;border-radius:999px;font-size:11px;font-weight:900}.legend-item.ok{background:#dcfce7;color:#15803d}.legend-item.warn{background:#ffedd5;color:#c2410c}.legend-item.absent{background:#f3e8ff;color:#7e22ce}.legend-item.unused{background:#fee2e2;color:#dc2626}
+.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:10px;background:#fbfaf6;border-bottom:1px solid #e5dccb}.summary div{padding:10px;border:1px solid var(--line);border-radius:8px;background:#fff}.summary span{font-size:11px;color:var(--muted)}.summary strong{display:block;margin-top:4px;font-size:18px}
+.schedule-scroll{overflow:auto;max-height:690px}.schedule-table{border-collapse:separate;border-spacing:0;min-width:3100px;width:100%;font-size:11px}.schedule-table thead{position:sticky;top:0;z-index:5}.schedule-table th,.schedule-table td{height:42px;padding:5px;border-right:1px solid #d8cdb5;border-bottom:1px solid #d8cdb5;text-align:center;vertical-align:middle}.schedule-table th{background:#f3ead5;font-weight:900}.schedule-table .row-label{position:sticky;left:0;z-index:6;min-width:140px;width:140px;background:#eadbbc!important;text-align:left;padding-left:9px}.day-head{min-width:92px}.sat{color:#2563eb;background:#eff6ff!important}.sun{color:#dc2626;background:#fff1f2!important}.empty{background:#fafafa!important;color:#bbb}.late-day{background:#fff8d9!important}
+.check{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:4px;font-weight:1000;font-size:13px}.check.ok{background:#22c55e;color:white}.check.bad{background:#fb923c;color:white}.check.gray{background:#cbd5e1;color:white}.check.absent{background:#a855f7;color:white}.check.unused{background:#ef4444;color:white}
+.pill{display:inline-block;padding:4px 6px;border-radius:999px;font-weight:900;white-space:nowrap}.present{background:#dcfce7;color:#15803d}.absent{background:#f3e8ff;color:#7e22ce}.unused{background:#fee2e2;color:#dc2626}.rate1{background:#ecfdf3;color:#15803d}.rate2{background:#eff6ff;color:#1d4ed8}.rate3{background:#fefce8;color:#a16207}.rate4{background:#fff7ed;color:#c2410c}.rate5{background:#fef2f2;color:#b91c1c}
+.change{color:#c2410c;font-weight:900}.lateTxt{color:#dc2626;font-weight:900}.avg{color:#7c3aed;font-weight:900}.note{margin-top:12px;padding:14px}.note p{margin:5px 0 0;color:#475569;line-height:1.65}.hidden{display:none!important}
+@media(max-width:1000px){.uploads{grid-template-columns:1fr}.main-grid{grid-template-columns:1fr}.people-panel{position:static}.people-table-wrap{max-height:350px}.detail-head{align-items:flex-start;flex-direction:column;gap:8px}.summary{grid-template-columns:repeat(2,1fr)}}
+/* 급여일정 화면처럼 왼쪽에 시간정보 고정 */
+.schedule-table{min-width:0!important}
+.schedule-table .fixed-col{
+  position:sticky;
+  z-index:7;
+  background:#f7efd9 !important;
+  border-right:1px solid #c9b98f;
+}
+.schedule-table th.fixed-col{z-index:10}
+.schedule-table .col-type{left:0;min-width:86px;width:86px}
+.schedule-table .col-start{left:86px;min-width:78px;width:78px}
+.schedule-table .col-end{left:164px;min-width:78px;width:78px}
+.schedule-table .col-duration{left:242px;min-width:90px;width:90px}
+.schedule-table .col-rate{left:332px;min-width:110px;width:110px}
+.schedule-table .col-status{left:442px;min-width:86px;width:86px}
+.schedule-table .day-head{min-width:82px}
+.mini-check{
+  display:inline-grid;place-items:center;width:20px;height:20px;border-radius:4px;
+  font-size:13px;font-weight:900
+}
+.mini-check.ok{background:#22c55e;color:#fff}
+.mini-check.warn{background:#fb923c;color:#fff}
+.mini-check.absent{background:#a855f7;color:#fff}
+.mini-check.unused{background:#ef4444;color:#fff}
+.mini-check.none{background:#cbd5e1;color:#fff}
+.day-note{display:block;margin-top:3px;font-size:10px;line-height:1.25;white-space:nowrap}
+.day-note.change{color:#c2410c;font-weight:900}
+.day-note.late{color:#dc2626;font-weight:900}
+
+.billing-summary{grid-template-columns:repeat(5,1fr)}
+.billing-guide{
+  margin:10px;
+  padding:12px 14px;
+  border:1px solid #f1c56b;
+  border-radius:9px;
+  background:#fff8dd;
+  color:#6b4a0d;
+  line-height:1.55;
+  font-size:12px;
+}
+.section-title{
+  display:flex;
+  justify-content:space-between;
+  align-items:end;
+  padding:12px 14px 7px;
+  border-top:1px solid #e6dcc8;
+  background:#fcfaf4;
+}
+.section-title.sub{margin-top:8px}
+.section-title h3{margin:0;font-size:15px}
+.section-title p{margin:3px 0 0;color:#6b7280;font-size:11px}
+.billing-scroll{max-height:430px}
+.status-scroll{max-height:250px}
+.status-table{min-width:2400px!important}
+.status-table .status-label{
+  position:sticky;
+  left:0;
+  z-index:7;
+  min-width:105px;
+  width:105px;
+  background:#eadbbc!important;
+  font-weight:900;
+  text-align:left;
+  padding-left:10px;
+}
+.claim-check{
+  display:inline-grid;
+  place-items:center;
+  width:20px;
+  height:20px;
+  border:1px solid #b8b8b8;
+  border-radius:3px;
+  background:#f8fafc;
+  color:#fff;
+  font-weight:900;
+}
+.claim-check.checked{
+  border-color:#ef7777;
+  background:#ef7777;
+}
+@media(max-width:1200px){
+  .billing-summary{grid-template-columns:repeat(3,1fr)}
+}
+
+/* 청구 권장 일정 - 미이용 행 */
+.unused-badge{
+  display:inline-block;
+  padding:3px 7px;
+  border-radius:999px;
+  background:#f3e8ff;
+  color:#7e22ce;
+  font-weight:900;
+  font-size:11px;
+}
+.claim-check.checked.unused-checked{
+  background:#a855f7;
+  border-color:#a855f7;
+}
+.unused-row-label{
+  color:#7e22ce;
+  font-weight:900;
+}
+
+/* 금액 열 추가 */
+.schedule-table .col-unit{
+  left:442px;
+  min-width:105px;
+  width:105px;
+}
+.schedule-table .col-count{
+  left:547px;
+  min-width:70px;
+  width:70px;
+}
+.schedule-table .col-amount{
+  left:617px;
+  min-width:118px;
+  width:118px;
+}
+.billing-table .col-status{
+  display:none;
+}
+.billing-summary{
+  grid-template-columns:repeat(6,1fr)!important;
+}
+@media(max-width:1350px){
+  .billing-summary{grid-template-columns:repeat(3,1fr)!important}
+}
+
+.amount-ok{color:#15803d!important;font-weight:900}
+.amount-error{color:#dc2626!important;font-weight:900}
+.schedule-table .col-secondamt{
+  left:735px;
+  min-width:118px;
+  width:118px;
+}
+.schedule-table .col-diffamt{
+  left:853px;
+  min-width:110px;
+  width:110px;
+}
+.billing-summary{
+  grid-template-columns:repeat(9,1fr)!important;
+}
+@media(max-width:1500px){
+  .billing-summary{grid-template-columns:repeat(3,1fr)!important}
+}
+
+.amount-fit-note{
+  display:block;
+  margin-top:2px;
+  color:#15803d;
+  font-size:10px;
+  font-weight:900;
+}
+
+/* ===== 체크표는 그대로 유지 + 한 화면 맞춤 ===== */
+
+/* 전체 폭을 최대한 사용 */
+.wrap{
+  width:calc(100% - 12px) !important;
+  max-width:none !important;
+  padding-left:0 !important;
+  padding-right:0 !important;
+}
+
+/* 왼쪽 대상자 목록은 조금 더 슬림하게 */
+.main-grid{
+  grid-template-columns:270px minmax(0,1fr) !important;
+  gap:8px !important;
+}
+.people-panel{
+  width:270px !important;
+}
+.people-table{
+  table-layout:fixed;
+}
+.people-table th,
+.people-table td{
+  padding:6px 3px !important;
+  font-size:11px !important;
+}
+.people-table th:nth-child(1),
+.people-table td:nth-child(1){width:34px}
+.people-table th:nth-child(2),
+.people-table td:nth-child(2){width:72px}
+.people-table th:nth-child(3),
+.people-table td:nth-child(3){width:64px}
+.people-table th:nth-child(4),
+.people-table td:nth-child(4){width:44px}
+.people-table th:nth-child(5),
+.people-table td:nth-child(5){width:44px}
+
+/* 청구 권장 체크표 */
+.billing-scroll{
+  overflow-x:hidden !important;
+  overflow-y:auto !important;
+}
+.billing-table{
+  width:100% !important;
+  min-width:0 !important;
+  table-layout:fixed !important;
+  font-size:9px !important;
+}
+.billing-table th,
+.billing-table td{
+  padding:3px 1px !important;
+  height:34px !important;
+  line-height:1.05 !important;
+  white-space:normal !important;
+  overflow:hidden !important;
+  text-overflow:clip !important;
+}
+
+/* 왼쪽 정보열 폭을 매우 압축 */
+.billing-table .col-type{
+  position:static !important;
+  width:52px !important;
+  min-width:52px !important;
+}
+.billing-table .col-start{
+  position:static !important;
+  width:55px !important;
+  min-width:55px !important;
+}
+.billing-table .col-end{
+  position:static !important;
+  width:55px !important;
+  min-width:55px !important;
+}
+.billing-table .col-duration{
+  position:static !important;
+  width:62px !important;
+  min-width:62px !important;
+}
+.billing-table .col-rate{
+  position:static !important;
+  width:72px !important;
+  min-width:72px !important;
+}
+.billing-table .col-unit{
+  position:static !important;
+  width:66px !important;
+  min-width:66px !important;
+}
+.billing-table .col-count{
+  position:static !important;
+  width:38px !important;
+  min-width:38px !important;
+}
+.billing-table .col-amount{
+  position:static !important;
+  width:76px !important;
+  min-width:76px !important;
+}
+.billing-table .col-secondamt{
+  position:static !important;
+  width:76px !important;
+  min-width:76px !important;
+}
+.billing-table .col-diffamt{
+  position:static !important;
+  width:60px !important;
+  min-width:60px !important;
+}
+
+/* 날짜 1~31을 남은 공간에 균등 배치 */
+.billing-table .day-head{
+  width:auto !important;
+  min-width:0 !important;
+  font-size:8px !important;
+  padding:2px 0 !important;
+}
+
+/* 체크박스도 작게 */
+.billing-table .claim-check{
+  width:15px !important;
+  height:15px !important;
+  font-size:10px !important;
+  border-radius:3px !important;
+}
+
+/* 배지/금액 텍스트 축소 */
+.billing-table .rate-badge,
+.billing-table .unused-badge{
+  padding:2px 3px !important;
+  font-size:8px !important;
+  white-space:normal !important;
+}
+.billing-table .day-note{
+  font-size:7px !important;
+  margin-top:1px !important;
+  white-space:normal !important;
+}
+
+/* 출결표도 가로 스크롤 없이 */
+.status-scroll{
+  overflow-x:hidden !important;
+}
+.status-table{
+  width:100% !important;
+  min-width:0 !important;
+  table-layout:fixed !important;
+  font-size:9px !important;
+}
+.status-table th,
+.status-table td{
+  padding:3px 1px !important;
+  height:30px !important;
+}
+.status-table .status-label{
+  position:static !important;
+  width:70px !important;
+  min-width:70px !important;
+  padding-left:4px !important;
+}
+.status-table .day-head{
+  min-width:0 !important;
+  width:auto !important;
+  font-size:8px !important;
+}
+
+/* 요약 박스도 한 줄에 정리 */
+.billing-summary{
+  grid-template-columns:repeat(8,minmax(0,1fr)) !important;
+  gap:6px !important;
+}
+.billing-summary div{
+  min-width:0 !important;
+  padding:8px 6px !important;
+}
+.billing-summary span{
+  font-size:9px !important;
+}
+.billing-summary strong{
+  font-size:14px !important;
+  white-space:nowrap !important;
+}
+
+/* 상단 공간 절약 */
+.detail-head{
+  padding:9px 11px !important;
+}
+.section-title{
+  padding:8px 10px 5px !important;
+}
+.billing-guide{
+  margin:7px !important;
+  padding:8px 10px !important;
+  font-size:10px !important;
+}
+
+@media(max-width:1500px){
+  .main-grid{
+    grid-template-columns:245px minmax(0,1fr) !important;
+  }
+  .people-panel{
+    width:245px !important;
+  }
+  .billing-table{
+    font-size:8px !important;
+  }
+  .billing-table .col-type{width:46px!important;min-width:46px!important}
+  .billing-table .col-start,
+  .billing-table .col-end{width:50px!important;min-width:50px!important}
+  .billing-table .col-duration{width:56px!important;min-width:56px!important}
+  .billing-table .col-rate{width:64px!important;min-width:64px!important}
+  .billing-table .col-unit{width:58px!important;min-width:58px!important}
+  .billing-table .col-count{width:34px!important;min-width:34px!important}
+  .billing-table .col-amount,
+  .billing-table .col-secondamt{width:68px!important;min-width:68px!important}
+  .billing-table .col-diffamt{width:54px!important;min-width:54px!important}
+}
+
+@media(max-width:1250px){
+  .main-grid{
+    grid-template-columns:220px minmax(0,1fr) !important;
+  }
+  .people-panel{
+    width:220px !important;
+  }
+  .billing-table{
+    font-size:7px !important;
+  }
+  .billing-table .claim-check{
+    width:13px !important;
+    height:13px !important;
+    font-size:9px !important;
+  }
+}
+
+.cert-mini{display:block;margin-top:2px;font-size:8px;color:#64748b;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.people-table td.name{line-height:1.15}
+
+.copay-cell{
+  font-size:9px!important;
+  white-space:nowrap;
+}
+.people-table th:nth-child(1),.people-table td:nth-child(1){width:30px!important}
+.people-table th:nth-child(2),.people-table td:nth-child(2){width:72px!important}
+.people-table th:nth-child(3),.people-table td:nth-child(3){width:55px!important}
+.people-table th:nth-child(4),.people-table td:nth-child(4){width:72px!important}
+.people-table th:nth-child(5),.people-table td:nth-child(5){width:36px!important}
+.people-table th:nth-child(6),.people-table td:nth-child(6){width:36px!important}
