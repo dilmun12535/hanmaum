@@ -209,7 +209,18 @@ let settings={phrases:{},custom:{},cist:{},extras:{}};
 try{const saved=JSON.parse(localStorage.getItem(key));if(saved&&typeof saved==='object')settings={...settings,...saved}}catch{}
 let active=0,role='staff';const state={};sections.forEach((s,i)=>{state[i]={};(s.fields||[]).forEach(([k,opts])=>state[i][k]=opts[0]);(s.custom||[]).forEach(k=>state[i][k]='')});
 const nav=document.getElementById('nav'),panels=document.getElementById('panels');
-function save(){localStorage.setItem(key,JSON.stringify(settings));document.getElementById('saveStatus').textContent='관리자 문구가 이 브라우저에 저장되었습니다.'}
+function save(){
+ localStorage.setItem(key,JSON.stringify(settings));
+ document.getElementById('saveStatus').textContent='Firestore에 관리자 문구 저장 중…';
+ window.dispatchEvent(new CustomEvent('needs-settings-save',{detail:structuredClone(settings)}));
+}
+window.addEventListener('needs-settings-loaded',e=>{
+ if(!e.detail||typeof e.detail!=='object')return;
+ settings={phrases:{},custom:{},cist:{},extras:{},...e.detail};
+ localStorage.setItem(key,JSON.stringify(settings));draw();
+ document.getElementById('saveStatus').textContent='Firestore의 공유 관리자 설정을 불러왔습니다.';
+});
+window.addEventListener('needs-settings-status',e=>{document.getElementById('saveStatus').textContent=e.detail||''});
 function defaultPhrase(i,f,o){const x={
 '영양상태':{'양호':'영양상태는 양호하심.','적당':'영양상태는 적당한 상태이심.','부족':'영양상태가 부족하심.','매우 나쁨':'영양상태가 매우 좋지 않으심.'},
 '식사형태':{},'식사 시 문제점':{'양호':'식사 시 문제점은 없으심.'},
