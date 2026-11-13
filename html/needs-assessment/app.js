@@ -211,6 +211,7 @@ let active=0,role='staff';const state={};sections.forEach((s,i)=>{state[i]={};(s
 const nav=document.getElementById('nav'),panels=document.getElementById('panels');
 function save(){
  localStorage.setItem(key,JSON.stringify(settings));
+ if(role!=='admin' || !window.needsIsAdmin){document.getElementById('saveStatus').textContent='관리자만 설정을 저장할 수 있습니다.';return;}
  document.getElementById('saveStatus').textContent='Firestore에 관리자 문구 저장 중…';
  window.dispatchEvent(new CustomEvent('needs-settings-save',{detail:structuredClone(settings)}));
 }
@@ -420,7 +421,19 @@ function update(){sections.forEach((s,i)=>{const e=document.getElementById('resu
 
 async function copyText(t){if(t.includes('점수 입력 오류')||t.includes('점수를 모두 입력'))return alert('점수를 확인하세요.');try{await navigator.clipboard.writeText(t)}catch{const el=document.createElement('textarea');el.value=t;document.body.appendChild(el);el.select();document.execCommand('copy');el.remove()}alert('판단근거를 복사했습니다.')}
 document.getElementById('copyAll').onclick=()=>copyText(sections.map((s,i)=>`[${i+1}. ${s.title}]\n${result(i)}`).join('\n\n'));
-document.getElementById('role').onchange=e=>{role=e.target.value;draw()};
-document.getElementById('export').onclick=()=>{const blob=new Blob([JSON.stringify(settings,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='욕구사정_관리자문구설정.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
-document.getElementById('import').onchange=async e=>{const file=e.target.files[0];if(!file)return;try{const x=JSON.parse(await file.text());if(!x||typeof x!=='object'||!x.phrases||!x.custom||!x.cist||!x.extras)throw Error('형식 오류');if(!confirm('기존 관리자 설정을 불러온 파일로 덮어쓸까요?'))return;settings=x;save();draw()}catch(err){alert('설정 파일을 읽을 수 없습니다: '+err.message)}e.target.value=''};
-draw();
+function applyAdminAccess(){
+ const allowed=window.needsIsAdmin===true;
+ const selector=document.getElementById('role');
+ selector.querySelector('option[value="admin"]')?.remove();
+ if(allowed && !selector.querySelector('option[value="admin"]'))selector.add(new Option('관리자','admin'));
+ if(!allowed && role==='admin')role='staff';
+ document.getElementById('export').hidden=!allowed;
+ document.getElementById('import').closest('label').hidden=!allowed;
+ selector.closest('label').hidden=!allowed;
+ draw();
+}
+window.addEventListener('needs-admin-auth',applyAdminAccess);
+document.getElementById('role').onchange=e=>{role=(e.target.value==='admin'&&window.needsIsAdmin)?'admin':'staff';draw()};
+document.getElementById('export').onclick=()=>{if(!window.needsIsAdmin)return alert('관리자 권한이 필요합니다.');const blob=new Blob([JSON.stringify(settings,null,2)],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='욕구사정_관리자문구설정.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)};
+document.getElementById('import').onchange=async e=>{if(!window.needsIsAdmin)return alert('관리자 권한이 필요합니다.');const file=e.target.files[0];if(!file)return;try{const x=JSON.parse(await file.text());if(!x||typeof x!=='object'||!x.phrases||!x.custom||!x.cist||!x.extras)throw Error('형식 오류');if(!confirm('기존 관리자 설정을 불러온 파일로 덮어쓸까요?'))return;settings=x;save();draw()}catch(err){alert('설정 파일을 읽을 수 없습니다: '+err.message)}e.target.value=''};
+applyAdminAccess();
