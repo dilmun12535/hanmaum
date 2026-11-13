@@ -1,5 +1,0 @@
-욕구사정 판단근거 작성 v31 통합
-메뉴: 사회복지사 업무 > 욕구사정 판단근거 작성
-주소: html/needs-assessment.html
-원본 앱: html/needs-assessment/index.html
-주의: 관리자 모드는 기존 시제품처럼 화면 선택 기능이며 서버 권한 검증이 아닙니다. 설정은 브라우저 로컬에 저장됩니다.
