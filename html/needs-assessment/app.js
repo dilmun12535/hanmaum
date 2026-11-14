@@ -6,8 +6,8 @@ const sections=[
 {title:'인지상태 · CIST',cist:true},
 {title:'의사소통',fields:[['청력상태',['정상(보청기 사용)','정상(보청기 미사용)','가까운 곳에서 대화 가능','큰소리만 들을 수 있음','소리에 거의 반응 없음','판단 불능']],['의사소통',['모두 이해하고 의사 표현','대부분 이해하고 의사 표현','가끔 이해하고 의사 표현','거의 이해하지 못함']],['발음능력',['정확하게 발음','웅얼거리는 소리','간혹 어눌한 발음','전혀 발음하지 못함']]],make:v=>`청력상태는 ${v['청력상태']} 상태이심.\n의사소통은 ${v['의사소통']} 상태이심.\n발음능력은 ${v['발음능력']} 상태이심.`},
 {title:'가족 및 환경상태',fields:[['동거인',['독거','배우자','부모','자녀','자부·사위','기타']],['주수발자',['유','무']],['경제상태',['안정','불안정','연금생활','기초생활수급','의료급여']],['수발 부담',['전혀 부담되지 않음','아주 가끔 부담됨','가끔 부담됨','자주 부담됨','항상 부담됨']],['거주환경',['아파트','단독주택','연립주택','다세대주택','기타']]],custom:['자녀 수 및 가족관계','가족 및 환경 추가 설명'],make:v=>[`동거인은 ${v['동거인']}이심.`,`주수발자는 ${v['주수발자']==='유'?'있으심':'없으심'}.`,`경제상태는 ${v['경제상태']} 상태이심.`,`수발 부담은 ${v['수발 부담']}으로 확인됨.`,`거주환경은 ${v['거주환경']}이심.`,v['자녀 수 및 가족관계']||'',v['가족 및 환경 추가 설명']||''].filter(Boolean).join('\n')},
-{title:'자원이용 욕구',fields:[['정기진료',['유','무']],['종교',['천주교','기독교','불교','무교','기타']]],custom:['병원명(진료과)','이용 중인 지역사회 자원'],make:v=>[v['정기진료']==='유'?`${v['병원명(진료과)']||'병원'}에서 정기적으로 진료받으심.`:'정기진료는 받지 않으심.',`종교는 ${v['종교']}이심.`,v['이용 중인 지역사회 자원']?`이용 중인 지역사회 자원: ${v['이용 중인 지역사회 자원']}`:''].filter(Boolean).join('\n')},
-{title:'주관적 욕구',fields:[['희망 서비스',['이동변기','성인용 보행기','안전손잡이','미끄럼 방지용품','수동휠체어','전동침대','배회감지기','기타']]],custom:['수급자 또는 보호자의 희망 사항'],make:v=>[`${v['희망 서비스']} 이용을 희망하심.`,v['수급자 또는 보호자의 희망 사항']||''].filter(Boolean).join('\n')}
+{title:'자원이용 욕구',fields:[['정기진료',['유','무']],['종교',['천주교','기독교','불교','무교','기타']]],custom:['병원명(진료과)','이용 중인 지역사회 자원'],make:v=>[v['정기진료']==='유'?`${v['병원명(진료과)']||'병원'}에서 정기적으로 진료받으심.`:'정기진료는 받지 않으심.',`종교는 ${v['종교']}이심.`,v['이용 중인 지역사회 자원']?`이용 중인 지역사회 자원: ${v['이용 중인 지역사회 자원']}`:''].filter(Boolean).join('\n')}
+
 ];
 // 신체상태: 동작별 장기요양 필요내용 (관리자 편집 가능)
 const physicalNeeds={
@@ -76,10 +76,16 @@ function familyText(){
  const home=v['거주환경']==='기타'?(v['거주환경 기타']||'기타 주거지'):v['거주환경'];
  const life=living.includes('독거')?'혼자 생활':companions.length?`${companions.join(', ')}과 함께 생활`:'생활';
  const relRaw=v['주수발자 관계']==='기타'?(v['주수발자 관계 기타']||'주수발자'):v['주수발자 관계'];
- const relNames={'배우자':'배우자님','자녀':'자녀분','자부':'며느님','사위':'사위님','형제자매':'형제자매분','친척':'친척분'};
- const rel=relNames[relRaw]||relRaw||'주수발자';
+ const relNames={'배우자':'배우자분','자녀':'자녀분','자부':'며느님','사위':'사위분','형제자매':'형제자매분','친척':'친척분'};
+ const childCare=v['주수발자 자녀 구분'];
+ const siblingCare=v['주수발자 형제자매 구분'];
+ const childCareNames={'아들':'아드님','딸':'따님'};
+ const siblingCareNames={'형':'형님','누나':'누님','오빠':'오라버니','언니':'언니','남동생':'남동생분','여동생':'여동생분'};
+ const rel=relRaw==='자녀'?(childCareNames[childCare]||'자녀분'):relRaw==='형제자매'?(siblingCareNames[siblingCare]||'형제자매분'):(relNames[relRaw]||relRaw||'주수발자');
+ const subject=rel.endsWith('께서')?rel:rel+'께서';
+ const locationSubject=rel.endsWith('께서는')?rel:rel+'께서는';
  const location=v['주수발자 거주지역'];
- const locationSentence=location==='같은 지역'?'주수발자께서는 같은 지역에 거주하고 계심.':location==='다른 지역'?'주수발자께서는 다른 지역에 거주하고 계심.':'';
+ const locationSentence=location==='같은 지역'?`${locationSubject} 같은 지역에 거주하고 계심.`:location==='다른 지역'?`${locationSubject} 다른 지역에 거주하고 계심.`:'';
  const economic={'안정':'경제상태는 안정적인 편이심.','불안정':'경제적으로 어려움이 있으심.','연금생활':'연금으로 생활하고 계심.','기초생활수급':'기초생활수급 대상자이심.','의료급여':'의료급여 대상자이심.'}[v['경제상태']]||'';
  const burdens={'전혀 부담되지 않음':'수발에 대한 부담은 없다고 하심.','아주 가끔 부담됨':'수발에 대한 부담을 아주 가끔 느낀다고 하심.','가끔 부담됨':'수발에 대한 부담을 가끔 느낀다고 하심.','자주 부담됨':'수발에 대한 부담을 자주 느낀다고 하심.','항상 부담됨':'수발에 대한 부담을 항상 느낀다고 하심.'};
  const burden=burdens[v['수발 부담']]||'';
@@ -87,7 +93,7 @@ function familyText(){
  if(children)lines.push(`- 슬하에 ${children}이 있으심.`);
  if(home)lines.push(living.includes('독거')?`- ${home}에서 혼자 생활하고 계심.`:`- ${home}에서 ${life}하고 계심.`);
  if(v['주수발자']==='유'){
-  lines.push(`- ${rel}께서 주수발을 담당하고 계심.`);
+  lines.push(`- ${subject} 주수발을 담당하고 계심.`);
   if(locationSentence)lines.push(`- ${locationSentence}`);
   if(economic)lines.push(`- ${economic}`);
   if(burden)lines.push(`- ${burden}`);
@@ -121,7 +127,15 @@ function renderFamily(area){
  const children=field('자녀 수');const numbers=document.createElement('div');numbers.className='family-number-row';children.append(numbers);input(numbers,'아들 (명)','아들 수','number');input(numbers,'딸 (명)','딸 수','number');
  const care=field('주수발자 유무');radio(care,'주수발자',['무','유'],()=>{draw();show(6)});
  if(v['주수발자']==='유'){
-  const rel=field('주수발자 관계');radio(rel,'주수발자 관계',familyRelations,()=>{draw();show(6)});if(v['주수발자 관계']==='기타')input(rel,'기타 관계','주수발자 관계 기타');
+  const rel=field('주수발자 관계');radio(rel,'주수발자 관계',familyRelations,()=>{draw();show(6)});
+  const relationSubchoices=v['주수발자 관계']==='자녀'?['아들','딸']:v['주수발자 관계']==='형제자매'?['형','누나','오빠','언니','남동생','여동생']:null;
+  if(relationSubchoices){
+   const key=v['주수발자 관계']==='자녀'?'주수발자 자녀 구분':'주수발자 형제자매 구분';
+   const sub=document.createElement('div');sub.className='inline-detail';
+   const title=document.createElement('label');title.textContent=v['주수발자 관계']==='자녀'?'주수발자 자녀 구분 (선택)':'주수발자 형제자매 구분 (선택)';sub.append(title);
+   radio(sub,key,['선택 안 함',...relationSubchoices]);rel.append(sub);
+  }
+  if(v['주수발자 관계']==='기타')input(rel,'기타 관계','주수발자 관계 기타');
   const loc=field('주수발자 거주지역 (선택)');radio(loc,'주수발자 거주지역',['선택 안 함','같은 지역','다른 지역']);
  }
  const economy=field('경제상태');radio(economy,'경제상태',['안정','불안정','연금생활','기초생활수급','의료급여']);
