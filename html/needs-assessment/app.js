@@ -219,9 +219,20 @@ window.addEventListener('needs-settings-loaded',e=>{
  if(!e.detail||typeof e.detail!=='object')return;
  settings={phrases:{},custom:{},cist:{},extras:{},...e.detail};
  localStorage.setItem(key,JSON.stringify(settings));draw();
- document.getElementById('saveStatus').textContent='Firestore의 공유 관리자 설정을 불러왔습니다.';
+ showNeedsStatus('Firestore의 공유 관리자 설정을 불러왔습니다.');
 });
-window.addEventListener('needs-settings-status',e=>{document.getElementById('saveStatus').textContent=e.detail||''});
+let needsStatusTimer;
+function showNeedsStatus(message){
+ const el=document.getElementById('saveStatus');
+ if(!el)return;
+ clearTimeout(needsStatusTimer);
+ el.textContent=message||'';
+ // 성공 안내만 3초 후 숨기고 오류 및 확인 필요 메시지는 유지
+ if(/Firestore에 저장되었습니다|공유 관리자 설정을 불러왔습니다/.test(message||'')){
+   needsStatusTimer=setTimeout(()=>{if(el.textContent===message)el.textContent='';},3000);
+ }
+}
+window.addEventListener('needs-settings-status',e=>showNeedsStatus(e.detail||''));
 function defaultPhrase(i,f,o){const x={
 '영양상태':{'양호':'영양상태는 양호하심.','적당':'영양상태는 적당한 상태이심.','부족':'영양상태가 부족하심.','매우 나쁨':'영양상태가 매우 좋지 않으심.'},
 '식사형태':{},'식사 시 문제점':{'양호':'식사 시 문제점은 없으심.'},
