@@ -62,3 +62,10 @@ body.admin-mode #panel3 .assessment-columns{grid-template-columns:minmax(0,1fr)}
 .hearing-sub{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}
 .hearing-sub label{display:inline-flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap}
 .hearing-sub input{margin:0 3px 0 0}
+
+/* 영역 선택 메뉴를 오른쪽에 배치 */
+@media (min-width:801px){
+  .layout{grid-template-columns:minmax(0,1fr) 245px}
+  .layout>main{grid-column:1;grid-row:1}
+  .layout>nav{grid-column:2;grid-row:1}
+}
