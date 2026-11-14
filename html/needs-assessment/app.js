@@ -72,7 +72,7 @@ function familyText(){
  const withParticle=companions?((()=>{const last=companions.charCodeAt(companions.length-1);return last>=0xAC00&&last<=0xD7A3&&(last-0xAC00)%28!==0?'과':'와'})()):'';
  const life=living.includes('독거')?'독거생활':companions?`${companions}${withParticle} 함께 생활`:'생활';
  const rel=v['주수발자 관계']==='기타'?(v['주수발자 관계 기타']||'주수발자'):v['주수발자 관계'];
- const where=v['주수발자 거주지역']==='다른 지역'?'다른 지역에 거주하고 계셔서 ':v['주수발자 거주지역']==='같은 지역'?'같은 지역에 거주하고 계시며 ':'';
+ const where=v['주수발자 거주지역']==='다른 지역'?'다른 지역에 거주하고 계심.':v['주수발자 거주지역']==='같은 지역'?'같은 지역에 거주하고 계심.':'';
  const burden=v['수발 부담']==='전혀 부담되지 않음'?'거의 느끼지 않으신다':v['수발 부담']==='아주 가끔 부담됨'?'아주 가끔 느끼신다':v['수발 부담']==='가끔 부담됨'?'가끔 느끼신다':v['수발 부담']==='자주 부담됨'?'자주 느끼신다':'항상 느끼신다';
  const vars={'자녀내역':children||'자녀가 없','거주환경':home,'생활형태':life,'주수발자관계':rel||'주수발자','경제상태':v['경제상태']==='안정'?'안정적인':v['경제상태']==='불안정'?'불안정한':v['경제상태']||'미확인','수발부담':burden,'거주지역':where};
  const fmt=k=>(k==='living'&&settings.familyTemplates?.[k]==='- {거주환경}에서 {생활형태}을 하고 계심.'?familyDefaults.living:(settings.familyTemplates?.[k]||familyDefaults[k])).replace(/\{([^{}]+)\}/g,(_,n)=>vars[n]??'');
@@ -80,13 +80,13 @@ function familyText(){
  if(v['주수발자']==='유'){
   const custom=settings.familyTemplates?.care;
   if(custom)lines.push(fmt('care'));
-  else lines.push(`- ${rel||'주수발자'}이 주수발을 담당하고 계시며, 경제상태는 ${v['경제상태']==='안정'?'안정적':v['경제상태']==='불안정'?'불안정':v['경제상태']}이시고 ${where}수발 부담을 ${burden}고 하심.`);
+  else lines.push(`- ${rel||'주수발자'}이 주수발을 담당하고 계시며, 경제상태는 ${v['경제상태']==='안정'?'안정적':v['경제상태']==='불안정'?'불안정':v['경제상태']}이시고 수발 부담을 ${burden}고 하심.`);
  }else lines.push(fmt('noCare'));
  if(String(v['가족 및 환경 추가 설명']||'').trim())lines.push(v['가족 및 환경 추가 설명'].trim());
  return lines.join('\n');
 }
 function renderFamily(area){
- const v=state[6];Object.assign(v,{'동거인 목록':v['동거인 목록']||['독거'],'아들 수':v['아들 수']??'0','딸 수':v['딸 수']??'0','주수발자 관계':v['주수발자 관계']||'자녀','주수발자 거주지역':v['주수발자 거주지역']||'같은 지역'});
+ const v=state[6];Object.assign(v,{'동거인 목록':v['동거인 목록']||['독거'],'아들 수':v['아들 수']??'0','딸 수':v['딸 수']??'0','주수발자 관계':v['주수발자 관계']||'자녀','주수발자 거주지역':v['주수발자 거주지역']??''});
  const field=(title)=>{const w=document.createElement('div');w.className='field';const h=document.createElement('label');h.textContent=title;w.append(h);area.append(w);return w};
  const input=(parent,label,key,type='text')=>{const w=document.createElement('label');w.className='family-input';w.textContent=label;const el=document.createElement('input');el.type=type;if(type==='number'){el.min='0';el.step='1'}el.value=v[key]??'';el.oninput=()=>{v[key]=el.value;update()};w.append(el);parent.append(w);return el};
  const radio=(parent,key,opts,after)=>{const chips=document.createElement('div');chips.className='chips';opts.forEach(o=>{const label=document.createElement('label');label.className='chip';const el=document.createElement('input');el.type='radio';el.name='family-'+key;el.value=o;el.checked=v[key]===o;el.onchange=()=>{v[key]=o;if(after)after();update()};label.append(el,document.createTextNode(o));chips.append(label)});parent.append(chips)};
@@ -109,7 +109,7 @@ function renderFamily(area){
  const care=field('주수발자 유무');radio(care,'주수발자',['무','유'],()=>{draw();show(6)});
  if(v['주수발자']==='유'){
   const rel=field('주수발자 관계');radio(rel,'주수발자 관계',familyRelations,()=>{draw();show(6)});if(v['주수발자 관계']==='기타')input(rel,'기타 관계','주수발자 관계 기타');
-  const loc=field('주수발자 거주지역');radio(loc,'주수발자 거주지역',['같은 지역','다른 지역']);
+  const loc=field('주수발자 거주지역');radio(loc,'주수발자 거주지역',['선택 안 함','같은 지역','다른 지역']);
  }
  const economy=field('경제상태');radio(economy,'경제상태',['안정','불안정','연금생활','기초생활수급','의료급여']);
  if(v['주수발자']==='유'){const burden=field('수발 부담');radio(burden,'수발 부담',['전혀 부담되지 않음','아주 가끔 부담됨','가끔 부담됨','자주 부담됨','항상 부담됨'])}
