@@ -51,3 +51,14 @@ body.admin-mode #panel3 .assessment-columns{grid-template-columns:minmax(0,1fr)}
 /* 선택하거나 직접 입력해 달라진 판단근거 값 */
 .result .dynamic-value{color:#155bd4;font-weight:700}
 .result .diaper-warning{color:#d32f2f;font-weight:700}
+
+/* 청력 정상 선택 시 보청기 사용 여부 */
+.hearing-aid-detail{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin-top:10px;padding:10px 12px;border-radius:9px;background:#f1f5f9}.hearing-aid-title{font-weight:700;font-size:13px;margin-right:4px}.hearing-aid-detail.hidden{display:none}
+
+/* 청력상태: 정상 한 항목 안에서 보청기 사용 여부 선택 */
+.hearing-normal{display:inline-flex;align-items:center;flex-wrap:wrap;gap:6px;border:1px solid #cdd5df;border-radius:9px;padding:4px 9px;background:#fff}
+.hearing-normal:has(.hearing-main input:checked){border-color:#175cd3;background:#edf4ff}
+.hearing-normal .hearing-main{border:0;padding:4px;background:transparent!important}
+.hearing-sub{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hearing-sub label{display:inline-flex;align-items:center;gap:3px;cursor:pointer;white-space:nowrap}
+.hearing-sub input{margin:0 3px 0 0}
