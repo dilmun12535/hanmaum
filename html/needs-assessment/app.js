@@ -342,7 +342,7 @@ function excretionSentence(){
  return [get('소변상태',urine),get('대변상태',stool),get('기저귀 착용여부','미착용')].filter(Boolean).join('\n');
 }
 function result(i){if(i===7)return resourceText();if(i===6)return familyText();if(i===3)return physicalResult();if(sections[i].disease)return diseaseText();if(sections[i].cist)return cistText();let lines=[];for(const [f,opts] of fields(i)){
- if(i===0&&(f==='식사형태'||f==='식사 시 문제점')){if(f==='식사형태')lines.push(mealSentence());continue}
+ if(i===0&&(f==='식사형태'||f==='식사 시 문제점')){if(f==='식사형태'&&state[0]['식사형태'])lines.push(mealSentence());continue}
  if(i===0&&['소변상태','대변상태','기저귀 착용여부'].includes(f)){if(f==='소변상태')lines.push(excretionSentence());continue}
  const choice=state[i][f]??opts[0];const t=template(i,f,choice);if(t.trim()){let rendered=interpolate(t,i,f,choice);if(i===3){const illness=String(state[i]['질환']||'').trim();const reason=String(state[i]['도움사유']||'').trim();rendered=rendered.replaceAll('{질환}',illness||'질환 미입력').replaceAll('{도움사유}',reason||'일상생활 동작 수행에 어려움이 있어');}  if(choice==='기타'&&otherValue(i,f))rendered=rendered.replace(/기타/g,otherValue(i,f));lines.push(rendered)}}
  for(const f of sections[i].custom||[]){
@@ -483,15 +483,24 @@ document.addEventListener('change',e=>{
 },true);
 function syncNutritionRestrictions(){
  const v=state[0];if(!v)return;
- const meal=v['식사형태'],issue=v['식사 시 문제점'];
- if(restrictedMealTypes.has(meal)&&issue==='양호'){
-  if(lastNutritionField==='식사 시 문제점')v['식사형태']='일반식';
-  else v['식사 시 문제점']=''; // 문제점을 임의로 진단하지 않고 미선택 처리
+ const issue=v['식사 시 문제점'];
+ const meal=v['식사형태'];
+ const needsModifiedMeal=issue==='저작곤란'||issue==='연하곤란';
+ // 이미 선택된 값이 충돌할 때에는 마지막으로 변경한 항목을 우선한다.
+ // 질환이나 식사형태를 임의로 추측하여 선택하지 않는다.
+ if(needsModifiedMeal&&meal==='일반식'){
+  v['식사형태']='';
+ }else if(issue==='양호'&&restrictedMealTypes.has(meal)){
+  if(lastNutritionField==='식사형태')v['식사 시 문제점']='';
+  else v['식사형태']='일반식';
  }
- if(v['식사 시 문제점']==='양호'&&restrictedMealTypes.has(v['식사형태']))v['식사형태']='일반식';
  const eligible=v['소변상태']==='요실금'||v['대변상태']==='지속적인 설사';
  if(!eligible&&v['기저귀 착용여부']==='착용')v['기저귀 착용여부']='미착용';
- const disabled=(field,value)=>field==='식사 시 문제점'&&value==='양호'&&restrictedMealTypes.has(v['식사형태'])||field==='식사형태'&&restrictedMealTypes.has(value)&&v['식사 시 문제점']==='양호'||field==='기저귀 착용여부'&&value==='착용'&&!eligible;
+ const disabled=(field,value)=>
+  (field==='식사 시 문제점'&&value==='양호'&&restrictedMealTypes.has(v['식사형태']))||
+  (field==='식사형태'&&value==='일반식'&&['저작곤란','연하곤란'].includes(v['식사 시 문제점']))||
+  (field==='식사형태'&&restrictedMealTypes.has(value)&&v['식사 시 문제점']==='양호')||
+  (field==='기저귀 착용여부'&&value==='착용'&&!eligible);
  document.querySelectorAll('#fields0 .field').forEach(row=>{
   const field=row.querySelector(':scope > label')?.textContent?.trim();
   if(!['식사형태','식사 시 문제점','소변상태','대변상태','기저귀 착용여부'].includes(field))return;
