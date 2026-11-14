@@ -56,19 +56,26 @@ function renderPhysical(area){
 // 가족 및 환경상태: 복수 동거인, 자녀 수, 주수발자 관계를 반영한 독립 화면
 const familyLiving=['독거','배우자','부모','자녀','자부·사위','손자녀','친척','친구·이웃','기타'];
 const familyRelations=['배우자','자녀','자부','사위','형제자매','친척','기타'];
-const familyDefaults={children:'- 슬하에 {자녀내역}이 있으심.',living:'- {거주환경}에서 {생활형태}을 하고 계심.',care:'- {주수발자관계}이 주수발을 담당하고 계시며, 경제상태는 {경제상태} 상태이고 수발 부담은 {수발부담}이라고 하심.',noCare:'- 현재 주수발자는 없으시며, 경제상태는 {경제상태} 상태이심.'};
+const familyDefaults={children:'- 슬하에 {자녀내역}이 있으심.',living:'- {거주환경}에서 {생활형태}하고 계심.',care:'- {주수발자관계}이 주수발을 담당하고 계시며, 경제상태는 {경제상태} 상태이고 수발 부담은 {수발부담}이라고 하심.',noCare:'- 현재 주수발자는 없으시며, 경제상태는 {경제상태} 상태이심.'};
 function familyText(){
  const v=state[6],sons=Number(v['아들 수']||0),daughters=Number(v['딸 수']||0);
  const children=[sons>0?`아드님 ${sons}분`:'',daughters>0?`따님 ${daughters}분`:''].filter(Boolean).join(', ');
  const living=v['동거인 목록']||['독거'];
- const others=living.filter(x=>x!=='독거').map(x=>x==='기타'?(v['동거인 기타']||'기타'):x);
+ const childTypes=v['동거 자녀 구분']||[];
+ const others=living.filter(x=>x!=='독거').flatMap(x=>{
+  if(x==='자녀')return childTypes.length?childTypes.map(t=>t==='아들'?'아드님':'따님'):['자녀분'];
+  const polite={'배우자':'배우자님','부모':'부모님','자부·사위':'며느님 또는 사위님','손자녀':'손자녀분','친척':'친척분','친구·이웃':'친구 또는 이웃분'};
+  return [x==='기타'?(v['동거인 기타']||'기타 가족'):polite[x]||x];
+ });
  const home=v['거주환경']==='기타'?(v['거주환경 기타']||'거주지'):v['거주환경'];
- const life=living.includes('독거')?'독거생활':others.length?`${others.join(', ')}와 함께 생활`:'생활';
+ const companions=others.join(', ');
+ const withParticle=companions?((()=>{const last=companions.charCodeAt(companions.length-1);return last>=0xAC00&&last<=0xD7A3&&(last-0xAC00)%28!==0?'과':'와'})()):'';
+ const life=living.includes('독거')?'독거생활':companions?`${companions}${withParticle} 함께 생활`:'생활';
  const rel=v['주수발자 관계']==='기타'?(v['주수발자 관계 기타']||'주수발자'):v['주수발자 관계'];
  const where=v['주수발자 거주지역']==='다른 지역'?'다른 지역에 거주하고 계셔서 ':v['주수발자 거주지역']==='같은 지역'?'같은 지역에 거주하고 계시며 ':'';
  const burden=v['수발 부담']==='전혀 부담되지 않음'?'거의 느끼지 않으신다':v['수발 부담']==='아주 가끔 부담됨'?'아주 가끔 느끼신다':v['수발 부담']==='가끔 부담됨'?'가끔 느끼신다':v['수발 부담']==='자주 부담됨'?'자주 느끼신다':'항상 느끼신다';
  const vars={'자녀내역':children||'자녀가 없','거주환경':home,'생활형태':life,'주수발자관계':rel||'주수발자','경제상태':v['경제상태']==='안정'?'안정적인':v['경제상태']==='불안정'?'불안정한':v['경제상태']||'미확인','수발부담':burden,'거주지역':where};
- const fmt=k=>(settings.familyTemplates?.[k]||familyDefaults[k]).replace(/\{([^{}]+)\}/g,(_,n)=>vars[n]??'');
+ const fmt=k=>(k==='living'&&settings.familyTemplates?.[k]==='- {거주환경}에서 {생활형태}을 하고 계심.'?familyDefaults.living:(settings.familyTemplates?.[k]||familyDefaults[k])).replace(/\{([^{}]+)\}/g,(_,n)=>vars[n]??'');
  const lines=[];if(sons+daughters>0)lines.push(fmt('children'));if(home)lines.push(fmt('living'));
  if(v['주수발자']==='유'){
   const custom=settings.familyTemplates?.care;
@@ -85,6 +92,18 @@ function renderFamily(area){
  const radio=(parent,key,opts,after)=>{const chips=document.createElement('div');chips.className='chips';opts.forEach(o=>{const label=document.createElement('label');label.className='chip';const el=document.createElement('input');el.type='radio';el.name='family-'+key;el.value=o;el.checked=v[key]===o;el.onchange=()=>{v[key]=o;if(after)after();update()};label.append(el,document.createTextNode(o));chips.append(label)});parent.append(chips)};
  const living=field('동거인 (복수 선택)');const lc=document.createElement('div');lc.className='chips';living.append(lc);
  familyLiving.forEach(o=>{const label=document.createElement('label');label.className='chip';const el=document.createElement('input');el.type='checkbox';el.checked=v['동거인 목록'].includes(o);el.onchange=()=>{let arr=v['동거인 목록'];if(el.checked)arr=o==='독거'?['독거']:[...arr.filter(x=>x!=='독거'),o];else arr=arr.filter(x=>x!==o);v['동거인 목록']=arr;draw();show(6)};label.append(el,document.createTextNode(o));lc.append(label)});
+ if(v['동거인 목록'].includes('자녀')){
+  const sub=document.createElement('div');sub.className='inline-detail';
+  const title=document.createElement('label');title.textContent='함께 거주하는 자녀 구분 (복수 선택)';sub.append(title);
+  const chips=document.createElement('div');chips.className='chips';sub.append(chips);
+  ['아들','딸'].forEach(type=>{
+   const label=document.createElement('label');label.className='chip';
+   const cb=document.createElement('input');cb.type='checkbox';cb.checked=(v['동거 자녀 구분']||[]).includes(type);
+   cb.onchange=()=>{const arr=v['동거 자녀 구분']||[];v['동거 자녀 구분']=cb.checked?[...arr,type]:arr.filter(x=>x!==type);update()};
+   label.append(cb,document.createTextNode(type));chips.append(label);
+  });
+  living.append(sub);
+ }
  if(v['동거인 목록'].includes('기타'))input(living,'기타 동거인','동거인 기타');
  const children=field('자녀 수');const numbers=document.createElement('div');numbers.className='family-number-row';children.append(numbers);input(numbers,'아들 (명)','아들 수','number');input(numbers,'딸 (명)','딸 수','number');
  const care=field('주수발자 유무');radio(care,'주수발자',['무','유'],()=>{draw();show(6)});
