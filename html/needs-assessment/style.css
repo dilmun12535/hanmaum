@@ -69,3 +69,37 @@ body.admin-mode #panel3 .assessment-columns{grid-template-columns:minmax(0,1fr)}
   .layout>main{grid-column:1;grid-row:1}
   .layout>nav{grid-column:2;grid-row:1}
 }
+
+/* vNext: 판단근거 미리보기 텍스트와 복사 버튼 겹침 방지 */
+.assessment-columns .output{
+  min-height:0;
+  min-width:0;
+  overflow:hidden;
+}
+.assessment-columns .output h3{
+  flex:0 0 auto;
+}
+.assessment-columns .output .result{
+  flex:1 1 auto;
+  min-height:0;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overflow-wrap:anywhere;
+  padding-right:6px;
+}
+.assessment-columns .output .actions{
+  flex:0 0 auto;
+  margin-top:12px;
+  padding-top:12px;
+  border-top:1px solid #dce4ef;
+  background:#f7f9fc;
+  position:relative;
+  z-index:1;
+}
+.assessment-columns .output .actions button{
+  flex-shrink:0;
+}
+@media(max-width:1050px){
+  .assessment-columns .output{overflow:visible;max-height:none}
+  .assessment-columns .output .result{overflow:visible}
+}
