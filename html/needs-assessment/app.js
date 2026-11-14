@@ -466,8 +466,17 @@ function renderPreview(e,output,i){
   pos=next+found.text.length;
  }
 }
-// 영양·배설 상충 선택 방지: 기존 UI 배치 및 문구 설정은 변경하지 않음.
-const restrictedMealTypes=new Set(['다진식','죽식','미음','유동식','연하식','갈은식']);
+// 식사형태·식사 문제점 양방향 제한: UI 구조 및 Firebase 설정은 그대로 유지
+const mealCompatibility={
+ '양호':['일반식'],
+ '저작곤란':['다진식','죽식','미음','유동식','갈은식'],
+ '소화불량':['일반식','죽식','미음'],
+ '오심·구토':['죽식','미음','유동식'],
+ '연하곤란':['연하식','갈은식','죽식','미음'],
+ // 기타는 구체적인 사유에 따라 모든 식사형태를 선택할 수 있음
+ '기타':['일반식','다진식','죽식','미음','유동식','연하식','갈은식','기타']
+};
+const mealTypes=['일반식','다진식','죽식','미음','유동식','연하식','갈은식','기타'];
 let lastNutritionField='';
 document.addEventListener('change',e=>{
  const el=e.target;
@@ -476,30 +485,27 @@ document.addEventListener('change',e=>{
   const label=row?.querySelector(':scope > label')?.textContent?.trim();
   if(['식사형태','식사 시 문제점','소변상태','대변상태','기저귀 착용여부'].includes(label)){
    lastNutritionField=label;
-   // 기존 onchange 핸들러가 상태를 갱신한 직후 한 번 더 동기화
    queueMicrotask(()=>update());
   }
  }
 },true);
 function syncNutritionRestrictions(){
  const v=state[0];if(!v)return;
- const issue=v['식사 시 문제점'];
- const meal=v['식사형태'];
- const needsModifiedMeal=issue==='저작곤란'||issue==='연하곤란';
- // 이미 선택된 값이 충돌할 때에는 마지막으로 변경한 항목을 우선한다.
- // 질환이나 식사형태를 임의로 추측하여 선택하지 않는다.
- if(needsModifiedMeal&&meal==='일반식'){
-  v['식사형태']='';
- }else if(issue==='양호'&&restrictedMealTypes.has(meal)){
+ let issue=v['식사 시 문제점'];
+ let meal=v['식사형태'];
+ const compatible=(m,q)=>!m||!q||(mealCompatibility[q]||mealTypes).includes(m);
+ // 마지막에 선택한 항목을 우선하고, 충돌하는 이전 선택만 해제한다.
+ if(!compatible(meal,issue)){
   if(lastNutritionField==='식사형태')v['식사 시 문제점']='';
-  else v['식사형태']='일반식';
+  else if(lastNutritionField==='식사 시 문제점')v['식사형태']='';
+  else v['식사형태']='';
  }
+ issue=v['식사 시 문제점'];meal=v['식사형태'];
  const eligible=v['소변상태']==='요실금'||v['대변상태']==='지속적인 설사';
  if(!eligible&&v['기저귀 착용여부']==='착용')v['기저귀 착용여부']='미착용';
  const disabled=(field,value)=>
-  (field==='식사 시 문제점'&&value==='양호'&&restrictedMealTypes.has(v['식사형태']))||
-  (field==='식사형태'&&value==='일반식'&&['저작곤란','연하곤란'].includes(v['식사 시 문제점']))||
-  (field==='식사형태'&&restrictedMealTypes.has(value)&&v['식사 시 문제점']==='양호')||
+  (field==='식사형태'&&!!issue&&!compatible(value,issue))||
+  (field==='식사 시 문제점'&&!!meal&&!compatible(meal,value))||
   (field==='기저귀 착용여부'&&value==='착용'&&!eligible);
  document.querySelectorAll('#fields0 .field').forEach(row=>{
   const field=row.querySelector(':scope > label')?.textContent?.trim();
