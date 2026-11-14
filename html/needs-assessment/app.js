@@ -302,6 +302,7 @@ function mealSentence(){
  const meal=state[0]['식사형태'],issue=state[0]['식사 시 문제점'];
  let mealText=interpolate(template(0,'식사형태',meal),0,'식사형태',meal).trim().replace(/[.。\s]+$/,'');
  if(meal==='기타' && otherValue(0,'식사형태'))mealText=mealText.replace(/기타/g,otherValue(0,'식사형태'));
+ if(!issue)return mealText+'.';
  let issueText=interpolate(template(0,'식사 시 문제점',issue),0,'식사 시 문제점',issue).trim().replace(/[.。\s]+$/,'');
  if(issue==='기타' && otherValue(0,'식사 시 문제점'))issueText=issueText.replace(/기타/g,otherValue(0,'식사 시 문제점'));
  // 기존 관리자 설정의 기본 결합식을 사용 중이라면 새 문장 순서로 자동 전환.
@@ -465,7 +466,45 @@ function renderPreview(e,output,i){
   pos=next+found.text.length;
  }
 }
-function update(){sections.forEach((s,i)=>{const e=document.getElementById('result'+i);if(e)renderPreview(e,result(i),i)})}
+// 영양·배설 상충 선택 방지: 기존 UI 배치 및 문구 설정은 변경하지 않음.
+const restrictedMealTypes=new Set(['다진식','죽식','미음','유동식','연하식','갈은식']);
+let lastNutritionField='';
+document.addEventListener('change',e=>{
+ const el=e.target;
+ if(el?.matches?.('#fields0 input[type="radio"]')){
+  const row=el.closest('.field');
+  const label=row?.querySelector(':scope > label')?.textContent?.trim();
+  if(['식사형태','식사 시 문제점','소변상태','대변상태','기저귀 착용여부'].includes(label)){
+   lastNutritionField=label;
+   // 기존 onchange 핸들러가 상태를 갱신한 직후 한 번 더 동기화
+   queueMicrotask(()=>update());
+  }
+ }
+},true);
+function syncNutritionRestrictions(){
+ const v=state[0];if(!v)return;
+ const meal=v['식사형태'],issue=v['식사 시 문제점'];
+ if(restrictedMealTypes.has(meal)&&issue==='양호'){
+  if(lastNutritionField==='식사 시 문제점')v['식사형태']='일반식';
+  else v['식사 시 문제점']=''; // 문제점을 임의로 진단하지 않고 미선택 처리
+ }
+ if(v['식사 시 문제점']==='양호'&&restrictedMealTypes.has(v['식사형태']))v['식사형태']='일반식';
+ const eligible=v['소변상태']==='요실금'||v['대변상태']==='지속적인 설사';
+ if(!eligible&&v['기저귀 착용여부']==='착용')v['기저귀 착용여부']='미착용';
+ const disabled=(field,value)=>field==='식사 시 문제점'&&value==='양호'&&restrictedMealTypes.has(v['식사형태'])||field==='식사형태'&&restrictedMealTypes.has(value)&&v['식사 시 문제점']==='양호'||field==='기저귀 착용여부'&&value==='착용'&&!eligible;
+ document.querySelectorAll('#fields0 .field').forEach(row=>{
+  const field=row.querySelector(':scope > label')?.textContent?.trim();
+  if(!['식사형태','식사 시 문제점','소변상태','대변상태','기저귀 착용여부'].includes(field))return;
+  row.querySelectorAll(':scope > .chips input[type="radio"]').forEach(input=>{
+   const block=disabled(field,input.value);
+   input.disabled=block;
+   input.checked=v[field]===input.value;
+   const chip=input.closest('.chip');
+   if(chip){chip.style.opacity=block?'0.42':'';chip.style.cursor=block?'not-allowed':'';}
+  });
+ });
+}
+function update(){syncNutritionRestrictions();sections.forEach((s,i)=>{const e=document.getElementById('result'+i);if(e)renderPreview(e,result(i),i)})}
 
 async function copyText(t){if(t.includes('점수 입력 오류')||t.includes('점수를 모두 입력'))return alert('점수를 확인하세요.');try{await navigator.clipboard.writeText(t)}catch{const el=document.createElement('textarea');el.value=t;document.body.appendChild(el);el.select();document.execCommand('copy');el.remove()}alert('판단근거를 복사했습니다.')}
 document.getElementById('copyAll').onclick=()=>copyText(sections.map((s,i)=>`[${i+1}. ${s.title}]\n${result(i)}`).join('\n\n'));
