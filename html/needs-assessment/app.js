@@ -433,14 +433,9 @@ function update(){sections.forEach((s,i)=>{const e=document.getElementById('resu
 async function copyText(t){if(t.includes('점수 입력 오류')||t.includes('점수를 모두 입력'))return alert('점수를 확인하세요.');try{await navigator.clipboard.writeText(t)}catch{const el=document.createElement('textarea');el.value=t;document.body.appendChild(el);el.select();document.execCommand('copy');el.remove()}alert('판단근거를 복사했습니다.')}
 document.getElementById('copyAll').onclick=()=>copyText(sections.map((s,i)=>`[${i+1}. ${s.title}]\n${result(i)}`).join('\n\n'));
 function applyAdminAccess(){
- const allowed=window.needsIsAdmin===true;
- const selector=document.getElementById('role');
- selector.querySelector('option[value="admin"]')?.remove();
- if(allowed && !selector.querySelector('option[value="admin"]'))selector.add(new Option('관리자','admin'));
- if(!allowed && role==='admin')role='staff';
- selector.closest('label').hidden=!allowed;
+ // Firebase 사용자 role에 따라 실제 화면을 자동으로 구분합니다.
+ role = window.needsIsAdmin === true ? 'admin' : 'staff';
  draw();
 }
-window.addEventListener('needs-admin-auth',applyAdminAccess);
-document.getElementById('role').onchange=e=>{role=(e.target.value==='admin'&&window.needsIsAdmin)?'admin':'staff';draw()};
+window.addEventListener('needs-admin-auth', applyAdminAccess);
 applyAdminAccess();
