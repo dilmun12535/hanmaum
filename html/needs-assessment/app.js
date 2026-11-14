@@ -436,27 +436,18 @@ function show(i){active=i;document.querySelectorAll('nav button').forEach((b,j)=
 // 미리보기에서 사용자 선택/입력으로 달라지는 값만 강조합니다.
 // 출력 텍스트와 복사 데이터는 변경하지 않습니다.
 function dynamicPreviewWords(i){
- // 선택지(라디오/체크박스)는 강조하지 않고 사용자가 직접 작성한 값만 강조.
+ // 파란색 강조는 사용자가 키보드로 직접 입력한 텍스트만 적용합니다.
+ // 라디오/체크박스 선택값과 자동 생성된 관계·지역·경제상태는 강조하지 않습니다.
  const values=[];
  const add=v=>{if(typeof v==='string'&&v.trim())values.push(v.trim())};
- const choices=new Set(fields(i).map(([name])=>name));
- for(const [name,value] of Object.entries(state[i]||{})){
-  if(choices.has(name)||name.startsWith('필요내용::')||name==='틀니종류')continue;
-  // 기타 입력, 질환명, 기피식품, 착용사유, 추가 설명 등 텍스트 입력만 포함
-  if(typeof value==='string')add(value);
- }
+ const panel=document.getElementById('fields'+i);
+ panel?.querySelectorAll('input[type="text"],textarea').forEach(el=>{
+  if(!el.closest('.adminbox')&&!el.disabled)add(el.value);
+ });
+ // 질병상태에서 DOM 외부 상태에 보관하는 직접 입력값
  if(i===2){
   add(diseaseState.history);add(diseaseState.notes);
   Object.entries(diseaseState.extra).forEach(([k,v])=>{if(diseaseState.checked[k])add(v)});
-  // 치매 중증도는 선택 항목이므로 강조하지 않음.
- }
- if(i===4){add(document.getElementById('cistCause')?.value||'');add(document.getElementById('cistNote')?.value||'')}
- // 7, 8번 전용 입력 폼의 직접 입력값도 미리보기에서 강조.
- if(i===6||i===7||i===8){
-  const panel=document.getElementById('fields'+i);
-  panel?.querySelectorAll('input[type="text"],textarea').forEach(el=>{
-   if(!el.closest('.adminbox')&&!el.disabled)add(el.value);
-  });
  }
  return [...new Set(values)].sort((a,b)=>b.length-a.length);
 }
