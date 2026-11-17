@@ -20,17 +20,36 @@ service cloud.firestore {
    allow update: if isAdmin() || (signedIn() && resource.data.assigneeUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completed','completedAt']) && request.resource.data.completed is bool);
   }
   // 등록된 업무는 관리자만 변경 가능
-  match /taskTemplates/{id}{allow read: if isAdmin(); allow create, update, delete: if isAdmin();}
+  match /taskTemplates/{id}{allow read: if signedIn(); allow create, update, delete: if isAdmin();}
   // 직원은 본인에게 배정된 업무만 조회 가능
-  match /taskAssignments/{id}{allow read: if signedIn() && (isAdmin() || resource.data.assigneeUid == request.auth.uid); allow create, update, delete: if isAdmin();}
+  match /taskAssignments/{id}{allow read: if signedIn(); allow create, update, delete: if isAdmin();}
   // 직원은 본인 업무의 완료 여부만 기록 가능
+  match /staffSchedules/{id}{
+    allow read: if signedIn();
+    allow create, update, delete: if isAdmin();
+  }
+  match /taskHandoffs/{id}{
+    allow read: if signedIn();
+    allow create: if signedIn()
+      && request.resource.data.fromUid == request.auth.uid
+      && request.resource.data.toUid != request.auth.uid
+      && request.resource.data.status == 'pending'
+      && request.resource.data.keys().hasOnly(['assignmentId','period','fromUid','toUid','reason','status','createdAt'])
+      && exists(/databases/$(database)/documents/taskAssignments/$(request.resource.data.assignmentId));
+    allow update: if isAdmin() || (signedIn()
+      && resource.data.toUid == request.auth.uid
+      && resource.data.status == 'pending'
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','respondedAt'])
+      && request.resource.data.status in ['accepted','rejected']);
+    allow delete: if isAdmin();
+  }
   match /taskCompletions/{id}{
-    allow read: if signedIn() && (isAdmin() || resource.data.assigneeUid == request.auth.uid);
-    allow create: if signedIn() && request.resource.data.assigneeUid == request.auth.uid
+    allow read: if signedIn();
+    allow create: if signedIn()
+      && request.resource.data.assigneeUid == request.auth.uid
       && request.resource.data.completed == true
       && request.resource.data.keys().hasOnly(['assignmentId','period','assigneeUid','completed','completedAt'])
       && exists(/databases/$(database)/documents/taskAssignments/$(request.resource.data.assignmentId))
-      && get(/databases/$(database)/documents/taskAssignments/$(request.resource.data.assignmentId)).data.assigneeUid == request.auth.uid
       && id == request.resource.data.assignmentId + '_' + request.resource.data.period;
     allow update: if false;
     allow delete: if isAdmin() || (signedIn() && resource.data.assigneeUid == request.auth.uid);
