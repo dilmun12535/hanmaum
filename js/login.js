@@ -38,7 +38,7 @@ function saveLoginUser(user) {
 onAuthStateChanged(auth, (user) => {
   if (user) {
     saveLoginUser(user);
-    window.location.replace("html/care-plan-library.html");
+    window.location.replace("html/today-tasks.html");
   }
 });
 
@@ -61,7 +61,7 @@ loginForm?.addEventListener("submit", async (event) => {
     await setPersistence(auth, browserLocalPersistence);
     const credential = await signInWithEmailAndPassword(auth, email, password);
     saveLoginUser(credential.user);
-    window.location.replace("html/care-plan-library.html");
+    window.location.replace("html/today-tasks.html");
   } catch (error) {
     console.error("Firebase login error:", error);
     showMessage("이메일 또는 비밀번호가 맞지 않습니다.");

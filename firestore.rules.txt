@@ -6,7 +6,7 @@ service cloud.firestore {
   function isOwner(){return signedIn() && resource.data.ownerUid == request.auth.uid;}
   function createsOwnDocument(){return signedIn() && request.resource.data.ownerUid == request.auth.uid;}
   function updatesOwnDocument(){return isOwner() && request.resource.data.ownerUid == resource.data.ownerUid;}
-  match /users/{userId}{allow read: if signedIn() && request.auth.uid == userId; allow write: if false;}
+  match /users/{userId}{allow read: if (signedIn() && request.auth.uid == userId) || isAdmin(); allow write: if false;}
   match /carePlans/{id}{allow read: if signedIn(); allow create: if createsOwnDocument(); allow update: if updatesOwnDocument(); allow delete: if isOwner() || isAdmin();}
   match /counsels/{id}{allow read: if signedIn(); allow create: if createsOwnDocument(); allow update: if updatesOwnDocument(); allow delete: if isOwner() || isAdmin();}
   match /attendance/{id}{allow read: if signedIn(); allow create: if createsOwnDocument(); allow update: if updatesOwnDocument(); allow delete: if isOwner() || isAdmin();}
@@ -14,6 +14,11 @@ service cloud.firestore {
   match /attendanceMonthLocks/{month}{allow read: if signedIn(); allow create: if createsOwnDocument() && request.resource.data.month == month; allow update: if false; allow delete: if isOwner() || isAdmin();}
   match /portalSettings/{id}{allow read: if signedIn(); allow create, update, delete: if isAdmin();}
   match /needsAssessmentSettings/{id}{allow read: if signedIn(); allow create, update, delete: if isAdmin();}
+  match /dailyTasks/{taskId}{
+   allow read: if signedIn() && (isAdmin() || resource.data.assigneeUid == request.auth.uid);
+   allow create, delete: if isAdmin();
+   allow update: if isAdmin() || (signedIn() && resource.data.assigneeUid == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['completed','completedAt']) && request.resource.data.completed is bool);
+  }
   match /{document=**}{allow read, write: if false;}
  }
 }
