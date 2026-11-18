@@ -7,3 +7,6 @@
 .task-role-select{min-width:90px;max-width:115px;border:1px solid #cbd5e1;border-radius:7px;padding:6px;background:#fff;color:#0f172a;cursor:pointer}
 .task-template-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .task-template .task-role-select{cursor:pointer}
+
+/* 업무별 배정 현황: 주/부담당 이름 배지 */
+.task-template{flex-wrap:wrap}.task-template-info{flex:1;min-width:170px}.task-assignees{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:9px}.task-assignee-title{font-size:11px;color:#64748b;margin-right:3px}.task-assignee-chip{display:inline-block;background:#e0ecff;color:#1e40af;border:1px solid #bfd5ff;border-radius:999px;padding:3px 7px;font-size:11px;white-space:nowrap}.task-admin-chip{font-size:11px;color:#1d4ed8;background:#dbeafe;padding:3px 6px;border-radius:5px}
