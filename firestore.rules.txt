@@ -54,6 +54,29 @@ service cloud.firestore {
     allow update: if false;
     allow delete: if isAdmin() || (signedIn() && resource.data.assigneeUid == request.auth.uid);
   }
+  // 직원 본인만 개인 업무를 생성/수정/삭제. 관리자도 타인의 개인 업무 수정 불가.
+  match /personalTasks/{id}{
+    allow read: if signedIn();
+    allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid
+      && request.resource.data.date is string && request.resource.data.title is string
+      && request.resource.data.completed is bool;
+    allow update: if signedIn() && resource.data.ownerUid == request.auth.uid
+      && request.resource.data.ownerUid == resource.data.ownerUid
+      && request.resource.data.date == resource.data.date;
+    allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+  }
+  // 배정 업무 및 개인 업무의 시간 배치는 각자 본인만 변경.
+  match /taskTimePlans/{id}{
+    allow read: if signedIn();
+    allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid
+      && request.resource.data.date is string && request.resource.data.taskKey is string
+      && request.resource.data.start is string && request.resource.data.duration is int;
+    allow update: if signedIn() && resource.data.ownerUid == request.auth.uid
+      && request.resource.data.ownerUid == resource.data.ownerUid
+      && request.resource.data.date == resource.data.date
+      && request.resource.data.taskKey == resource.data.taskKey;
+    allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+  }
   match /{document=**}{allow read, write: if false;}
  }
 }
