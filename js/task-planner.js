@@ -1,7 +1,11 @@
-import {auth,db,onAuthStateChanged,collection,onSnapshot,doc,addDoc,setDoc,updateDoc,deleteDoc,serverTimestamp,today,safe,periodFor,dueFor,activeUid} from './task-shared.js';
+// 먼저 화면을 그린 후 Firebase 모듈을 비동기로 연결합니다.
+// 연결 실패 시 빈 영역 대신 원인을 화면에 표시합니다.
+let auth,db,onAuthStateChanged,collection,onSnapshot,doc,addDoc,setDoc,updateDoc,deleteDoc,serverTimestamp,today,safe,periodFor,dueFor,activeUid;
+today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
+safe=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
 const host=document.getElementById('dailyPlanner');
-if(host){host.innerHTML='<div class="planner-head"><div><h2>나의 일일 업무 플래너</h2><p>플래너를 불러오는 중입니다.</p></div></div><p class="planner-message" id="plannerMessage" role="status"></p>';}
+if(host){host.innerHTML='<div class="planner-head"><div><h2>나의 일일 업무 플래너</h2><p>왼쪽 업무를 오른쪽 시간표로 드래그해 배치하세요.</p></div><span class="planner-readonly">연결 중</span></div><div class="planner-columns"><section class="planner-backlog"><h3>내 업무</h3><p>업무 목록을 불러오는 중입니다.</p></section><section class="planner-timeline"><h3>시간표</h3><div class="planner-empty">로그인 확인 중...</div></section></div><p class="planner-message" id="plannerMessage" role="status"></p>';}
 let me=null,target=null,personal=[],plans=[],assignments=[],schedules=[],handoffs=[],completions=[],unsubs=[];
 const pad=n=>String(n).padStart(2,'0');
 const times=Array.from({length:21},(_,i)=>`${pad(8+Math.floor(i/2))}:${i%2?'30':'00'}`);
@@ -19,17 +23,42 @@ function card(i,readonly){const p=i.plan;return `<div class="planner-task ${i.do
 function render(){if(!host||!me)return;const readonly=target!==me;const all=items();const unplanned=all.filter(i=>!i.plan?.start);const planned=all.filter(i=>i.plan?.start);host.innerHTML=`<div class="planner-head"><div><h2>${readonly?'직원 업무 플래너 (조회 전용)':'나의 일일 업무 플래너'}</h2><p>${today()} · 배정 업무와 개인 업무를 시간표에 배치하세요.</p></div>${!readonly?'<button class="planner-primary" id="plannerAddToggle">+ 내 업무 추가</button>':'<span class="planner-readonly">조회 전용</span>'}</div>
 ${!readonly?`<form id="plannerForm" class="planner-form" hidden><label>업무명<input id="plannerTitle" maxlength="120" placeholder="예: 상담일지 정리" required></label><label>시작 시간<select id="plannerStart">${options('13:00',times)}</select></label><label>예상 소요<select id="plannerDuration">${durations.map(d=>`<option value="${d}" ${d===30?'selected':''}>${d}분</option>`).join('')}</select></label><button class="planner-primary" type="submit">등록</button></form>`:''}
 <div class="planner-summary"><span>전체 <b>${all.length}</b></span><span>완료 <b>${all.filter(i=>i.done).length}</b></span><span>시간 배치 <b>${planned.length}</b></span></div>
-<div class="planner-columns"><section class="planner-backlog"><h3>시간 미배정 업무 <small>${unplanned.length}개</small></h3><p>업무를 오른쪽 시간대로 끌어놓거나 시간 선택으로 배치하세요.</p>${unplanned.map(i=>card(i,readonly)).join('')||'<div class="planner-empty">미배정 업무가 없습니다.</div>'}</section><section class="planner-timeline"><h3>오늘의 시간표 <small>08:00 ~ 18:00</small></h3><div class="planner-scroll">${times.map(t=>`<div class="planner-slot" data-time="${t}"><div class="planner-clock">${t}</div><div class="planner-slot-body">${planned.filter(i=>i.plan.start===t).map(i=>card(i,readonly)).join('')||'<span class="planner-slot-hint">여기에 놓기</span>'}</div></div>`).join('')}</div></section></div>
+<div class="planner-columns"><section class="planner-backlog"><h3>내 업무 목록 <small>미배치 ${unplanned.length}개</small></h3><p>업무를 오른쪽 시간대로 끌어놓거나 시간 선택으로 배치하세요.</p>${unplanned.map(i=>card(i,readonly)).join('')||'<div class="planner-empty">미배정 업무가 없습니다.</div>'}</section><section class="planner-timeline"><h3>시간별 업무 배치 <small>08:00 ~ 18:00 · 30분 단위</small></h3><div class="planner-scroll">${times.map(t=>`<div class="planner-slot" data-time="${t}"><div class="planner-clock">${t}</div><div class="planner-slot-body">${planned.filter(i=>i.plan.start===t).map(i=>card(i,readonly)).join('')||'<span class="planner-slot-hint">여기에 놓기</span>'}</div></div>`).join('')}</div></section></div>
 ${!readonly?`<div class="planner-adjust"><label>시간 배치할 업무<select id="plannerPick"><option value="">업무 선택</option>${all.map(i=>`<option value="${safe(i.key)}">${safe(i.title)}</option>`).join('')}</select></label><label>시작<select id="plannerPickTime">${options('09:00',times)}</select></label><label>소요<select id="plannerPickDuration">${durations.map(d=>`<option value="${d}">${d}분</option>`).join('')}</select></label><button class="planner-primary" id="plannerPlace">시간 배치</button></div>`:''}<p class="planner-message" id="plannerMessage" role="status"></p>`;
 if(readonly)return;
 host.querySelector('#plannerAddToggle').onclick=()=>{const f=host.querySelector('#plannerForm');f.hidden=!f.hidden};
 host.querySelector('#plannerForm').onsubmit=async e=>{e.preventDefault();const title=host.querySelector('#plannerTitle').value.trim();if(!title)return;const start=host.querySelector('#plannerStart').value,duration=Number(host.querySelector('#plannerDuration').value);try{const ref=await addDoc(collection(db,'personalTasks'),{ownerUid:me,date:today(),title,completed:false,createdAt:serverTimestamp()});await savePlan('personal:'+ref.id,start,duration)}catch(err){error(err)}};
 host.querySelector('#plannerPlace').onclick=async()=>{const key=host.querySelector('#plannerPick').value;if(!key)return error('업무를 선택하세요.');await savePlan(key,host.querySelector('#plannerPickTime').value,Number(host.querySelector('#plannerPickDuration').value))};
 host.querySelectorAll('[data-action]').forEach(b=>b.onclick=async()=>{const action=b.dataset.action;try{if(action==='delete'){if(confirm('개인 업무를 삭제할까요?')){const key='personal:'+b.dataset.id;const p=plans.find(p=>p.ownerUid===me&&p.date===today()&&p.taskKey===key);if(p)await deleteDoc(doc(db,'taskTimePlans',p.id));await deleteDoc(doc(db,'personalTasks',b.dataset.id))}}else if(action==='complete'){const p=personal.find(p=>p.id===b.dataset.id);await updateDoc(doc(db,'personalTasks',b.dataset.id),{completed:!p.completed,updatedAt:serverTimestamp()})}else if(action==='unplan'){await deleteDoc(doc(db,'taskTimePlans',planId(me,today(),b.dataset.key)))}}catch(err){error(err)}});
-host.querySelectorAll('.planner-task[draggable=true]').forEach(el=>el.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',el.dataset.key);e.dataTransfer.effectAllowed='move'}));
+host.querySelectorAll('.planner-task[draggable=true]').forEach(el=>{el.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',el.dataset.key);e.dataTransfer.effectAllowed='move';el.classList.add('dragging')});el.addEventListener('dragend',()=>el.classList.remove('dragging'))});
 host.querySelectorAll('.planner-slot').forEach(el=>{el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over')});el.addEventListener('dragleave',()=>el.classList.remove('drag-over'));el.addEventListener('drop',async e=>{e.preventDefault();el.classList.remove('drag-over');const key=e.dataTransfer.getData('text/plain');if(!all.some(i=>i.key===key))return;const existing=plans.find(p=>p.ownerUid===me&&p.date===today()&&p.taskKey===key);await savePlan(key,el.dataset.time,existing?.duration||30)})});}
 async function savePlan(key,start,duration){if(target!==me)return;try{await setDoc(doc(db,'taskTimePlans',planId(me,today(),key)),{ownerUid:me,date:today(),taskKey:key,start,duration,updatedAt:serverTimestamp()})}catch(err){error(err)}}
 function error(err){if(!host)return;const node=host.querySelector('#plannerMessage');const text=typeof err==='string'?err:'저장 실패: '+(err?.message||String(err));if(node)node.textContent=text;else host.insertAdjacentHTML('beforeend','<p class="planner-message" role="alert">'+safe(text)+'</p>')}
 window.addEventListener('task-staff-view-change',e=>{target=e.detail.uid||me;render()});
-onAuthStateChanged(auth,user=>{unsubs.forEach(f=>f());unsubs=[];me=user?.uid||null;target=me;if(!me){if(host)host.innerHTML='<p class="planner-message">로그인이 필요합니다.</p>';return;}render();const watch=(name,cb)=>unsubs.push(onSnapshot(collection(db,name),s=>{cb(s.docs.map(d=>({id:d.id,...d.data()})));render()},e=>error(name+' 조회 실패: '+e.message)));
-watch('personalTasks',v=>personal=v);watch('taskTimePlans',v=>plans=v);watch('taskAssignments',v=>assignments=v);watch('staffSchedules',v=>schedules=v);watch('taskHandoffs',v=>handoffs=v);watch('taskCompletions',v=>completions=v)});
+async function boot(){
+  if(!host)return;
+  try{
+    const shared=await import('./task-shared.js');
+    ({auth,db,onAuthStateChanged,collection,onSnapshot,doc,addDoc,setDoc,updateDoc,deleteDoc,serverTimestamp,today,safe,periodFor,dueFor,activeUid}=shared);
+    onAuthStateChanged(auth,user=>{
+      unsubs.forEach(f=>f());unsubs=[];
+      me=user?.uid||null;target=me;
+      if(!me){host.innerHTML='<p class="planner-message">로그인이 필요합니다.</p>';return;}
+      render();
+      const watch=(name,cb)=>unsubs.push(onSnapshot(collection(db,name),s=>{
+        cb(s.docs.map(d=>({id:d.id,...d.data()})));render();
+      },e=>error(name+' 조회 실패: '+e.message)));
+      watch('personalTasks',v=>personal=v);
+      watch('taskTimePlans',v=>plans=v);
+      watch('taskAssignments',v=>assignments=v);
+      watch('staffSchedules',v=>schedules=v);
+      watch('taskHandoffs',v=>handoffs=v);
+      watch('taskCompletions',v=>completions=v);
+    },e=>error('로그인 상태 확인 실패: '+e.message));
+  }catch(e){
+    host.innerHTML='<div class="planner-head"><div><h2>일일 업무 플래너</h2><p>플래너 초기화 중 오류가 발생했습니다.</p></div></div><p class="planner-message" role="alert">'+safe(e.message||String(e))+'</p>';
+    console.error('[일일 업무 플래너]',e);
+  }
+}
+window.addEventListener('error',e=>{if(e.filename?.includes('task-planner'))error('스크립트 오류: '+e.message)});
+boot();
