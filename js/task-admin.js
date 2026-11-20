@@ -1,3 +1,4 @@
+import {manualEditorMarkup,wireManualEditor} from './task-manual-rich.js';
 import {auth,db,onAuthStateChanged,doc,collection,query,where,onSnapshot,addDoc,updateDoc,deleteDoc,serverTimestamp,$,today,profile,msg,safe,activeUid} from './task-shared.js';
 import {getDocs, getDoc, setDoc} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 let me=null, staff=[], templates=[], assignments=[], completions=[], schedules=[], handoffs=[], selected=null, unsubs=[];
@@ -92,17 +93,14 @@ function editManual(id){
  let modal=document.getElementById('taskManualEditor');
  if(!modal){modal=document.createElement('dialog');modal.id='taskManualEditor';modal.className='task-manual-dialog';document.body.appendChild(modal);}
  const m=t.manual||{};
- modal.innerHTML=`<form method="dialog" class="task-manual-form"><h2>${safe(t.title)} · 매뉴얼</h2>
- <label>업무 개요<textarea name="overview" rows="3">${safe(m.overview||'')}</textarea></label>
- <label>진행 순서<textarea name="steps" rows="7" placeholder="1. ...">${safe(m.steps||'')}</textarea></label>
- <label>주의사항<textarea name="cautions" rows="4">${safe(m.cautions||'')}</textarea></label>
- <label>참고 링크<input name="link" type="url" placeholder="https://" value="${safe(m.link||'')}"></label>
- <div class="task-manual-buttons"><button value="cancel" type="button" class="manual-cancel">닫기</button><button value="save" type="submit">저장</button></div><p class="manual-editor-message" role="status"></p></form>`;
+ modal.innerHTML=`<form class="task-manual-form"><h2>${safe(t.title)} · 매뉴얼 편집</h2>
+ ${manualEditorMarkup(m)}
+ <div class="task-manual-buttons"><button type="button" class="manual-cancel">닫기</button><button type="submit">저장</button></div><p class="manual-editor-message" role="status"></p></form>`;
+ const getHtml=wireManualEditor(modal);
  modal.querySelector('.manual-cancel').onclick=()=>modal.close();
  modal.querySelector('form').onsubmit=async e=>{
   e.preventDefault();const f=e.currentTarget,btn=f.querySelector('[type=submit]');btn.disabled=true;
-  const data=Object.fromEntries(new FormData(f).entries());
-  try{await updateDoc(doc(db,'taskTemplates',id),{manual:{overview:data.overview.trim(),steps:data.steps.trim(),cautions:data.cautions.trim(),link:data.link.trim()},manualUpdatedAt:serverTimestamp()});modal.close();}
+  try{await updateDoc(doc(db,'taskTemplates',id),{manual:{...m,html:getHtml()},manualUpdatedAt:serverTimestamp()});modal.close();}
   catch(err){f.querySelector('.manual-editor-message').textContent='저장 실패: '+err.message;btn.disabled=false;}
  };
  modal.showModal();
