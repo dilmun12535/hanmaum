@@ -60,6 +60,7 @@ loginForm?.addEventListener("submit", async (event) => {
   try {
     await setPersistence(auth, browserLocalPersistence);
     const credential = await signInWithEmailAndPassword(auth, email, password);
+    localStorage.setItem("hanmaum:lastUserActivity:v1", String(Date.now()));
     saveLoginUser(credential.user);
     window.location.replace("html/today-tasks.html");
   } catch (error) {
@@ -70,3 +71,6 @@ loginForm?.addEventListener("submit", async (event) => {
     loginButton.textContent = "로그인";
   }
 });
+
+const idleNotice=sessionStorage.getItem("hanmaum:idleLogoutNotice");
+if(idleNotice){showMessage(idleNotice,"error");sessionStorage.removeItem("hanmaum:idleLogoutNotice");}

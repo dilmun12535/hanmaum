@@ -7,7 +7,7 @@ safe=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',
 
 const host=document.getElementById('dailyPlanner');
 if(host){host.innerHTML='<div class="planner-head"><div><h2>나의 일일 업무 플래너</h2><p>왼쪽 업무를 오른쪽 시간표로 드래그해 배치하세요.</p></div><span class="planner-readonly">연결 중</span></div><div class="planner-columns"><section class="planner-backlog"><h3>내 업무</h3><p>업무 목록을 불러오는 중입니다.</p></section><section class="planner-timeline"><h3>시간표</h3><div class="planner-empty">로그인 확인 중...</div></section></div><p class="planner-message" id="plannerMessage" role="status"></p>';}
-let me=null,target=null,personal=[],plans=[],assignments=[],schedules=[],handoffs=[],completions=[],unsubs=[];
+let me=null,target=null,personal=[],plans=[],assignments=[],templates=[],schedules=[],handoffs=[],completions=[],unsubs=[];
 const workingMarks=new Set(['○','O','o','●','⊙','◐','◑','△']);
 function handoffStaff(){
  const people=new Map();
@@ -50,7 +50,8 @@ host.querySelector('#plannerPlace').onclick=async()=>{const key=host.querySelect
 host.querySelectorAll('[data-action]').forEach(b=>{
  const action=b.dataset.action;
  const handler=async()=>{const item=all.find(i=>i.key===b.dataset.key);try{
-  if(action==='check'){
+  if(action==='manual'){openManual(item);return;}
+      if(action==='check'){
    if(!item||target!==me)return;
    if(item.type==='personal')await updateDoc(doc(db,'personalTasks',item.id),{completed:b.checked,updatedAt:serverTimestamp()});
    else{const a=item.assignment;if(a.effective!==me||a.pending)return;const ref=doc(db,'taskCompletions',`${a.id}_${a.period}`);if(b.checked)await setDoc(ref,{assignmentId:a.id,period:a.period,assigneeUid:me,completed:true,completedAt:serverTimestamp()});else await deleteDoc(ref)}
@@ -92,6 +93,7 @@ async function boot(){
       watch('personalTasks',v=>personal=v);
       watch('taskTimePlans',v=>plans=v);
       watch('taskAssignments',v=>assignments=v);
+      watch('taskTemplates',v=>templates=v);
       watch('staffSchedules',v=>schedules=v);
       watch('taskHandoffs',v=>handoffs=v);
       watch('taskCompletions',v=>completions=v);
@@ -103,3 +105,12 @@ async function boot(){
 }
 window.addEventListener('error',e=>{if(e.filename?.includes('task-planner'))error('스크립트 오류: '+e.message)});
 boot();
+
+function openManual(item){
+ const a=item?.assignment,t=templates.find(x=>x.id===a?.templateId),m=t?.manual||{};
+ let modal=document.getElementById('taskManualViewer');
+ if(!modal){modal=document.createElement('dialog');modal.id='taskManualViewer';modal.className='task-manual-dialog';document.body.appendChild(modal);}
+ const link=/^https?:\/\//i.test(m.link||'')?`<p><a href="${safe(m.link)}" target="_blank" rel="noopener noreferrer">참고 링크 열기</a></p>`:'';
+ modal.innerHTML=`<div class="task-manual-view"><h2>${safe(item.title)} · 업무 매뉴얼</h2>${m.overview||m.steps||m.cautions||m.link?`<h3>업무 개요</h3><p>${safe(m.overview||'-')}</p><h3>진행 순서</h3><p>${safe(m.steps||'-')}</p><h3>주의사항</h3><p>${safe(m.cautions||'-')}</p>${link}`:'<p>아직 등록된 매뉴얼이 없습니다. 관리자에게 문의하세요.</p>'}<button type="button" class="manual-close">닫기</button></div>`;
+ modal.querySelector('.manual-close').onclick=()=>modal.close();modal.showModal();
+}

@@ -106,3 +106,17 @@
 #dailyPlanner .planner-timeline{
   overflow:visible !important;
 }
+
+.task-manual-dialog{width:min(620px,calc(100vw - 32px));max-height:85vh;border:1px solid #dbe5f3;border-radius:14px;padding:24px;box-shadow:0 20px 60px #0f172a33;color:#0f172a}
+.task-manual-dialog::backdrop{background:#0f172a66}
+.task-manual-form,.task-manual-view{display:grid;gap:12px}
+.task-manual-form h2,.task-manual-view h2{margin:0 0 8px;font-size:21px}
+.task-manual-form label{display:grid;gap:5px;font-weight:700;font-size:13px}
+.task-manual-form textarea,.task-manual-form input{box-sizing:border-box;width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:10px;font:inherit;font-weight:400}
+.task-manual-buttons{display:flex;justify-content:flex-end;gap:8px}
+.task-manual-buttons button,.manual-close{border:1px solid #cbd5e1;border-radius:8px;padding:9px 16px;cursor:pointer;background:#fff}
+.task-manual-buttons [type=submit]{background:#2563eb;color:white;border-color:#2563eb}
+.task-manual-view h3{font-size:14px;margin:5px 0 0}
+.task-manual-view p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 6px;line-height:1.65}
+.task-manual-view .manual-close{justify-self:end}
+.task-manual-edit{cursor:pointer}

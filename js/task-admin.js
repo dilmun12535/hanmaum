@@ -28,9 +28,10 @@ function renderTemplates(){
  const linked=assignments.filter(a=>a.templateId===t.id);
  const names=linked.flatMap(a=>[{name:a.assigneeName||staff.find(u=>u.id===a.assigneeUid)?.name||'이름 없음',role:'주',id:a.assigneeUid},...(a.backupUid?[{name:a.backupName||staff.find(u=>u.id===a.backupUid)?.name||'이름 없음',role:'부',id:a.backupUid}]:[])]);
  const unique=[...new Map(names.map(n=>[n.id+'_'+n.role,n])).values()];
- return `<div class="task-item task-template ${selected===t.id?'selected':''}" draggable="true" tabindex="0" data-id="${safe(t.id)}"><div class="task-template-info"><strong>${safe(t.title)}</strong><small>${cycles[t.cycle]||''} · ${safe(label(t))}</small><small>${safe(t.description||'')}</small><div class="task-assignees"><span class="task-assignee-title">배정 ${unique.length}명</span>${unique.length?unique.map(n=>`<span class="task-assignee-chip">${safe(n.name)} (${n.role})</span>`).join(''):'<span class="task-meta">미배정</span>'}</div></div><div class="task-template-actions"><label class="task-role-label">담당 <select class="task-role-select" data-id="${safe(t.id)}" aria-label="${safe(t.title)} 담당 구분"><option value="primary" ${roleFor(t.id)==='primary'?'selected':''}>주담당</option><option value="backup" ${roleFor(t.id)==='backup'?'selected':''}>부담당</option></select></label><button type="button" class="task-select" data-id="${safe(t.id)}">선택</button><button type="button" class="task-delete-template" data-id="${safe(t.id)}">삭제</button></div></div>`;
+ return `<div class="task-item task-template ${selected===t.id?'selected':''}" draggable="true" tabindex="0" data-id="${safe(t.id)}"><div class="task-template-info"><strong>${safe(t.title)}</strong><small>${cycles[t.cycle]||''} · ${safe(label(t))}</small><small>${safe(t.description||'')}</small><div class="task-assignees"><span class="task-assignee-title">배정 ${unique.length}명</span>${unique.length?unique.map(n=>`<span class="task-assignee-chip">${safe(n.name)} (${n.role})</span>`).join(''):'<span class="task-meta">미배정</span>'}</div></div><div class="task-template-actions"><label class="task-role-label">담당 <select class="task-role-select" data-id="${safe(t.id)}" aria-label="${safe(t.title)} 담당 구분"><option value="primary" ${roleFor(t.id)==='primary'?'selected':''}>주담당</option><option value="backup" ${roleFor(t.id)==='backup'?'selected':''}>부담당</option></select></label><button type="button" class="task-manual-edit" data-id="${safe(t.id)}">매뉴얼 ${t.manual?'수정':'작성'}</button><button type="button" class="task-select" data-id="${safe(t.id)}">선택</button><button type="button" class="task-delete-template" data-id="${safe(t.id)}">삭제</button></div></div>`;
  }).join('')||'<p class="task-meta">등록된 업무가 없습니다.</p>';
  $('taskTemplates').querySelectorAll('.task-template').forEach(el=>{el.addEventListener('dragstart',e=>{if(e.target.closest('button,select')){e.preventDefault();return}selected=el.dataset.id;e.dataTransfer.setData('text/plain',selected);e.dataTransfer.setData('application/x-hanmaum-role',roleFor(selected));e.dataTransfer.effectAllowed='copy'});el.addEventListener('click',e=>{if(e.target.closest('button,select'))return;selected=el.dataset.id;renderTemplates()});el.addEventListener('keydown',e=>{if(e.key==='Enter'){selected=el.dataset.id;renderTemplates()}})});
+ $('taskTemplates').querySelectorAll('.task-manual-edit').forEach(b=>b.onclick=()=>editManual(b.dataset.id));
  $('taskTemplates').querySelectorAll('.task-role-select').forEach(sel=>sel.addEventListener('change',()=>chosenRoles.set(sel.dataset.id,sel.value)));
  $('taskTemplates').querySelectorAll('.task-select').forEach(b=>b.onclick=()=>{selected=b.dataset.id;renderTemplates()});
  $('taskTemplates').querySelectorAll('.task-delete-template').forEach(b=>b.onclick=async()=>{if(!confirm('등록된 업무를 삭제할까요? 기존 배정은 별도로 유지됩니다.'))return;try{await deleteDoc(doc(db,'taskTemplates',b.dataset.id))}catch(e){alert(e.message)}})
@@ -84,3 +85,25 @@ function renderScheduleTable(){
 }
 // 기존 실시간 리스너가 근무표 변경을 수신하면 조회 화면도 갱신
 const oldRenderSchedule=renderStatus;renderStatus=function(){oldRenderSchedule();renderScheduleTable()};
+
+// 매뉴얼은 업무 템플릿에 저장하며 관리자만 수정할 수 있습니다.
+function editManual(id){
+ const t=templates.find(x=>x.id===id);if(!t)return;
+ let modal=document.getElementById('taskManualEditor');
+ if(!modal){modal=document.createElement('dialog');modal.id='taskManualEditor';modal.className='task-manual-dialog';document.body.appendChild(modal);}
+ const m=t.manual||{};
+ modal.innerHTML=`<form method="dialog" class="task-manual-form"><h2>${safe(t.title)} · 매뉴얼</h2>
+ <label>업무 개요<textarea name="overview" rows="3">${safe(m.overview||'')}</textarea></label>
+ <label>진행 순서<textarea name="steps" rows="7" placeholder="1. ...">${safe(m.steps||'')}</textarea></label>
+ <label>주의사항<textarea name="cautions" rows="4">${safe(m.cautions||'')}</textarea></label>
+ <label>참고 링크<input name="link" type="url" placeholder="https://" value="${safe(m.link||'')}"></label>
+ <div class="task-manual-buttons"><button value="cancel" type="button" class="manual-cancel">닫기</button><button value="save" type="submit">저장</button></div><p class="manual-editor-message" role="status"></p></form>`;
+ modal.querySelector('.manual-cancel').onclick=()=>modal.close();
+ modal.querySelector('form').onsubmit=async e=>{
+  e.preventDefault();const f=e.currentTarget,btn=f.querySelector('[type=submit]');btn.disabled=true;
+  const data=Object.fromEntries(new FormData(f).entries());
+  try{await updateDoc(doc(db,'taskTemplates',id),{manual:{overview:data.overview.trim(),steps:data.steps.trim(),cautions:data.cautions.trim(),link:data.link.trim()},manualUpdatedAt:serverTimestamp()});modal.close();}
+  catch(err){f.querySelector('.manual-editor-message').textContent='저장 실패: '+err.message;btn.disabled=false;}
+ };
+ modal.showModal();
+}
