@@ -79,3 +79,19 @@
 #dailyPlanner .planner-slot.drag-over .planner-slot-body{background:#dbeafe;outline:2px dashed #2563eb}
 #dailyPlanner .planner-scroll{max-height:620px}
 @media(max-width:900px){#dailyPlanner .planner-columns{grid-template-columns:1fr}#dailyPlanner .planner-backlog{position:static}}
+
+/* 플래너 카드에서 직접 완료 및 업무 인계 */
+#dailyPlanner .planner-task-main{flex:1;min-width:0}
+#dailyPlanner .planner-task-top{display:flex;gap:10px;align-items:center;justify-content:space-between}
+#dailyPlanner .planner-complete{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;font-size:12px;font-weight:700;color:#334155;cursor:pointer}
+#dailyPlanner .planner-complete input{width:18px;height:18px;accent-color:#2563eb;cursor:pointer}
+#dailyPlanner .planner-complete input:disabled{cursor:not-allowed}
+#dailyPlanner .planner-handoff{margin-top:9px;border-top:1px solid #dbe5f3;padding-top:7px}
+#dailyPlanner .planner-handoff summary{color:#1d4ed8;font-size:12px;font-weight:700;cursor:pointer}
+#dailyPlanner .planner-handoff-fields{display:grid;grid-template-columns:minmax(100px,1fr) minmax(120px,1.3fr) auto;gap:6px;margin-top:8px}
+#dailyPlanner .planner-handoff-fields select,#dailyPlanner .planner-handoff-fields input{width:100%;min-width:0;box-sizing:border-box;height:34px;border:1px solid #cbd5e1;border-radius:7px;padding:0 7px;background:white;font-size:12px}
+#dailyPlanner .planner-handoff-actions{display:flex;gap:6px;margin-top:8px}
+#dailyPlanner .planner-send{background:#2563eb;color:white;border-color:#2563eb}
+#dailyPlanner .planner-task{align-items:flex-start}
+#dailyPlanner .planner-task .planner-grip{margin-top:3px}
+@media(max-width:1150px){#dailyPlanner .planner-handoff-fields{grid-template-columns:1fr}#dailyPlanner .planner-handoff-fields .planner-send{width:100%}}
