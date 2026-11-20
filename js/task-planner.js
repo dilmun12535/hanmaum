@@ -1,6 +1,7 @@
 // 먼저 화면을 그린 후 Firebase 모듈을 비동기로 연결합니다.
 // 연결 실패 시 빈 영역 대신 원인을 화면에 표시합니다.
-let auth,db,onAuthStateChanged,collection,onSnapshot,doc,addDoc,setDoc,updateDoc,deleteDoc,serverTimestamp,today,safe,periodFor,dueFor,activeUid;
+import { addDoc, setDoc, updateDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
+let auth,db,onAuthStateChanged,collection,onSnapshot,doc,serverTimestamp,today,safe,periodFor,dueFor,activeUid;
 today=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
 safe=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
@@ -39,7 +40,7 @@ async function boot(){
   if(!host)return;
   try{
     const shared=await import('./task-shared.js');
-    ({auth,db,onAuthStateChanged,collection,onSnapshot,doc,addDoc,setDoc,updateDoc,deleteDoc,serverTimestamp,today,safe,periodFor,dueFor,activeUid}=shared);
+    ({auth,db,onAuthStateChanged,collection,onSnapshot,doc,serverTimestamp,today,safe,periodFor,dueFor,activeUid}=shared);
     onAuthStateChanged(auth,user=>{
       unsubs.forEach(f=>f());unsubs=[];
       me=user?.uid||null;target=me;
