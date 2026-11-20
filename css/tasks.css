@@ -95,3 +95,14 @@
 #dailyPlanner .planner-task{align-items:flex-start}
 #dailyPlanner .planner-task .planner-grip{margin-top:3px}
 @media(max-width:1150px){#dailyPlanner .planner-handoff-fields{grid-template-columns:1fr}#dailyPlanner .planner-handoff-fields .planner-send{width:100%}}
+
+/* 시간표 내부 스크롤 제거: 08:00~18:00 모든 시간대를 페이지에 표시 */
+#dailyPlanner .planner-scroll{
+  max-height:none !important;
+  height:auto !important;
+  overflow-y:visible !important;
+  overflow-x:visible !important;
+}
+#dailyPlanner .planner-timeline{
+  overflow:visible !important;
+}
