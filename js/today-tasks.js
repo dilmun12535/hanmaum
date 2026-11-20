@@ -44,7 +44,7 @@ function renderStaffButtons(){
     const b=document.createElement('button');
     b.type='button';b.className='task-staff-button'+(current===id?' active':'');
     b.textContent=name;b.setAttribute('aria-pressed',String(current===id));
-    b.addEventListener('click',()=>{viewUid=id;renderStaffButtons();render()});
+    b.addEventListener('click',()=>{viewUid=id;renderStaffButtons();render();window.dispatchEvent(new CustomEvent("task-staff-view-change",{detail:{uid:id}}))});
     viewBar.appendChild(b);
   };
   addButton(null,'내 업무');
