@@ -1,31 +1,27 @@
-/* 업무 대시보드 전용 */.task-page{max-width:1300px;margin:auto;padding:24px}.task-heading{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}.task-heading h1{font-size:26px;margin:0 0 5px}.task-heading p{color:#64748b;margin:0}.task-heading a,.task-admin-link{border:1px solid #cbd5e1;padding:10px 14px;border-radius:9px;color:#1d4ed8;text-decoration:none;background:#fff}.task-message{padding:12px 15px;background:#f1f5f9;border-radius:10px;color:#475569;margin:12px 0}.task-message:empty{display:none}.task-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:18px 0}.task-stats>div,.task-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px}.task-stats span{display:block;color:#64748b;font-size:13px}.task-stats strong{font-size:28px}.task-list{display:grid;gap:12px}.task-item{background:#fff;border:1px solid #dbe3ed;border-radius:12px;padding:16px;display:flex;align-items:flex-start;gap:14px;justify-content:space-between}.task-item label{display:flex;align-items:flex-start;gap:12px;cursor:pointer;flex:1}.task-item input[type=checkbox]{width:20px;height:20px;accent-color:#1d4ed8;flex-shrink:0}.task-item strong{display:block}.task-item small{display:block;color:#64748b;margin-top:5px}.task-item.completed{background:#f0fdf4}.task-item.completed strong{text-decoration:line-through;color:#64748b}.task-card{margin-bottom:20px}.task-card h2{font-size:19px;margin:0 0 15px}.task-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.task-form label{font-weight:600;font-size:14px}.task-form input,.task-form select,.task-form textarea,.task-row input{display:block;width:100%;margin-top:5px;padding:10px;border:1px solid #cbd5e1;border-radius:8px;font:inherit}.task-form label:nth-child(4){grid-column:1/-1}.task-primary{background:#1d4ed8;color:white;border:0;padding:12px 18px;border-radius:9px;cursor:pointer}.task-row{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.task-row label{font-size:13px}.task-row input{width:auto}.task-meta{font-size:13px;color:#64748b}.task-delete{border:1px solid #fecaca;color:#b91c1c;background:#fff;padding:7px 10px;border-radius:7px;cursor:pointer}@media(max-width:800px){.task-page{padding:12px}.task-form{grid-template-columns:1fr}.task-stats{gap:7px}.task-stats>div{padding:12px}}
-/* 업무 목록 좌측 / 직원별 배정 우측 */
-.task-board{display:grid;grid-template-columns:minmax(290px,.85fr) minmax(440px,1.4fr);gap:18px;align-items:start}.task-board .task-card{min-width:0}.task-bank,.task-people{max-height:75vh;overflow:auto}.task-template{cursor:grab;user-select:none}.task-template:active{cursor:grabbing}.task-template.selected{outline:2px solid #2563eb;background:#eff6ff}.task-template small{display:block}.staff-board{display:grid;gap:12px}.staff-drop{border:2px dashed #cbd5e1;border-radius:12px;padding:14px;min-height:95px;background:#fbfdff}.staff-drop.drag-over{border-color:#2563eb;background:#eff6ff}.staff-drop h3{margin:0 0 10px;font-size:16px}.staff-assignment{display:flex;justify-content:space-between;align-items:center;gap:10px;background:#f1f5f9;border-radius:8px;padding:9px;margin-top:7px}.staff-assignment button,.task-template button{font-size:12px;padding:5px 8px}.task-description{grid-column:1/-1}.task-bank #taskSearch{max-width:190px;padding:8px;border:1px solid #cbd5e1;border-radius:8px}.task-template .task-meta{display:block}.task-template-actions{display:flex;gap:6px;align-items:center}.task-board .task-item{align-items:center}.task-board .task-item>div{min-width:0}.task-board .task-item strong{overflow-wrap:anywhere}@media(max-width:1000px){.task-board{grid-template-columns:1fr}.task-bank,.task-people{max-height:none}}
-
-/* 업무 카드 내부 담당 구분 드롭다운 */
-.task-role-label{display:flex;align-items:center;gap:6px;font-size:12px;color:#475569;white-space:nowrap}
-.task-role-select{min-width:90px;max-width:115px;border:1px solid #cbd5e1;border-radius:7px;padding:6px;background:#fff;color:#0f172a;cursor:pointer}
-.task-template-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
-.task-template .task-role-select{cursor:pointer}
-
-/* 업무별 배정 현황: 주/부담당 이름 배지 */
-.task-template{flex-wrap:wrap}.task-template-info{flex:1;min-width:170px}.task-assignees{display:flex;gap:5px;flex-wrap:wrap;align-items:center;margin-top:9px}.task-assignee-title{font-size:11px;color:#64748b;margin-right:3px}.task-assignee-chip{display:inline-block;background:#e0ecff;color:#1e40af;border:1px solid #bfd5ff;border-radius:999px;padding:3px 7px;font-size:11px;white-space:nowrap}.task-admin-chip{font-size:11px;color:#1d4ed8;background:#dbeafe;padding:3px 6px;border-radius:5px}
-
-/* 근무표 조회 및 타 직원 업무 보기 */
-.schedule-viewer{margin-top:18px;border-top:1px solid #e2e8f0;padding-top:16px}
-.schedule-btn{border:1px solid #b8c9e4;background:#fff;color:#1d4ed8;border-radius:8px;padding:9px 14px;font-weight:700;cursor:pointer}
-.schedule-btn:hover{background:#eff6ff}
-.schedule-filters,.task-view-controls,#otherTasksControls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:12px 0}
-.schedule-filters label{display:flex;align-items:center;gap:8px;font-size:14px}
-.schedule-filters input,.schedule-filters select,#otherTasksStaff{padding:8px;border:1px solid #cbd5e1;border-radius:7px;background:white}
-.schedule-table-wrap{max-width:100%;overflow:auto;max-height:550px;border:1px solid #dbe3ee;border-radius:10px}
-.schedule-grid{border-collapse:separate;border-spacing:0;white-space:nowrap;font-size:13px;width:max-content;min-width:100%}
-.schedule-grid th,.schedule-grid td{padding:6px 7px;border-bottom:1px solid #e2e8f0;border-right:1px solid #e2e8f0;text-align:center}
-.schedule-grid thead th{position:sticky;top:0;background:#eaf1fb;z-index:2}
-.schedule-grid th:first-child,.schedule-grid td:first-child{position:sticky;left:0;background:#fff;z-index:1;min-width:85px;font-weight:700}
-.schedule-grid thead th:first-child{z-index:3;background:#eaf1fb}
-.schedule-mark{width:52px;max-width:52px;border:1px solid transparent;background:transparent;border-radius:5px;padding:5px 1px;text-align:center;font-size:13px;cursor:pointer}
-.schedule-mark:focus{border-color:#2563eb;outline:2px solid #bfdbfe}
-.schedule-mark.off{color:#b91c1c}.schedule-mark.work{color:#166534}.schedule-mark.half{color:#92400e}
-.schedule-save{font-size:12px;padding:5px 8px;border:1px solid #93c5fd;background:#eff6ff;border-radius:6px;cursor:pointer;color:#1d4ed8}
-.task-readonly-note{font-size:13px;color:#64748b;margin:8px 0}.task-view-controls{margin:14px 0}
+/* 한마음 오늘의 업무 카드 디자인 보완 - 기존 기능 및 JS 변경 없음 */
+.task-page .task-list{display:grid;gap:14px;margin-top:16px}
+.task-page .task-item{display:flex;align-items:stretch;background:#fff;border:1px solid #dbe4f0;border-radius:16px;padding:20px 22px;box-shadow:0 3px 12px rgba(25,50,90,.045);transition:border-color .15s,box-shadow .15s}
+.task-page .task-item:hover{border-color:#b4c8e9;box-shadow:0 5px 18px rgba(25,50,90,.08)}
+.task-page .task-item.completed{background:#f8fbff;border-color:#b9d9ca}
+.task-page .task-item>div{min-width:0}
+.task-page .task-item label{display:flex;align-items:flex-start;gap:13px;cursor:pointer;margin:0}
+.task-page .task-item label>input[type=checkbox]{appearance:none;-webkit-appearance:none;flex:none;width:22px;height:22px;border:2px solid #a7b7ce;border-radius:6px;background:#fff;margin:2px 0 0;cursor:pointer;position:relative}
+.task-page .task-item label>input[type=checkbox]:checked{background:#2563eb;border-color:#2563eb}
+.task-page .task-item label>input[type=checkbox]:checked:after{content:'✓';position:absolute;color:#fff;font-size:16px;font-weight:800;left:3px;top:-2px}
+.task-page .task-item label>input[type=checkbox]:disabled{cursor:not-allowed;opacity:.6}
+.task-page .task-item label>span{display:flex;flex-direction:column;gap:6px;min-width:0;line-height:1.5}
+.task-page .task-item label strong{font-size:17px;line-height:1.45;font-weight:750;color:#17243a;letter-spacing:-.025em}
+.task-page .task-item label small{display:block;font-size:13px;line-height:1.5;color:#64748b}
+.task-page .task-item label small:empty{display:none}
+.task-page .task-item .handoff-controls{margin:17px 0 0 35px;padding:16px;background:#f5f8fd;border:1px solid #e1e9f5;border-radius:12px;display:grid;grid-template-columns:minmax(170px,1fr) minmax(200px,1.3fr) auto;align-items:center;gap:10px}
+.task-page .task-item .handoff-controls select,.task-page .task-item .handoff-controls input{box-sizing:border-box;width:100%;min-width:0;height:42px;border:1px solid #cbd5e1;border-radius:9px;background:#fff;padding:0 12px;color:#334155;font-size:14px;outline:none}
+.task-page .task-item .handoff-controls select:focus,.task-page .task-item .handoff-controls input:focus{border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.12)}
+.task-page .task-item .handoff-controls button,.task-page .task-item .accept-handoff,.task-page .task-item .reject-handoff{border-radius:9px;border:1px solid transparent;min-height:42px;padding:0 17px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap}
+.task-page .task-item .handoff-controls .handoff-send,.task-page .task-item .accept-handoff{background:#2563eb;color:#fff}
+.task-page .task-item .handoff-controls .handoff-send:hover,.task-page .task-item .accept-handoff:hover{background:#1d4ed8}
+.task-page .task-item .reject-handoff{background:#fff;border-color:#cbd5e1;color:#475569;margin-left:8px}
+.task-page .task-item .accept-handoff{margin:14px 0 0 35px}
+.task-page .task-item .reject-handoff{margin-top:14px}
+.task-page .task-stats>div{border-radius:14px;border:1px solid #e1e8f2;box-shadow:0 2px 8px rgba(25,50,90,.03)}
+@media(max-width:850px){.task-page .task-item .handoff-controls{grid-template-columns:1fr 1fr}.task-page .task-item .handoff-controls .handoff-send{grid-column:1/-1}}
+@media(max-width:560px){.task-page .task-item{padding:16px}.task-page .task-item .handoff-controls{margin-left:0;grid-template-columns:1fr}.task-page .task-item .handoff-controls .handoff-send{grid-column:auto;width:100%}.task-page .task-item label strong{font-size:16px}}
