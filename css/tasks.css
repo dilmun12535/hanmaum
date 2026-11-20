@@ -120,3 +120,8 @@
 .task-manual-view p{white-space:pre-wrap;overflow-wrap:anywhere;margin:0 0 6px;line-height:1.65}
 .task-manual-view .manual-close{justify-self:end}
 .task-manual-edit{cursor:pointer}
+
+/* 업무별 매뉴얼 바로가기 */
+.planner-manual-button{white-space:nowrap;flex-shrink:0;background:#fff;color:#1d4ed8;border:1px solid #bfdbfe;border-radius:7px;padding:7px 10px;font-weight:700;cursor:pointer}
+.planner-manual-button:hover{background:#eff6ff;border-color:#60a5fa}
+@media(max-width:720px){.planner-manual-button{padding:6px 8px;font-size:12px}}
