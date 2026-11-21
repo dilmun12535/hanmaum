@@ -143,3 +143,124 @@
 .rich-editor h3,.rich-manual-view h3{font-size:17px;margin:14px 0 7px}
 .rich-manual-view{line-height:1.75;overflow-wrap:anywhere}
 .rich-manual-view ul,.rich-manual-view ol,.rich-editor ul,.rich-editor ol{padding-left:26px}
+
+/* =============================================================
+   2026-11-21 관리자 업무 배정 화면 가독성 개선
+   - 업무명 세로 줄바꿈 방지 / 작업 버튼 별도 줄 / 내부 스크롤 제거
+   - 기존 드래그, 배정, 매뉴얼, 삭제 기능에 영향을 주지 않는 CSS 수정
+   ============================================================= */
+@media (min-width: 1051px){
+  .task-page:has(.task-board){max-width:1500px;width:100%;box-sizing:border-box}
+  .task-board{grid-template-columns:minmax(0, 42fr) minmax(0, 58fr);gap:20px}
+}
+.task-board{align-items:start}
+.task-board .task-card{min-width:0;box-sizing:border-box}
+.task-board .task-bank,.task-board .task-people{
+  max-height:none !important;
+  height:auto !important;
+  overflow:visible !important;
+}
+.task-board .task-bank .task-list,
+.task-board .task-bank .task-template-list{gap:12px}
+.task-board .task-template{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:flex-start;
+  gap:10px 12px;
+  min-width:0;
+  padding:16px;
+  box-sizing:border-box;
+}
+.task-board .task-template-info{
+  flex:1 1 100%;
+  width:100%;
+  min-width:0;
+  max-width:100%;
+}
+.task-board .task-template strong,
+.task-board .task-template-info strong{
+  display:block;
+  width:100%;
+  font-size:16px;
+  font-weight:750;
+  line-height:1.5;
+  letter-spacing:-.02em;
+  white-space:normal;
+  word-break:keep-all;
+  overflow-wrap:break-word;
+}
+.task-board .task-template .task-meta,
+.task-board .task-template-info .task-meta{
+  margin-top:6px;
+  font-size:12px;
+  line-height:1.55;
+  word-break:keep-all;
+  overflow-wrap:break-word;
+}
+.task-board .task-template-actions{
+  display:flex;
+  flex:1 1 100%;
+  width:100%;
+  min-width:0;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px;
+  margin-top:2px;
+  padding-top:10px;
+  border-top:1px solid #e5edf7;
+}
+.task-board .task-role-label{white-space:normal;min-width:0;gap:7px}
+.task-board .task-role-select{
+  min-width:100px;
+  max-width:none;
+  width:auto;
+  min-height:36px;
+  padding:7px 10px;
+  font-size:13px;
+}
+.task-board .task-template-actions button,
+.task-board .task-template-actions .task-delete{
+  min-height:36px;
+  padding:7px 11px;
+  border-radius:8px;
+  font-size:13px;
+  font-weight:600;
+  white-space:nowrap;
+}
+.task-board .task-assignees{gap:7px;margin-top:10px}
+.task-board .task-assignee-chip{font-size:12px;padding:4px 9px}
+.task-board .staff-board{gap:14px}
+.task-board .staff-drop{
+  min-width:0;
+  padding:16px;
+  border-radius:13px;
+  box-sizing:border-box;
+}
+.task-board .staff-drop h3{
+  font-size:16px;
+  line-height:1.5;
+  word-break:keep-all;
+  overflow-wrap:break-word;
+}
+.task-board .staff-assignment{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  gap:8px 12px;
+  min-width:0;
+  padding:11px 12px;
+  border-radius:9px;
+  line-height:1.5;
+  word-break:keep-all;
+  overflow-wrap:break-word;
+}
+.task-board .staff-assignment button{margin-left:auto;white-space:nowrap}
+@media (max-width:1050px){
+  .task-board{grid-template-columns:1fr;gap:16px}
+}
+@media (max-width:600px){
+  .task-board .task-template{padding:13px}
+  .task-board .task-template-actions{gap:7px}
+  .task-board .staff-drop{padding:12px}
+  .task-board .staff-assignment{padding:10px}
+}
