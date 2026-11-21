@@ -21,10 +21,11 @@ const remove=async(name,kind)=>{
 };
 onAuthStateChanged(auth,async user=>{
  if(unsubscribe){unsubscribe();unsubscribe=null;}if(mappingUnsubscribe){mappingUnsubscribe();mappingUnsubscribe=null;}
- if(!user)return;
+ if(!user){window.location.href="../index.html";return;}
  try{
   const snap=await getDoc(doc(db,'users',user.uid));
   admin=snap.exists()&&snap.data().role==='admin';
+  window.benefitWizardSetUser?.(user.uid);
   window.benefitPhraseReady?.({admin,templates:current,set,remove});
   unsubscribe=onSnapshot(ref,s=>{current=s.exists()?(s.data().phrases||{}):{};window.benefitPhraseChanged?.(current)},showError);
   mappingUnsubscribe=onSnapshot(mappingRef,s=>window.benefitMappingsChanged?.(s.exists()?s.data().entries||[]:[]),showError);
