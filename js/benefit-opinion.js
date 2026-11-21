@@ -2,7 +2,7 @@
 const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const norm=s=>String(s||'').normalize('NFKC').replace(/[\s·ㆍ.,()\-]/g,'').toLowerCase();
 const catalog=window.BENEFIT_CATALOG||[];
-let drafts={},draftId='',step=0,mappings=[],templates={},frequencyDefaults={},admin=false,saveTimer;
+let drafts={},draftId='',step=0,mappings=[],templates={},frequencyDefaults={},frequencyOrder=[],admin=false,saveTimer;
 const empty=()=>({title:'새 계획서',recommended:[],extra:[],provided:[],frequencies:{},goals:{},decisions:{},commonReason:'',diseases:'',opinion:'',fileName:''});
 const current=()=>drafts[draftId];const all=()=>[...catalog,...(current()?.extra||[])];
 const storageKey=()=> 'hanmaum-benefit-wizard-local-v2';
@@ -29,7 +29,7 @@ function parseFrequency(raw){const t=String(raw||'').replace(/\s/g,'');if(t==='�
 const m=t.match(/^(일|주|월)\s*(\d+)(?:회)?$/);return m?{cycle:m[1],count:m[2]}:{cycle:'일',count:'1'};}
 function frequencyRender(){
  const d=current(), container=$('frequencyItems');
- const rows=d.provided.map((x,i)=>{
+ const rows=[...d.provided].sort((a,b)=>{const ai=frequencyOrder.indexOf(a.name),bi=frequencyOrder.indexOf(b.name);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi)}).map((x,i)=>{
   const v=d.frequencies[x.name]||{},def=frequencyDefaults[encodeURIComponent(x.name)]||{};
   const original=parseFrequency(x.frequency);
   const cycle=v.cycle??def.cycle??original.cycle;
@@ -78,7 +78,7 @@ $('planFile').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;
 $('draftTitle').oninput=e=>{current().title=e.target.value;const opt=$('draftPicker').selectedOptions[0];if(opt)opt.textContent=e.target.value||'새 계획서';scheduleSave()};$('draftPicker').onchange=e=>{draftId=e.target.value;step=0;render();persist()};$('newDraft').onclick=()=>makeDraft();$('deleteDraft').onclick=()=>{if(!confirm('현재 계획서의 임시 작성 내용을 삭제할까요?'))return;delete drafts[draftId];draftId=Object.keys(drafts)[0]||'';if(!draftId)makeDraft();else{step=0;render();persist()}};
 document.querySelectorAll('[data-step]').forEach(b=>b.onclick=()=>{step=Number(b.dataset.step);stepRender();if(step===4)diffRender()});$('prevStep').onclick=()=>{if(step>0){step--;stepRender()}};$('nextStep').onclick=()=>{if(step<4){step++;stepRender()}else alert('작성한 종합의견을 복사해 사용하세요.')};
 $('diseases').oninput=e=>{current().diseases=e.target.value;scheduleSave()};$('commonReason').oninput=e=>{current().commonReason=e.target.value;scheduleSave()};$('opinion').oninput=e=>{current().opinion=e.target.value;scheduleSave()};$('generate').onclick=generate;$('copyOpinion').onclick=async()=>{if(!current().opinion.trim())return alert('종합의견을 먼저 작성하세요.');try{await navigator.clipboard.writeText(current().opinion);alert('복사했습니다.')}catch{$('opinion').select();document.execCommand('copy')}};
-window.benefitPhraseReady=({admin:yes,templates:items})=>{admin=!!yes;templates=items||{};$('benefitAdminLink').hidden=!admin};window.benefitPhraseChanged=x=>{templates=x||{}};window.benefitMappingsChanged=x=>{mappings=Array.isArray(x)?x:[];diffRender()};window.benefitFrequencyDefaultsChanged=x=>{frequencyDefaults=x&&typeof x==='object'?x:{};if(current())frequencyRender()};
+window.benefitPhraseReady=({admin:yes,templates:items})=>{admin=!!yes;templates=items||{};$('benefitAdminLink').hidden=!admin};window.benefitPhraseChanged=x=>{templates=x||{}};window.benefitMappingsChanged=x=>{mappings=Array.isArray(x)?x:[];diffRender()};window.benefitFrequencyDefaultsChanged=x=>{frequencyDefaults=x&&typeof x==='object'?x:{};if(current())frequencyRender()};window.benefitFrequencyOrderChanged=x=>{frequencyOrder=Array.isArray(x)?x:[];if(current())frequencyRender()};
 // 임시 계획서는 로그인과 관계없이 이 PC/브라우저의 localStorage에만 저장합니다.
 // 관리자 문구 및 급여 기본값은 기존 Firebase 연동을 그대로 사용합니다.
 window.benefitWizardSetUser=()=>{}; // 기존 Firebase 모듈과의 호환용: 임시 계획서를 다시 불러오지 않음

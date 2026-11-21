@@ -60,3 +60,15 @@
 }
 
 .benefit-disease-panel{margin:18px 0;padding:18px 20px;border:1px solid #c9d9f4;border-radius:12px;background:#f8fbff}.benefit-disease-panel label{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px;color:#142a4b}.benefit-disease-panel label span{font-size:12px;font-weight:400;color:#64748b}.benefit-disease-panel input{display:block;width:100%;box-sizing:border-box;min-height:44px;padding:10px 12px;border:1px solid #cbd5e1;border-radius:8px;background:white;font:inherit}.benefit-disease-panel p{margin:9px 0 0;color:#64748b;font-size:12px;line-height:1.6}.benefit-disease-panel code{color:#1d4ed8;background:#eaf1ff;padding:2px 5px;border-radius:4px}
+
+/* 센터 계획 급여: 클릭 가능한 검색형 드롭다운 */
+.benefit-combo{position:relative;display:block;width:100%;min-width:0}
+.benefit-combo #targetBenefit{display:block;width:100%;box-sizing:border-box;padding-right:46px}
+.benefit-combo-arrow{position:absolute;right:2px;top:2px;bottom:2px;min-width:40px!important;width:40px!important;height:auto!important;border:0!important;border-left:1px solid #e2e8f0!important;border-radius:0 7px 7px 0!important;background:#fff!important;color:#334155!important;cursor:pointer!important;font-size:20px!important;padding:0!important;z-index:2}
+.benefit-combo-arrow:hover{background:#eff6ff!important;color:#1d4ed8!important}
+.benefit-combo-options{position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:10000;max-height:260px;overflow-y:auto;overscroll-behavior:contain;background:white;border:1px solid #93b4e8;border-radius:9px;box-shadow:0 12px 30px rgba(15,23,42,.16);padding:5px}
+.benefit-combo-options[hidden]{display:none!important}
+.benefit-combo-option{display:block;width:100%;text-align:left;border:0;background:white;padding:10px 12px;border-radius:6px;color:#1e293b;cursor:pointer;font-size:14px;white-space:normal;overflow-wrap:anywhere}
+.benefit-combo-option:hover,.benefit-combo-option.active{background:#eff6ff;color:#1d4ed8}
+.benefit-combo-empty{padding:12px;color:#64748b;font-size:13px}
+#targetWrap{position:relative;z-index:5}

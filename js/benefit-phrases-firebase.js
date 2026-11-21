@@ -30,7 +30,7 @@ onAuthStateChanged(auth,async user=>{
   window.benefitWizardSetUser?.(user.uid);
   window.benefitPhraseReady?.({admin,templates:current,set,remove});
   unsubscribe=onSnapshot(ref,s=>{current=s.exists()?(s.data().phrases||{}):{};window.benefitPhraseChanged?.(current)},showError);
-  frequencyUnsubscribe=onSnapshot(frequencyRef,s=>window.benefitFrequencyDefaultsChanged?.(s.exists()?s.data().values||{}:{}),showError);
+  frequencyUnsubscribe=onSnapshot(frequencyRef,s=>(window.benefitFrequencyDefaultsChanged?.(s.exists()?s.data().values||{}:{}),window.benefitFrequencyOrderChanged?.(s.exists()?s.data().order||[]:[])),showError);
   mappingUnsubscribe=onSnapshot(mappingRef,s=>window.benefitMappingsChanged?.(s.exists()?s.data().entries||[]:[]),showError);
  }catch(e){showError(e)}
 });
