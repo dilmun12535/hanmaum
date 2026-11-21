@@ -23,6 +23,12 @@ export function cleanManualHtml(input) {
           child.removeAttribute('style');
           if (color) child.style.color = color;
           if (bg && ['TD','TH'].includes(child.tagName)) child.style.backgroundColor = bg;
+          if (['TD','TH'].includes(child.tagName)) {
+            for (const side of ['top','right','bottom','left']) {
+              const match = value.match(new RegExp('(?:^|;)\\s*border-' + side + '\\s*:\\s*(none|(?:0(?:\\.5)?|1|1\\.5|2|3|4)px\\s+(?:solid|dashed|dotted)\\s+(?:#[0-9a-f]{3,8}|rgb\\([\\d\\s,]+\\)))\\s*(?:;|$)', 'i'));
+              if (match) child.style.setProperty('border-' + side, match[1]);
+            }
+          }
           continue;
         }
         if (['TD','TH'].includes(child.tagName) && ['colspan','rowspan'].includes(name) && /^[1-9]\d?$/.test(value)) continue;
@@ -65,7 +71,14 @@ export function manualEditorMarkup(m) {
   .rich-table-tools .rich-menu-divider{height:1px;background:#e2e8f0;margin:3px 0}
   .rich-table-tools .rich-menu-bg{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;font-size:13px}
   .rich-table-tools .rich-menu-bg input{width:28px;height:27px;border:0;padding:0}
-  .rich-editor{min-height:280px}
+  .rich-border-pop{position:absolute;z-index:1010;top:calc(100% + 5px);left:180px;width:265px;max-width:calc(100vw - 40px);padding:13px;background:white;border:1px solid #cbd5e1;border-radius:11px;box-shadow:0 12px 30px #17255426}
+   .rich-border-pop[hidden]{display:none!important}
+   .rich-border-pop label{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:9px 0;font-size:13px;color:#334155}
+   .rich-border-pop select{max-width:none;width:150px}
+   .rich-border-pop .border-positions{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;margin-top:10px}
+   .rich-border-pop .border-positions button{font-size:12px;min-width:0;padding:7px 3px}
+   .rich-border-pop .border-positions button[data-border-position=all]{background:#eaf1ff;color:#1d4ed8}
+   .rich-editor{min-height:280px}
   </style>
   <div class="rich-toolbar" role="toolbar" aria-label="매뉴얼 편집 도구">
     <select data-format="block" aria-label="문단 형식"><option value="P">본문</option><option value="H2">큰 제목</option><option value="H3">소제목</option></select>
@@ -79,8 +92,20 @@ export function manualEditorMarkup(m) {
     <button type="button" data-cmd="insertOrderedList" title="번호 목록" aria-label="번호 목록">1.</button>
     <span class="rich-sep"></span>
     <button type="button" data-table title="표 삽입" aria-expanded="false">▦ <span style="font-size:12px">표 ▾</span></button>
+    <button type="button" data-border-toggle title="표 테두리 설정" aria-expanded="false">▤ <span style="font-size:12px">테두리 ▾</span></button>
     <button type="button" data-link title="링크 삽입" aria-label="링크 삽입">🔗</button>
     <button type="button" data-cmd="removeFormat" title="서식 지우기" aria-label="서식 지우기">⌫</button>
+    <div class="rich-border-pop" data-border-pop hidden>
+      <strong style="font-size:13px">표 테두리</strong>
+      <p style="margin:6px 0 10px;font-size:12px;color:#64748b">표 안의 셀을 먼저 클릭하세요.</p>
+      <label>선 굵기 <select data-border-width><option value="0.5">0.5px</option><option value="1" selected>1px</option><option value="1.5">1.5px</option><option value="2">2px</option><option value="3">3px</option><option value="4">4px</option></select></label>
+      <label>선 모양 <select data-border-style><option value="solid">실선 ━━━</option><option value="dashed">파선 ┄┄┄</option><option value="dotted">점선 ·····</option></select></label>
+      <label>선 색상 <input type="color" data-border-color value="#94a3b8" aria-label="테두리 색상"></label>
+      <div class="border-positions">
+        <button type="button" data-border-position="all">전체</button><button type="button" data-border-position="outer">바깥쪽</button><button type="button" data-border-position="inner">안쪽</button>
+        <button type="button" data-border-position="top">위쪽</button><button type="button" data-border-position="bottom">아래쪽</button><button type="button" data-border-position="left">왼쪽</button><button type="button" data-border-position="right">오른쪽</button><button type="button" data-border-position="none">테두리 없음</button><button type="button" data-border-close>닫기</button>
+      </div>
+    </div>
     <div class="rich-table-pop" data-table-pop hidden><strong style="font-size:13px">표 삽입</strong><div class="rich-grid" data-table-grid role="group" aria-label="표 행과 열 선택"></div><div class="rich-grid-caption" data-grid-caption>마우스로 크기를 선택하세요</div></div>
   </div>
   <div class="rich-table-tools" data-table-tools hidden role="menu" aria-label="표 편집 메뉴">
@@ -98,7 +123,7 @@ export function manualEditorMarkup(m) {
     <button type="button" data-table-close>닫기</button>
   </div>
   <div class="rich-editor" contenteditable="true" role="textbox" aria-label="매뉴얼 본문" aria-multiline="true" data-rich-editor>${cleanManualHtml(m.html || legacyManualHtml(m))}</div>
-  <p class="rich-help">표를 삽입하려면 ▦ 표를 누르세요. 표 안에서 마우스 오른쪽 버튼을 누르면 행·열 편집 메뉴가 나타납니다.</p>`;
+  <p class="rich-help">표를 삽입하려면 ▦ 표를 누르세요. 표 안의 셀을 클릭한 뒤 상단의 테두리 메뉴에서 선 굵기·모양·색상을 설정하세요. 행·열 편집은 마우스 오른쪽 버튼을 사용하세요.</p>`;
 }
 
 export function wireManualEditor(modal) {
@@ -108,8 +133,10 @@ export function wireManualEditor(modal) {
   const pop = modal.querySelector('[data-table-pop]');
   const grid = modal.querySelector('[data-table-grid]');
   const caption = modal.querySelector('[data-grid-caption]');
+  const borderPop = modal.querySelector('[data-border-pop]');
   let range = null, activeCell = null;
   const showTools = (show, x, y) => { tools.hidden = !show; if (show) { const w = 270, h = 340; tools.style.left = Math.max(8, Math.min(x ?? 100, window.innerWidth - w - 8)) + 'px'; tools.style.top = Math.max(8, Math.min(y ?? 100, window.innerHeight - h - 8)) + 'px'; } };
+  const closeBorder = () => { borderPop.hidden = true; bar.querySelector('[data-border-toggle]').setAttribute('aria-expanded','false'); };
   const closePop = () => { pop.hidden = true; bar.querySelector('[data-table]').setAttribute('aria-expanded','false'); };
   const saveRange = () => {
     const sel = window.getSelection();
@@ -129,9 +156,42 @@ export function wireManualEditor(modal) {
   editor.addEventListener('mouseup', () => { saveRange(); selectCell(window.getSelection()?.anchorNode); });
   editor.addEventListener('click', e => { selectCell(e.target); saveRange(); });
   editor.addEventListener('focusin', e => selectCell(e.target));
-  editor.addEventListener('contextmenu', e => { const cell = e.target.closest?.('td,th'); if (!cell || !editor.contains(cell)) return; e.preventDefault(); activeCell = cell; saveRange(); closePop(); showTools(true, e.clientX, e.clientY); });
-  document.addEventListener('pointerdown', e => { if (!tools.contains(e.target)) showTools(false); if (!pop.contains(e.target) && !e.target.closest('[data-table]')) closePop(); });
+  editor.addEventListener('contextmenu', e => { const cell = e.target.closest?.('td,th'); if (!cell || !editor.contains(cell)) return; e.preventDefault(); activeCell = cell; saveRange(); closePop(); closeBorder(); showTools(true, e.clientX, e.clientY); });
+  document.addEventListener('pointerdown', e => { if (!tools.contains(e.target)) showTools(false); if (!pop.contains(e.target) && !e.target.closest('[data-table]')) closePop(); if (!borderPop.contains(e.target) && !e.target.closest('[data-border-toggle]')) closeBorder(); });
   tools.querySelector('[data-table-close]').onclick = () => { activeCell = null; showTools(false); };
+  // 테두리 설정은 선택한 셀을 기준으로 하며, 바깥/안쪽은 해당 표 전체에 적용합니다.
+  const borderButton = bar.querySelector('[data-border-toggle]');
+  borderButton.onclick = () => {
+    if (!borderPop.hidden) { closeBorder(); return; }
+    if (!activeCell || !editor.contains(activeCell)) { alert('표 안의 셀을 먼저 클릭하세요.'); return; }
+    closePop(); showTools(false); borderPop.hidden = false;
+    borderButton.setAttribute('aria-expanded','true');
+  };
+  borderPop.querySelector('[data-border-close]').onclick = closeBorder;
+  const borderFor = (cell, side, val) => cell.style.setProperty('border-' + side, val);
+  borderPop.querySelectorAll('[data-border-position]').forEach(button => button.onclick = () => {
+    if (!activeCell || !editor.contains(activeCell)) { closeBorder(); return alert('표 안의 셀을 먼저 클릭하세요.'); }
+    const table = activeCell.closest('table');
+    const rows = [...table.rows];
+    const rowIndex = rows.findIndex(r => [...r.cells].includes(activeCell));
+    const colIndex = [...activeCell.parentElement.cells].indexOf(activeCell);
+    const cells = [...table.querySelectorAll('td,th')];
+    const position = button.dataset.borderPosition;
+    const width = borderPop.querySelector('[data-border-width]').value;
+    const style = borderPop.querySelector('[data-border-style]').value;
+    const color = borderPop.querySelector('[data-border-color]').value;
+    const val = position === 'none' ? 'none' : `${width}px ${style} ${color}`;
+    const apply = (cell, sides) => sides.forEach(side => borderFor(cell, side, val));
+    const sides = ['top','right','bottom','left'];
+    if (position === 'all' || position === 'none') cells.forEach(c => apply(c,sides));
+    else if (position === 'outer' || position === 'inner') {
+      rows.forEach((r,ri) => [...r.cells].forEach((c,ci) => {
+        const edge = {top:ri===0,bottom:ri===rows.length-1,left:ci===0,right:ci===r.cells.length-1};
+        apply(c,sides.filter(side => position==='outer' ? edge[side] : !edge[side]));
+      }));
+    } else apply(activeCell,[position]);
+    closeBorder();
+  });
   const emptyCell = () => { const td = document.createElement('td'); td.appendChild(document.createElement('br')); return td; };
   const notifyCell = () => {
     if (!activeCell || !editor.contains(activeCell)) { showTools(false); alert('먼저 표 안의 셀을 클릭하세요.'); return false; }
