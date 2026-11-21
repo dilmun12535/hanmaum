@@ -73,6 +73,13 @@
 <div class="benefit-top"><div class="benefit-stat"><span>공단 권장</span><b id="leftCount">0</b></div><div class="benefit-stat"><span>센터 계획</span><b id="rightCount">0</b></div><div class="benefit-stat"><span>추가 후보</span><b id="addCount">0</b></div><div class="benefit-stat"><span>제외 후보</span><b id="removeCount">0</b></div></div>
 <div class="benefit-columns"><section class="benefit-panel"><div class="panel-head"><div><h2>① 공단 권장 급여</h2><p>개인별장기요양이용계획서에 기재된 항목을 직접 체크하세요.</p></div></div><div class="panel-tools"><input id="leftSearch" placeholder="급여명 검색" aria-label="권장 급여 검색"><button id="addCustom" class="secondary" type="button">+ 급여 추가</button></div><div class="panel-scroll" id="leftItems"></div></section>
 <section class="benefit-panel"><div class="panel-head"><div><h2>② 센터 계획 급여</h2><p>장기요양급여 제공계획서 엑셀을 업로드하면 자동으로 표시됩니다.</p></div></div><label class="file-label">엑셀 파일 선택 (.xlsx, .xls)<input id="planFile" type="file" accept=".xlsx,.xls"></label><p class="file-status" id="fileStatus">업로드된 파일이 없습니다.</p><div class="panel-tools"><input id="rightSearch" placeholder="급여명 검색" aria-label="센터 급여 검색"></div><div class="panel-scroll" id="rightItems"><p class="empty">계획서 파일을 업로드하세요.</p></div></section></div>
+<section class="benefit-panel phrase-admin" id="phraseAdmin" hidden>
+ <div class="panel-head"><div><h2>관리자 · 급여별 종합의견 문구 설정</h2><p>각 급여의 추가·제외·대체 문구를 별도로 등록합니다. 직원은 저장된 문구를 자동으로 사용합니다.</p></div></div>
+ <div class="phrase-fields"><label>급여 항목<select id="phraseBenefit"></select></label><label>변경 유형<select id="phraseAction"><option value="add">추가</option><option value="remove">제외</option><option value="replace">대체</option></select></label></div>
+ <label class="phrase-text-label">종합의견 문구<textarea id="phraseText" rows="4" placeholder="예: {급여명} 급여는 {사유}에 따라 추가하여 제공하고자 함."></textarea></label>
+ <p class="note">사용 가능한 변수: {급여명}, {대체급여}, {사유}. 저장된 문구가 없는 경우 기존 기본 문구를 사용합니다.</p>
+ <div class="result-actions"><button id="phraseSave" type="button">문구 저장</button><button id="phraseDelete" class="secondary" type="button">문구 삭제</button><span id="phraseStatus" role="status"></span></div>
+ </section>
 <section class="benefit-results"><div class="panel-head"><div><h2>③ 비교 결과</h2><p>항목이 다른 경우만 표시됩니다. 대체 여부는 직접 지정해야 합니다.</p></div></div><div id="diffItems"></div><div class="reason-global"><label>공통 변경 사유 (선택)<textarea id="commonReason" rows="2" placeholder="예: 수급자의 현재 신체기능 및 일상생활 수행 상태와 보호자의 욕구를 고려함."></textarea></label></div><div class="result-actions"><button id="generate" type="button">종합의견 생성</button><button id="copyOpinion" class="secondary" type="button">문구 복사</button></div><textarea id="opinion" rows="11" placeholder="비교 후 종합의견 생성 버튼을 누르세요."></textarea><p class="note">※ 비교 결과는 초안입니다. 실제 제공 여부, 공단 계획서 및 수급자·보호자 의사를 확인한 뒤 사용하세요. 파일은 브라우저에서만 분석하며 서버로 업로드하지 않습니다.</p></section>
 </div></main>
 </div>
@@ -80,5 +87,5 @@
 <script src="../js/main.js"></script>
 
 
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script src="../js/benefit-catalog.js"></script><script src="../js/benefit-opinion.js"></script></body>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script><script src="../js/benefit-catalog.js"></script><script src="../js/benefit-opinion.js"></script><script type="module" src="../js/benefit-phrases-firebase.js"></script></body>
 </html>
