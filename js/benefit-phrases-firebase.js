@@ -3,6 +3,8 @@ import {onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/12.19.0/fir
 import {doc,getDoc,onSnapshot,setDoc,updateDoc,deleteField,serverTimestamp} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
 const ref=doc(db,'portalSettings','benefitOpinionPhrases');
 const mappingRef=doc(db,'portalSettings','benefitOpinionMappings');
+const frequencyRef=doc(db,'portalSettings','benefitFrequencyDefaults');
+let frequencyUnsubscribe=null;
 let unsubscribe=null,mappingUnsubscribe=null,admin=false,current={};
 const showError=e=>{const el=document.getElementById('phraseStatus');if(el)el.textContent='문구 설정 불러오기 실패: '+e.message;};
 const set=async(name,kind,value)=>{
@@ -20,7 +22,7 @@ const remove=async(name,kind)=>{
  await updateDoc(ref,{[`phrases.${key}.${kind}`]:deleteField(),updatedAt:serverTimestamp()});
 };
 onAuthStateChanged(auth,async user=>{
- if(unsubscribe){unsubscribe();unsubscribe=null;}if(mappingUnsubscribe){mappingUnsubscribe();mappingUnsubscribe=null;}
+ if(unsubscribe){unsubscribe();unsubscribe=null;}if(frequencyUnsubscribe){frequencyUnsubscribe();frequencyUnsubscribe=null;}if(mappingUnsubscribe){mappingUnsubscribe();mappingUnsubscribe=null;}
  if(!user){window.location.href="../index.html";return;}
  try{
   const snap=await getDoc(doc(db,'users',user.uid));
@@ -28,6 +30,7 @@ onAuthStateChanged(auth,async user=>{
   window.benefitWizardSetUser?.(user.uid);
   window.benefitPhraseReady?.({admin,templates:current,set,remove});
   unsubscribe=onSnapshot(ref,s=>{current=s.exists()?(s.data().phrases||{}):{};window.benefitPhraseChanged?.(current)},showError);
+  frequencyUnsubscribe=onSnapshot(frequencyRef,s=>window.benefitFrequencyDefaultsChanged?.(s.exists()?s.data().values||{}:{}),showError);
   mappingUnsubscribe=onSnapshot(mappingRef,s=>window.benefitMappingsChanged?.(s.exists()?s.data().entries||[]:[]),showError);
  }catch(e){showError(e)}
 });
