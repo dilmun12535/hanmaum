@@ -50,7 +50,7 @@ if (document.readyState === 'loading') document.addEventListener('DOMContentLoad
 else setupTopbarUtilities();
 
 function clearLegacyLogin() {
-  sessionStorage.removeItem(LOGIN_AT_KEY);
+  sessionStorage.removeItem("hanmaum:loginAt");
   sessionStorage.removeItem("isLoggedIn");
   sessionStorage.removeItem("loginUser");
   sessionStorage.removeItem("loginPosition");
