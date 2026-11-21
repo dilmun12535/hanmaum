@@ -79,6 +79,9 @@ export function manualEditorMarkup(m) {
    .rich-border-pop .border-positions button{font-size:12px;min-width:0;padding:7px 3px}
    .rich-border-pop .border-positions button[data-border-position=all]{background:#eaf1ff;color:#1d4ed8}
    .rich-editor{min-height:280px}
+  .rich-editor td.rich-selected-cell,.rich-editor th.rich-selected-cell{background-color:#dbeafe!important;outline:2px solid #3b82f6;outline-offset:-2px}
+  .rich-select-menu{display:flex;gap:5px;flex-wrap:wrap;margin:6px 0 8px}
+  .rich-select-menu button{font-size:12px;min-width:0}
   </style>
   <div class="rich-toolbar" role="toolbar" aria-label="매뉴얼 편집 도구">
     <select data-format="block" aria-label="문단 형식"><option value="P">본문</option><option value="H2">큰 제목</option><option value="H3">소제목</option></select>
@@ -109,6 +112,9 @@ export function manualEditorMarkup(m) {
     <div class="rich-table-pop" data-table-pop hidden><strong style="font-size:13px">표 삽입</strong><div class="rich-grid" data-table-grid role="group" aria-label="표 행과 열 선택"></div><div class="rich-grid-caption" data-grid-caption>마우스로 크기를 선택하세요</div></div>
   </div>
   <div class="rich-table-tools" data-table-tools hidden role="menu" aria-label="표 편집 메뉴">
+    <div class="rich-menu-title">선택 범위</div>
+    <div class="rich-select-menu"><button type="button" data-select-cells="cell">셀</button><button type="button" data-select-cells="row">행 전체</button><button type="button" data-select-cells="column">열 전체</button><button type="button" data-select-cells="table">표 전체</button></div>
+    <div class="rich-menu-divider"></div>
     <div class="rich-menu-title">표 편집</div>
     <button type="button" data-table-action="row-above">＋ 위에 행 삽입</button>
     <button type="button" data-table-action="row-below">＋ 아래에 행 삽입</button>
@@ -134,7 +140,21 @@ export function wireManualEditor(modal) {
   const grid = modal.querySelector('[data-table-grid]');
   const caption = modal.querySelector('[data-grid-caption]');
   const borderPop = modal.querySelector('[data-border-pop]');
-  let range = null, activeCell = null;
+  let range = null, activeCell = null, selectedCells = [];
+  const clearCellSelection = () => { editor.querySelectorAll('.rich-selected-cell').forEach(c=>c.classList.remove('rich-selected-cell')); selectedCells=[]; };
+  const chooseCells = mode => {
+    if(!activeCell || !editor.contains(activeCell)) return alert('먼저 표 안의 셀을 클릭하세요.');
+    const table=activeCell.closest('table'), row=activeCell.closest('tr');
+    const index=[...row.cells].indexOf(activeCell);
+    clearCellSelection();
+    if(mode==='cell') selectedCells=[activeCell];
+    else if(mode==='row') selectedCells=[...row.cells];
+    else if(mode==='column') selectedCells=[...table.rows].map(r=>r.cells[index]).filter(Boolean);
+    else selectedCells=[...table.querySelectorAll('td,th')];
+    selectedCells.forEach(c=>c.classList.add('rich-selected-cell'));
+    showTools(false);
+  };
+  tools.querySelectorAll('[data-select-cells]').forEach(b=>b.addEventListener('click',()=>chooseCells(b.dataset.selectCells)));
   const showTools = (show, x, y) => { tools.hidden = !show; if (show) { const w = 270, h = 340; tools.style.left = Math.max(8, Math.min(x ?? 100, window.innerWidth - w - 8)) + 'px'; tools.style.top = Math.max(8, Math.min(y ?? 100, window.innerHeight - h - 8)) + 'px'; } };
   const closeBorder = () => { borderPop.hidden = true; bar.querySelector('[data-border-toggle]').setAttribute('aria-expanded','false'); };
   const closePop = () => { pop.hidden = true; bar.querySelector('[data-table]').setAttribute('aria-expanded','false'); };
@@ -149,7 +169,9 @@ export function wireManualEditor(modal) {
   const selectCell = node => {
     const el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
     const cell = el?.closest?.('td,th');
-    activeCell = cell && editor.contains(cell) ? cell : null;
+    const next = cell && editor.contains(cell) ? cell : null;
+    if (next && next !== activeCell && !selectedCells.includes(next)) clearCellSelection();
+    activeCell = next;
     if (!activeCell) showTools(false);
   };
   editor.addEventListener('keyup', () => { saveRange(); selectCell(window.getSelection()?.anchorNode); });
@@ -175,7 +197,7 @@ export function wireManualEditor(modal) {
     const rows = [...table.rows];
     const rowIndex = rows.findIndex(r => [...r.cells].includes(activeCell));
     const colIndex = [...activeCell.parentElement.cells].indexOf(activeCell);
-    const cells = [...table.querySelectorAll('td,th')];
+    const cells = selectedCells.length && selectedCells.every(c=>table.contains(c)) ? selectedCells : [...table.querySelectorAll('td,th')];
     const position = button.dataset.borderPosition;
     const width = borderPop.querySelector('[data-border-width]').value;
     const style = borderPop.querySelector('[data-border-style]').value;
@@ -189,8 +211,8 @@ export function wireManualEditor(modal) {
         const edge = {top:ri===0,bottom:ri===rows.length-1,left:ci===0,right:ci===r.cells.length-1};
         apply(c,sides.filter(side => position==='outer' ? edge[side] : !edge[side]));
       }));
-    } else apply(activeCell,[position]);
-    closeBorder();
+    } else cells.forEach(c=>apply(c,[position]));
+    clearCellSelection(); closeBorder();
   });
   const emptyCell = () => { const td = document.createElement('td'); td.appendChild(document.createElement('br')); return td; };
   const notifyCell = () => {
@@ -231,7 +253,7 @@ export function wireManualEditor(modal) {
   };
   tools.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
   tools.querySelectorAll('[data-table-action]').forEach(b => b.onclick = () => tableAction(b.dataset.tableAction));
-  tools.querySelector('[data-cell-bg]').addEventListener('input', e => { if (notifyCell()) activeCell.style.backgroundColor = e.target.value; });
+  tools.querySelector('[data-cell-bg]').addEventListener('input', e => { if (notifyCell()) (selectedCells.length?selectedCells:[activeCell]).forEach(c=>c.style.backgroundColor=e.target.value); });
   bar.addEventListener('mousedown', e => { if (e.target.closest('button')) e.preventDefault(); });
   bar.querySelectorAll('[data-cmd]').forEach(b => b.onclick = () => { restore(); document.execCommand(b.dataset.cmd, false, null); saveRange(); });
   bar.querySelector('[data-format]').onchange = e => { restore(); document.execCommand('formatBlock', false, e.target.value); saveRange(); };
@@ -253,5 +275,5 @@ export function wireManualEditor(modal) {
     restore(); document.execCommand('createLink', false, url); saveRange();
   };
   editor.addEventListener('paste', e => { e.preventDefault(); document.execCommand('insertText', false, e.clipboardData.getData('text/plain')); });
-  return () => cleanManualHtml(editor.innerHTML);
+  return () => { clearCellSelection(); return cleanManualHtml(editor.innerHTML); };
 }
