@@ -27,3 +27,34 @@
 .frequency-plan-table select,.frequency-plan-table input{width:100%;min-width:0;box-sizing:border-box;min-height:34px;padding:5px 6px;border:1px solid #cbd5e1;border-radius:4px;background:white;font:inherit;text-align:center}
 .frequency-plan-table select:focus,.frequency-plan-table input:focus{outline:2px solid #2563eb;outline-offset:0}
 .frequency-note{margin:10px 2px 0;color:#64748b;font-size:12px}
+
+
+/* 관리자 급여 기본값 표: 읽기 편한 정렬 및 간격 */
+#frequencyDefaultsSection{padding:26px!important}
+#frequencyDefaultsSection .panel-head{margin-bottom:18px}
+#frequencyDefaultsSection .panel-tools{display:grid;grid-template-columns:minmax(0,1fr) 126px;gap:12px;align-items:stretch}
+#frequencyDefaultsSection #frequencySearch{height:44px;min-width:0;border:1px solid #cbd5e1;border-radius:9px;padding:0 14px;font-size:14px}
+#frequencyDefaultsSection #addFrequencyRow{min-width:0;white-space:normal;line-height:1.3;padding:8px 12px}
+#frequencyDefaultsSection .admin-frequency-table{width:100%;table-layout:fixed;border-collapse:separate;border-spacing:0;margin:10px 0 16px;border:1px solid #dbe4f2;border-radius:12px;overflow:hidden}
+#frequencyDefaultsSection .admin-frequency-table th{background:#f1f5fb;color:#334155;font-size:13px;font-weight:750;text-align:center;padding:14px 10px;border-bottom:1px solid #dbe4f2}
+#frequencyDefaultsSection .admin-frequency-table td{padding:8px 10px;border-bottom:1px solid #e8eef7;text-align:center;vertical-align:middle}
+#frequencyDefaultsSection .admin-frequency-table tbody tr:last-child td{border-bottom:0}
+#frequencyDefaultsSection .admin-frequency-table tbody tr:nth-child(even){background:#f9fbff}
+#frequencyDefaultsSection .admin-frequency-table tbody tr:hover{background:#eff6ff}
+#frequencyDefaultsSection .admin-frequency-table th:nth-child(1){width:46%}
+#frequencyDefaultsSection .admin-frequency-table th:nth-child(2){width:14%}
+#frequencyDefaultsSection .admin-frequency-table th:nth-child(3){width:14%}
+#frequencyDefaultsSection .admin-frequency-table th:nth-child(4){width:16%}
+#frequencyDefaultsSection .admin-frequency-table th:nth-child(5){width:10%}
+#frequencyDefaultsSection .admin-frequency-table input,
+#frequencyDefaultsSection .admin-frequency-table select{display:block;width:100%;height:40px;min-width:0;box-sizing:border-box;margin:0;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-size:14px;line-height:1.4}
+#frequencyDefaultsSection .admin-frequency-table .freq-name{text-align:left;font-weight:600}
+#frequencyDefaultsSection .admin-frequency-table .freq-count,
+#frequencyDefaultsSection .admin-frequency-table .freq-minutes{text-align:center;font-variant-numeric:tabular-nums}
+#frequencyDefaultsSection .admin-frequency-table .freq-remove{padding:8px 10px;min-height:38px;width:auto;white-space:nowrap;border:1px solid #fecaca;background:#fff5f5;color:#b91c1c}
+#frequencyDefaultsSection .result-actions{align-items:center;gap:14px;flex-wrap:wrap}
+@media(max-width:750px){
+ #frequencyDefaultsSection{padding:15px!important}
+ #frequencyDefaultsSection .admin-frequency-table{min-width:680px}
+ #frequencyDefaultsSection .panel-tools{grid-template-columns:minmax(0,1fr) 110px}
+}
