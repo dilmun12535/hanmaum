@@ -264,3 +264,45 @@
   .task-board .staff-drop{padding:12px}
   .task-board .staff-assignment{padding:10px}
 }
+
+
+/* 업무 매뉴얼 팝업: 사이트 공통 CSS의 dialog 위치 지정값보다 우선 적용 */
+dialog.task-manual-dialog,
+#taskManualViewer.task-manual-dialog,
+#taskManualEditor.task-manual-dialog {
+  position: fixed !important;
+  inset: 0 !important;
+  top: 50% !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: auto !important;
+  transform: translate(-50%, -50%) !important;
+  margin: 0 !important;
+  box-sizing: border-box !important;
+  width: min(900px, calc(100vw - 40px)) !important;
+  max-width: calc(100vw - 40px) !important;
+  max-height: min(85dvh, 900px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  padding: 26px !important;
+  border: 1px solid #dbe5f3 !important;
+  border-radius: 18px !important;
+  background: #fff !important;
+  box-shadow: 0 24px 80px rgba(15,23,42,.26) !important;
+  z-index: 99999 !important;
+}
+dialog.task-manual-dialog:not([open]) { display: none !important; }
+dialog.task-manual-dialog::backdrop { background: rgba(15,23,42,.54) !important; }
+#taskManualViewer .task-manual-view { min-width: 0; }
+#taskManualViewer .rich-manual-view { overflow-wrap: anywhere; }
+#taskManualViewer .rich-manual-view table { max-width: 100%; }
+@media (max-width: 600px) {
+  dialog.task-manual-dialog,
+  #taskManualViewer.task-manual-dialog,
+  #taskManualEditor.task-manual-dialog {
+    width: calc(100vw - 24px) !important;
+    max-width: calc(100vw - 24px) !important;
+    max-height: 88dvh !important;
+    padding: 18px !important;
+  }
+}
