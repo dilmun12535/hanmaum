@@ -44,40 +44,73 @@ export function legacyManualHtml(m) {
 }
 
 export function manualEditorMarkup(m) {
-  return `<div class="rich-toolbar" role="toolbar" aria-label="매뉴얼 편집 도구" style="display:flex;flex-wrap:wrap;align-items:center;gap:5px">
+  const ico = (name,body) => `<button type="button" title="${name}" aria-label="${name}">${body}</button>`;
+  return `<style>
+  .rich-toolbar{display:flex!important;align-items:center;flex-wrap:wrap;gap:5px;padding:9px!important;background:#f5f8fd;border:1px solid #d9e4f4;border-radius:11px;position:relative}
+  .rich-toolbar button,.rich-table-tools button{font:inherit;min-width:34px;min-height:34px;padding:6px 9px;border:1px solid #d2ddec;background:white;border-radius:7px;color:#243653;cursor:pointer}
+  .rich-toolbar button:hover,.rich-table-tools button:hover{background:#e9f1ff;border-color:#9bbaf6}
+  .rich-toolbar select{height:35px;border:1px solid #d2ddec;border-radius:7px;background:white;padding:0 7px;max-width:98px}
+  .rich-toolbar .rich-sep{width:1px;height:23px;background:#d6e1ef;margin:0 2px}
+  .rich-toolbar .rich-color{display:flex;align-items:center;gap:3px;border:1px solid #d2ddec;border-radius:7px;background:#fff;padding:4px 7px;height:35px;box-sizing:border-box}
+  .rich-toolbar input[type=color]{width:22px;height:23px;padding:0;border:0;background:transparent;cursor:pointer}
+  .rich-table-pop{position:absolute;z-index:1000;top:calc(100% + 5px);left:0;max-width:calc(100vw - 48px);width:274px;padding:12px;border:1px solid #cbd5e1;border-radius:10px;background:white;box-shadow:0 12px 30px #17255426}
+  .rich-table-pop[hidden],.rich-table-tools[hidden]{display:none!important}
+  .rich-grid{display:grid;grid-template-columns:repeat(10,19px);gap:3px;margin:10px 0;user-select:none}
+  .rich-grid button{width:19px;height:19px;min-width:19px;min-height:19px;padding:0;border:1px solid #cbd5e1;border-radius:2px;background:#fff}
+  .rich-grid button.selected{background:#bfdbfe;border-color:#2563eb}
+  .rich-grid-caption{text-align:center;font-size:13px;color:#334155}
+  .rich-table-tools{position:fixed!important;z-index:1100;max-width:270px;min-width:215px;padding:7px!important;background:#fff!important;border:1px solid #cbd5e1!important;border-radius:10px!important;box-shadow:0 12px 35px #0f172a2b;display:flex;flex-direction:column;align-items:stretch!important;gap:2px!important}
+  .rich-table-tools button{width:100%;text-align:left;border:0;background:transparent;min-height:32px;padding:7px 10px}
+  .rich-table-tools .rich-menu-title{padding:5px 9px;font-size:12px;font-weight:700;color:#64748b}
+  .rich-table-tools .rich-menu-divider{height:1px;background:#e2e8f0;margin:3px 0}
+  .rich-table-tools .rich-menu-bg{display:flex;align-items:center;justify-content:space-between;padding:5px 10px;font-size:13px}
+  .rich-table-tools .rich-menu-bg input{width:28px;height:27px;border:0;padding:0}
+  .rich-editor{min-height:280px}
+  </style>
+  <div class="rich-toolbar" role="toolbar" aria-label="매뉴얼 편집 도구">
     <select data-format="block" aria-label="문단 형식"><option value="P">본문</option><option value="H2">큰 제목</option><option value="H3">소제목</option></select>
-    <button type="button" data-cmd="bold" title="굵게" aria-label="굵게"><b>가</b></button>
-    <button type="button" data-cmd="italic" title="기울임" aria-label="기울임"><i>가</i></button>
-    <button type="button" data-cmd="underline" title="밑줄" aria-label="밑줄"><u>가</u></button>
-    <label title="글자색" aria-label="글자색" style="display:inline-flex;align-items:center;gap:3px;font-size:12px">색 <input type="color" data-color value="#1f2937" aria-label="글자색" style="width:26px;height:26px;padding:1px"></label>
+    <span class="rich-sep"></span>
+    <button type="button" data-cmd="bold" title="굵게 (Ctrl+B)" aria-label="굵게"><b>B</b></button>
+    <button type="button" data-cmd="italic" title="기울임 (Ctrl+I)" aria-label="기울임"><i>I</i></button>
+    <button type="button" data-cmd="underline" title="밑줄 (Ctrl+U)" aria-label="밑줄"><u>U</u></button>
+    <label class="rich-color" title="글자색">A <input type="color" data-color value="#1f2937" aria-label="글자색"></label>
+    <span class="rich-sep"></span>
     <button type="button" data-cmd="insertUnorderedList" title="글머리표" aria-label="글머리표">☷</button>
     <button type="button" data-cmd="insertOrderedList" title="번호 목록" aria-label="번호 목록">1.</button>
-    <button type="button" data-table title="표 삽입">▦ 표</button>
-    <button type="button" data-link title="링크 삽입">🔗</button>
-    <button type="button" data-cmd="removeFormat" title="서식 지우기" aria-label="서식 지우기">지우기</button>
+    <span class="rich-sep"></span>
+    <button type="button" data-table title="표 삽입" aria-expanded="false">▦ <span style="font-size:12px">표 ▾</span></button>
+    <button type="button" data-link title="링크 삽입" aria-label="링크 삽입">🔗</button>
+    <button type="button" data-cmd="removeFormat" title="서식 지우기" aria-label="서식 지우기">⌫</button>
+    <div class="rich-table-pop" data-table-pop hidden><strong style="font-size:13px">표 삽입</strong><div class="rich-grid" data-table-grid role="group" aria-label="표 행과 열 선택"></div><div class="rich-grid-caption" data-grid-caption>마우스로 크기를 선택하세요</div></div>
   </div>
-  <div class="rich-table-tools" data-table-tools hidden style="margin:8px 0;padding:9px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:9px;display:none;flex-wrap:wrap;gap:5px;align-items:center">
-    <strong style="font-size:12px;margin-right:4px;color:#1e40af">표 편집</strong>
-    <button type="button" data-table-action="row-above">위에 행 +</button>
-    <button type="button" data-table-action="row-below">아래에 행 +</button>
-    <button type="button" data-table-action="row-delete">행 삭제</button>
-    <button type="button" data-table-action="col-left">왼쪽 열 +</button>
-    <button type="button" data-table-action="col-right">오른쪽 열 +</button>
-    <button type="button" data-table-action="col-delete">열 삭제</button>
-    <label style="display:inline-flex;align-items:center;gap:3px;font-size:12px">셀 배경 <input type="color" data-cell-bg value="#fff2cc" aria-label="선택한 셀 배경색" style="width:28px;height:27px;padding:1px"></label>
-    <button type="button" data-table-action="table-delete">표 삭제</button>
-    <button type="button" data-table-close aria-label="표 도구 닫기" title="표 도구 닫기">×</button>
+  <div class="rich-table-tools" data-table-tools hidden role="menu" aria-label="표 편집 메뉴">
+    <div class="rich-menu-title">표 편집</div>
+    <button type="button" data-table-action="row-above">＋ 위에 행 삽입</button>
+    <button type="button" data-table-action="row-below">＋ 아래에 행 삽입</button>
+    <button type="button" data-table-action="col-left">＋ 왼쪽에 열 삽입</button>
+    <button type="button" data-table-action="col-right">＋ 오른쪽에 열 삽입</button>
+    <div class="rich-menu-divider"></div>
+    <button type="button" data-table-action="row-delete">－ 행 삭제</button>
+    <button type="button" data-table-action="col-delete">－ 열 삭제</button>
+    <label class="rich-menu-bg">셀 배경색 <input type="color" data-cell-bg value="#fff2cc" aria-label="셀 배경색"></label>
+    <div class="rich-menu-divider"></div>
+    <button type="button" data-table-action="table-delete" style="color:#b91c1c">표 전체 삭제</button>
+    <button type="button" data-table-close>닫기</button>
   </div>
   <div class="rich-editor" contenteditable="true" role="textbox" aria-label="매뉴얼 본문" aria-multiline="true" data-rich-editor>${cleanManualHtml(m.html || legacyManualHtml(m))}</div>
-  <p class="rich-help">표의 셀을 클릭하면 행·열 편집 메뉴가 나타납니다. 일반 글을 클릭하면 자동으로 숨겨집니다.</p>`;
+  <p class="rich-help">표를 삽입하려면 ▦ 표를 누르세요. 표 안에서 마우스 오른쪽 버튼을 누르면 행·열 편집 메뉴가 나타납니다.</p>`;
 }
 
 export function wireManualEditor(modal) {
   const editor = modal.querySelector('[data-rich-editor]');
   const bar = modal.querySelector('.rich-toolbar');
   const tools = modal.querySelector('[data-table-tools]');
+  const pop = modal.querySelector('[data-table-pop]');
+  const grid = modal.querySelector('[data-table-grid]');
+  const caption = modal.querySelector('[data-grid-caption]');
   let range = null, activeCell = null;
-  const showTools = show => { tools.hidden = !show; tools.style.display = show ? 'flex' : 'none'; };
+  const showTools = (show, x, y) => { tools.hidden = !show; if (show) { const w = 270, h = 340; tools.style.left = Math.max(8, Math.min(x ?? 100, window.innerWidth - w - 8)) + 'px'; tools.style.top = Math.max(8, Math.min(y ?? 100, window.innerHeight - h - 8)) + 'px'; } };
+  const closePop = () => { pop.hidden = true; bar.querySelector('[data-table]').setAttribute('aria-expanded','false'); };
   const saveRange = () => {
     const sel = window.getSelection();
     if (sel.rangeCount && editor.contains(sel.anchorNode)) range = sel.getRangeAt(0).cloneRange();
@@ -90,12 +123,14 @@ export function wireManualEditor(modal) {
     const el = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
     const cell = el?.closest?.('td,th');
     activeCell = cell && editor.contains(cell) ? cell : null;
-    showTools(Boolean(activeCell));
+    if (!activeCell) showTools(false);
   };
   editor.addEventListener('keyup', () => { saveRange(); selectCell(window.getSelection()?.anchorNode); });
   editor.addEventListener('mouseup', () => { saveRange(); selectCell(window.getSelection()?.anchorNode); });
   editor.addEventListener('click', e => { selectCell(e.target); saveRange(); });
   editor.addEventListener('focusin', e => selectCell(e.target));
+  editor.addEventListener('contextmenu', e => { const cell = e.target.closest?.('td,th'); if (!cell || !editor.contains(cell)) return; e.preventDefault(); activeCell = cell; saveRange(); closePop(); showTools(true, e.clientX, e.clientY); });
+  document.addEventListener('pointerdown', e => { if (!tools.contains(e.target)) showTools(false); if (!pop.contains(e.target) && !e.target.closest('[data-table]')) closePop(); });
   tools.querySelector('[data-table-close]').onclick = () => { activeCell = null; showTools(false); };
   const emptyCell = () => { const td = document.createElement('td'); td.appendChild(document.createElement('br')); return td; };
   const notifyCell = () => {
@@ -115,7 +150,7 @@ export function wireManualEditor(modal) {
       const newRow = document.createElement('tr');
       for (let i = 0; i < row.cells.length; i++) newRow.appendChild(emptyCell());
       row.parentNode.insertBefore(newRow, action === 'row-above' ? row : row.nextSibling);
-      activeCell = newRow.cells[Math.min(index, newRow.cells.length - 1)]; return;
+      activeCell = newRow.cells[Math.min(index, newRow.cells.length - 1)]; showTools(false); return;
     }
     if (action === 'row-delete') {
       row.remove(); activeCell = table.rows[0]?.cells[0] || null;
@@ -126,7 +161,7 @@ export function wireManualEditor(modal) {
         const at = Math.min(index + (action === 'col-right' ? 1 : 0), r.cells.length);
         r.insertBefore(emptyCell(), r.cells[at] || null);
       }
-      activeCell = row.cells[Math.min(index + (action === 'col-right' ? 1 : 0), row.cells.length - 1)]; return;
+      activeCell = row.cells[Math.min(index + (action === 'col-right' ? 1 : 0), row.cells.length - 1)]; showTools(false); return;
     }
     if (action === 'col-delete') {
       for (const r of rows) if (r.cells[index]) r.cells[index].remove();
@@ -141,15 +176,17 @@ export function wireManualEditor(modal) {
   bar.querySelectorAll('[data-cmd]').forEach(b => b.onclick = () => { restore(); document.execCommand(b.dataset.cmd, false, null); saveRange(); });
   bar.querySelector('[data-format]').onchange = e => { restore(); document.execCommand('formatBlock', false, e.target.value); saveRange(); };
   bar.querySelector('[data-color]').oninput = e => { restore(); document.execCommand('foreColor', false, e.target.value); saveRange(); };
-  bar.querySelector('[data-table]').onclick = () => {
+  const insertTable = (rows, cols) => {
     restore();
-    const rowInput = prompt('표 행 수 (1~12)', '3'); if (rowInput === null) return;
-    const colInput = prompt('표 열 수 (1~8)', '3'); if (colInput === null) return;
-    const rows = Math.min(12, Math.max(1, Number(rowInput) || 3));
-    const cols = Math.min(8, Math.max(1, Number(colInput) || 3));
     const html = '<table><tbody>' + Array.from({length:rows}, () => '<tr>' + Array.from({length:cols}, () => '<td>내용 입력</td>').join('') + '</tr>').join('') + '</tbody></table><p><br></p>';
-    document.execCommand('insertHTML', false, html); saveRange();
+    document.execCommand('insertHTML', false, html); saveRange(); closePop();
   };
+  for(let r=1;r<=8;r++) for(let c=1;c<=10;c++){
+    const cell=document.createElement('button');cell.type='button';cell.dataset.rows=r;cell.dataset.cols=c;cell.title=`${c}열 × ${r}행`;cell.setAttribute('aria-label',cell.title);
+    cell.addEventListener('pointerenter',()=>{grid.querySelectorAll('button').forEach(b=>b.classList.toggle('selected',Number(b.dataset.rows)<=r&&Number(b.dataset.cols)<=c));caption.textContent=`${c}열 × ${r}행`;});
+    cell.addEventListener('click',()=>insertTable(r,c));grid.appendChild(cell);
+  }
+  bar.querySelector('[data-table]').onclick = () => { if(pop.hidden){saveRange();pop.hidden=false;bar.querySelector('[data-table]').setAttribute('aria-expanded','true')}else closePop(); };
   bar.querySelector('[data-link]').onclick = () => {
     saveRange(); const url = prompt('연결할 URL (https://...)'); if (!url) return;
     if (!/^https?:\/\//i.test(url)) { alert('http 또는 https 링크만 사용할 수 있습니다.'); return; }
