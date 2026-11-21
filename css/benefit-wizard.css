@@ -13,3 +13,17 @@
 #goalItems .wizard-field-card strong{font-size:15px;line-height:1.5;word-break:keep-all;}
 #goalItems .wizard-field-card textarea{display:block;box-sizing:border-box;width:100%;min-height:96px;resize:vertical;line-height:1.6;}
 @media(max-width:650px){#goalItems .wizard-field-card{padding:14px}#goalItems .wizard-field-card textarea{min-height:88px}}
+
+/* 3단계: 장기요양급여제공계획서와 같은 행 단위 입력표 */
+#frequencyItems{display:block;max-width:100%;min-width:0}
+.frequency-table-wrap{width:100%;overflow-x:auto;border:1px solid #cbd5e1;border-radius:8px;background:white}
+.frequency-plan-table{width:100%;min-width:770px;border-collapse:collapse;table-layout:fixed;font-size:13px;color:#1e293b}
+.frequency-plan-table thead th{position:sticky;top:0;z-index:1;background:#e9eef4;color:#334155;text-align:center;font-size:12px;font-weight:700;padding:11px 6px;border:1px solid #cbd5e1;white-space:normal}
+.frequency-plan-table tbody td,.frequency-plan-table tbody th{border:1px solid #d6dee8;padding:5px 7px;vertical-align:middle;line-height:1.4}
+.frequency-plan-table tbody th{text-align:left;font-weight:600;word-break:keep-all;background:#fff}
+.frequency-plan-table tbody tr:nth-child(even) td,.frequency-plan-table tbody tr:nth-child(even) th{background:#f7f9fc}
+.frequency-plan-table tbody tr:hover td,.frequency-plan-table tbody tr:hover th{background:#eef5ff}
+.frequency-plan-table .frequency-status,.frequency-plan-table .frequency-code,.frequency-plan-table .frequency-service{text-align:center;color:#475569}
+.frequency-plan-table select,.frequency-plan-table input{width:100%;min-width:0;box-sizing:border-box;min-height:34px;padding:5px 6px;border:1px solid #cbd5e1;border-radius:4px;background:white;font:inherit;text-align:center}
+.frequency-plan-table select:focus,.frequency-plan-table input:focus{outline:2px solid #2563eb;outline-offset:0}
+.frequency-note{margin:10px 2px 0;color:#64748b;font-size:12px}
