@@ -79,7 +79,8 @@
 <section class="wizard-step" data-panel="4" hidden><div class="panel-head"><div><h2>⑤ 종합의견 입력</h2><p>공단과 센터 급여를 비교하고 관리자가 저장한 문구를 적용합니다. 최종 내용은 직접 수정할 수 있습니다.</p></div></div>
 <div class="benefit-admin-link" id="benefitAdminLink" hidden><a href="./benefit-phrase-admin.html">⚙ 관리자 · 급여별 추가·제외·대체 문구 관리</a></div>
 <div class="benefit-top"><div class="benefit-stat"><span>공단 권장</span><b id="leftCount">0</b></div><div class="benefit-stat"><span>센터 계획</span><b id="rightCount">0</b></div><div class="benefit-stat"><span>추가 후보</span><b id="addCount">0</b></div><div class="benefit-stat"><span>제외 후보</span><b id="removeCount">0</b></div></div>
-<div id="diffItems"></div><div class="reason-global"><label>공통 변경 사유 (선택)<textarea id="commonReason" rows="2" placeholder="필요 시 공통 사유를 입력하세요."></textarea></label></div>
+<div id="diffItems"></div><div class="benefit-disease-panel"><label for="diseases"><strong>수급자 질환 직접 입력</strong> <span>계획서별 임시 저장</span></label><input id="diseases" type="text" autocomplete="off" placeholder="예: 요통, 골다공증, 치매"><p>관리자 문구의 <code>{질환}</code> 또는 <code>{질환명}</code>에 입력한 질환이 적용됩니다. 질환을 입력하지 않으면 확인 문구가 표시됩니다.</p></div>
+<div class="reason-global"><label>공통 변경 사유 (선택)<textarea id="commonReason" rows="2" placeholder="필요 시 공통 사유를 입력하세요."></textarea></label></div>
 <div class="result-actions"><button id="generate" type="button">관리자 문구 적용하여 생성</button><button id="copyOpinion" class="secondary" type="button">종합의견 복사</button></div><textarea id="opinion" rows="13" placeholder="종합의견을 생성하거나 직접 작성하세요."></textarea><p class="note">※ 작성 중인 데이터는 현재 브라우저의 사용자별·계획서별 임시 저장 공간에 보관됩니다. 관리자 문구만 Firestore에 영구 저장됩니다. 실제 제공 내용과 수급자 상태를 확인한 후 사용하세요.</p></section>
 <footer class="wizard-nav"><button id="prevStep" class="secondary" type="button">← 이전 단계</button><span id="stepIndicator">1 / 5</span><button id="nextStep" type="button">다음 단계 →</button></footer>
 </div></main>
