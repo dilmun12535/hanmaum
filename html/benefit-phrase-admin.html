@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<link href="../images/logo2.png" rel="icon" type="image/png"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>급여별 문구 관리 | 한마음</title>
+<link href="../css/common.css" rel="stylesheet"/>
+<link href="../css/dashboard.css" rel="stylesheet">
+<style>
+    .info-table th, .info-table td {
+      border: 1px solid #e2e8f0 !important;
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .unified-notice-box {
+      background-color: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-top: 25px;
+      margin-bottom: 25px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+    }
+    .unified-notice-title {
+      color: #334155;
+      font-weight: 700;
+      font-size: 15px;
+      margin: 0 0 10px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .unified-notice-list {
+      margin: 0;
+      padding-left: 20px;
+      color: #475569;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .unified-notice-list li {
+      margin-bottom: 4px;
+    }
+
+    .library-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:18px 0 12px;padding:14px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px}
+    .filter-group{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.filter-btn{border:1px solid #cbd5e1;background:#fff;color:#334155;border-radius:8px;padding:8px 13px;cursor:pointer;font-weight:700}.filter-btn.active{background:#1e3a8a;color:#fff;border-color:#1e3a8a}.count-text{font-size:13px;color:#64748b;margin-left:4px}.excel-btn{border:1px solid #15803d;background:#16a34a;color:#fff;border-radius:8px;padding:9px 15px;cursor:pointer;font-weight:700}.version-badge{display:inline-block;min-width:54px;padding:4px 8px;border-radius:999px;font-size:12px;font-weight:700}.version-badge.legacy{background:#f1f5f9;color:#475569}.version-badge.new{background:#dbeafe;color:#1d4ed8}
+  </style>
+</link><link rel="stylesheet" href="../css/benefit-opinion.css"></head>
+<body>
+<div class="topbar">
+<div class="logo-area">
+<img alt="로고" class="logo-img" src="../images/logo.png"/>
+</div>
+<div class="topbar-right">
+<div class="icon-btn"><img alt="알림" src="../images/bell.png"/></div>
+<div class="icon-btn"><img alt="설정" src="../images/settings.png"/></div>
+<button class="logout-btn" onclick="hanmaumLogout()" type="button">로그아웃</button>
+<div class="user-area">
+<div class="user-badge">사회복지사</div>
+<p class="date-text" id="todayText"></p>
+</div>
+</div>
+</div>
+<div class="main-layout">
+<aside class="sidebar">
+<div class="menu-title">메뉴</div>
+<nav class="menu-list"><a class="menu-item" href="./today-tasks.html">오늘의 업무</a><details class="menu-group"><summary class="menu-parent">보관함</summary><div class="submenu"><a class="submenu-item" href="./care-plan-library.html">요양급여계획서</a><a class="submenu-item" href="./counsel-library.html">상담일지</a><a class="submenu-item" href="./attendance.html">출석 보관함</a><a class="submenu-item" href="./outing-library.html">외출 보관함</a></div></details><details class="menu-group"><summary class="menu-parent">요양기록지</summary><div class="submenu"><a class="submenu-item" href="./meal-check.html">식사 제공 확인</a><a class="submenu-item" href="./bath-check.html">목욕 제공 확인</a><a class="submenu-item" href="./toilet-check.html">화장실 제공 확인</a><a class="submenu-item" href="./meal-bath-check.html">정량/목욕의자</a></div></details><details class="menu-group"><summary class="menu-parent">물리치료 기록지</summary><div class="submenu"><a class="submenu-item" href="./therapy-check.html">물리치료 제공 확인</a></div></details><details class="menu-group"><summary class="menu-parent">간호 기록지</summary><div class="submenu"><a class="submenu-item" href="./nursing-vital-check.html">간호제공 확인</a><a class="submenu-item" href="./medication-check.html">투약 확인</a></div></details><a class="menu-item" href="./cognitive-check.html">인지활동 제공 확인</a><a class="menu-item" href="./fee-history.html">수가 변동표</a><a class="menu-item" href="./special-notes-check.html">특이사항 검증</a><a class="menu-item" href="./fee-time-notes-check.html">수가·시간 특이사항</a><a class="menu-item" href="./timely-notice.html">적기통보</a><a class="menu-item" href="./claim.html">청구</a><details class="menu-group"><summary class="menu-parent active">사회복지사 업무</summary><div class="submenu"><a class="submenu-item" href="./needs-assessment.html">욕구사정 판단근거 작성</a><a class="submenu-item active" href="./benefit-opinion.html">급여 변경 종합의견 작성</a><a class="submenu-item active" href="./benefit-phrase-admin.html">급여별 문구 관리</a></div></details></nav>
+</aside>
+<main class="content-area"><div class="benefit-app admin-benefit"><header class="benefit-header"><div><h1>급여별 종합의견 문구 관리</h1><p>관리자 전용 · 공단 권장 급여와 센터 계획 급여의 대체 관계 및 문구를 등록합니다.</p></div><a class="secondary admin-back" href="./benefit-opinion.html">← 급여 비교로 돌아가기</a></header>
+<div id="adminAccess" class="benefit-panel" style="padding:18px">관리자 권한 확인 중...</div>
+<div id="adminWorkspace" hidden><section class="benefit-panel" style="padding:22px"><h2>대체 급여 및 종합의견 등록</h2><p class="note">공단 급여와 센터 급여를 연결하면 비교 화면에서 자동으로 대체 판정됩니다. 문구는 관리자가 직접 작성합니다.</p><form id="mappingForm"><input id="editingId" type="hidden"><div class="admin-form-grid"><label>공단 권장 급여<input id="sourceBenefit" list="benefitCatalog" required placeholder="예: 입을옷 준비하기"></label><label>변경 유형<select id="changeKind"><option value="replace">대체</option><option value="add">추가</option><option value="remove">제외</option></select></label><label id="targetWrap">센터 계획 급여<input id="targetBenefit" list="benefitCatalog" placeholder="예: 옷갈아입기 지시 및 지켜보기"></label></div><datalist id="benefitCatalog"></datalist><label class="admin-full-label">종합의견 문구<textarea id="mappingText" rows="5" required placeholder="- 대체한 급여 아래에 들어갈 실제 문구를 입력하세요."></textarea></label><p class="note">변수: {공단급여}, {센터급여}. 저장 시 모든 직원의 비교 화면에 실시간 반영됩니다.</p><div class="result-actions"><button type="submit">저장</button><button id="resetMapping" type="button" class="secondary">새 문구 작성</button><span id="adminStatus" role="status"></span></div></form></section>
+<section class="benefit-panel" style="padding:22px;margin-top:18px"><div class="panel-head"><div><h2>등록된 문구</h2><p>수정하거나 삭제할 항목을 선택하세요.</p></div><input id="mappingSearch" placeholder="급여명 검색" aria-label="등록된 문구 검색"></div><div id="mappingList" class="admin-mapping-list"></div></section></div></div></main></div><script src="../js/firebase-auth-guard.js" type="module"></script><script src="../js/main.js"></script><script src="../js/benefit-catalog.js"></script><script type="module" src="../js/benefit-phrase-admin.js"></script></body></html>

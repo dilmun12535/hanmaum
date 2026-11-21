@@ -1,0 +1,18 @@
+import {auth,db} from './firebase-config.js';
+import {onAuthStateChanged} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js';
+import {doc,getDoc,onSnapshot,setDoc,serverTimestamp} from 'https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js';
+const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ref=doc(db,'portalSettings','benefitOpinionMappings');
+let entries=[],isAdmin=false,unsub=null;
+$('benefitCatalog').innerHTML=(window.BENEFIT_CATALOG||[]).map(x=>`<option value="${esc(x.name)}"></option>`).join('');
+const showStatus=s=>$('adminStatus').textContent=s;
+const kindName={replace:'대체',add:'추가',remove:'제외'};
+function render(){const q=$('mappingSearch').value.trim().toLowerCase();const filtered=entries.filter(x=>(x.source+' '+x.target+' '+x.text).toLowerCase().includes(q));$('mappingList').innerHTML=filtered.length?filtered.map(x=>`<article class="admin-mapping-item"><strong>${esc(x.source)} ${x.kind==='replace'?'→ '+esc(x.target):''}</strong> <small>(${kindName[x.kind]||'대체'})</small><p>${esc(x.text)}</p><div class="admin-mapping-actions"><button type="button" data-edit="${esc(x.id)}">수정</button><button type="button" class="delete" data-delete="${esc(x.id)}">삭제</button></div></article>`).join(''):'<p class="empty">등록된 문구가 없습니다.</p>';}
+function reset(){ $('mappingForm').reset();$('editingId').value='';$('targetWrap').hidden=false;showStatus('');}
+$('changeKind').onchange=()=>{$('targetWrap').hidden=$('changeKind').value!=='replace';};
+$('resetMapping').onclick=reset;
+$('mappingSearch').oninput=render;
+$('mappingList').onclick=async e=>{const b=e.target.closest('button');if(!b)return;const id=b.dataset.edit||b.dataset.delete;const item=entries.find(x=>x.id===id);if(!item)return;if(b.dataset.edit){$('editingId').value=id;$('sourceBenefit').value=item.source;$('targetBenefit').value=item.target||'';$('changeKind').value=item.kind||'replace';$('mappingText').value=item.text;$('changeKind').onchange();$('mappingForm').scrollIntoView({behavior:'smooth',block:'center'});return;}if(!confirm('이 문구를 삭제할까요?'))return;await save(entries.filter(x=>x.id!==id));};
+async function save(next){if(!isAdmin)throw Error('관리자만 수정할 수 있습니다.');showStatus('저장 중...');try{await setDoc(ref,{entries:next,updatedAt:serverTimestamp()});showStatus('저장했습니다. 다른 직원 화면에 실시간 반영됩니다.');}catch(e){showStatus('저장 실패: '+e.message);}}
+$('mappingForm').onsubmit=async e=>{e.preventDefault();const source=$('sourceBenefit').value.trim(),kind=$('changeKind').value,target=$('targetBenefit').value.trim(),text=$('mappingText').value.trim();if(!source||!text)return;if(kind==='replace'&&!target)return alert('대체할 센터 계획 급여를 입력하세요.');const id=$('editingId').value||('map_'+Date.now()+'_'+Math.random().toString(36).slice(2,7));const item={id,source,kind,target:kind==='replace'?target:'',text};const other=entries.filter(x=>x.id!==id);if(other.some(x=>x.kind===kind&&x.source===source&&x.target===item.target))return alert('같은 급여 조합의 문구가 이미 있습니다. 기존 문구를 수정하세요.');await save([...other,item]);reset();};
+onAuthStateChanged(auth,async user=>{if(unsub){unsub();unsub=null;}if(!user){$('adminAccess').textContent='로그인이 필요합니다.';return;}try{const u=await getDoc(doc(db,'users',user.uid));isAdmin=u.exists()&&u.data().role==='admin';$('adminAccess').hidden=isAdmin;$('adminWorkspace').hidden=!isAdmin;if(!isAdmin){$('adminAccess').textContent='관리자만 문구를 등록하거나 수정할 수 있습니다.';return;}unsub=onSnapshot(ref,s=>{entries=s.exists()?s.data().entries||[]:[];render();},e=>showStatus('불러오기 실패: '+e.message));}catch(e){$('adminAccess').textContent='권한 확인 실패: '+e.message;}});
