@@ -103,3 +103,5 @@ body.admin-mode #panel3 .assessment-columns{grid-template-columns:minmax(0,1fr)}
   .assessment-columns .output{overflow:visible;max-height:none}
   .assessment-columns .output .result{overflow:visible}
 }
+
+.physical-edit-list{display:grid;gap:8px}.physical-edit-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.6fr) auto auto;align-items:end;gap:10px;background:white;border:1px solid #dce4ef;border-radius:8px;padding:10px}.physical-edit-row label{font-size:12px;color:#475467}.physical-edit-row input[type=text]{display:block;margin-top:4px}.physical-edit-row .physical-test{white-space:nowrap;align-self:center}.physical-edit-row button{margin:0;color:#b42318;padding:8px}.physical-edit-preview{background:white;border:1px solid #bfd7ff;border-radius:8px;padding:12px;line-height:1.7}.physical-admin>p{margin:10px 0 6px}@media(max-width:850px){.physical-edit-row{grid-template-columns:1fr 1fr}.physical-edit-row label:nth-child(2){grid-column:1/-1;grid-row:2}}
