@@ -5,7 +5,7 @@ const $=id=>document.getElementById(id),esc=s=>String(s??'').replace(/[&<>"']/g,
 const ref=doc(db,'portalSettings','benefitOpinionMappings');
 const freqRef=doc(db,'portalSettings','benefitFrequencyDefaults');
 let frequencyDefaults={},frequencyOrder=[],frequencyExcluded=[],freqUnsub=null;
-const allFrequencyNames=()=>[...new Set([...Object.keys(frequencyDefaults).map(decodeURIComponent),...(window.BENEFIT_CATALOG||[]).map(x=>x.name)] .filter(n=>!frequencyExcluded.includes(n))];
+const allFrequencyNames=()=>[...new Set([...Object.keys(frequencyDefaults).map(decodeURIComponent),...(window.BENEFIT_CATALOG||[]).map(x=>x.name)] .filter(n=>!frequencyExcluded.includes(n)))];
 const orderedNames=()=>allFrequencyNames().sort((a,b)=>{const ai=frequencyOrder.indexOf(a),bi=frequencyOrder.indexOf(b);return (ai<0?Number.MAX_SAFE_INTEGER:ai)-(bi<0?Number.MAX_SAFE_INTEGER:bi)||a.localeCompare(b,'ko')});
 let dragName=null;
 const selectedFrequency=new Set();
