@@ -28,36 +28,73 @@ function rightRender(){const d=current(),q=norm($('rightSearch').value);$('right
 function parseFrequency(raw){const t=String(raw||'').replace(/\s/g,'');if(t==='필요시'||t==='필요시제공'||t==='수시')return {cycle:'필요시',count:'1'};
 const m=t.match(/^(일|주|월)\s*(\d+)(?:회)?$/);return m?{cycle:m[1],count:m[2]}:{cycle:'일',count:'1'};}
 // 관리자 기본값은 필요내용그룹 또는 세부 급여명으로 등록될 수 있음.
-const catalogGroups=new Map(catalog.map(x=>[norm(x.name),x.group]));
+const canonicalGroup = g => ({'피부청결유지화장 등 외모관리':'피부청결유지','의사소통, 정서':'의사소통.정서','인지기능프로그램':'인지기능 프로그램','가족대상 프로그램':'가족대상프로그램','환경관리':'환경정리'})[g] || g;
+const catalogGroups=new Map(catalog.map(x=>[norm(x.name),canonicalGroup(x.group)]));
+const goalCodes=new Map(Object.entries({A10:['옷갈아입기','세면하기','양치하기','몸씻기','머리감기','몸단장','손발톱 정리','피부청결유지','머리단장'],A20:['식사하기'],A50:['이동'],A60:['화장실 이용하기'],A80:['약복용'],A90:['관절움직임(신체)'],C10:['행동변화'],D10:['의사소통.정서'],G10:['외출','병원동행'],K30:['기초건강관리','교육 상담','감염간호'],M10:['신체 인지기능 향상 프로그램','신체기능의 훈련','기본동작 훈련','일상생활동작 훈련','인지기능 프로그램','사회적응훈련','가족대상프로그램','물리치료','작업치료'],M20:['응급서비스'],M30:['송영서비스','환경정리','물품관리']}).flatMap(([code,groups])=>groups.map(g=>[norm(g),code])));
 function frequencyKeys(x){return [...new Set([x.name,catalogGroups.get(norm(x.name)),x.group].filter(Boolean).map(norm))];}
 function frequencyRank(x){const keys=frequencyKeys(x);const i=frequencyOrder.findIndex(n=>keys.includes(norm(n)));return i<0?Number.MAX_SAFE_INTEGER:i;}
 function orderedProvided(d){return [...d.provided].sort((a,b)=>frequencyRank(a)-frequencyRank(b));}
 function frequencyDefault(x){const exact=frequencyDefaults[encodeURIComponent(x.name)];if(exact)return exact;const keys=frequencyKeys(x);return Object.entries(frequencyDefaults).find(([k])=>keys.includes(norm(decodeURIComponent(k))))?.[1]||{};}
+function groupedProvided(d){
+ const groups=new Map();
+ for(const x of orderedProvided(d)){
+  const raw=catalogGroups.get(norm(x.name))||x.group||x.name;
+  const name=canonicalGroup(raw);
+  const key=norm(name);
+  if(!groups.has(key))groups.set(key,{...x,name,group:undefined,members:[]});
+  groups.get(key).members.push(x);
+ }
+ return [...groups.values()].sort((a,b)=>frequencyRank(a)-frequencyRank(b));
+}
 function frequencyRender(){
  const d=current(), container=$('frequencyItems');
- const rows=orderedProvided(d).map((x,i)=>{
-  const v=d.frequencies[x.name]||{},def=frequencyDefault(x);
+ const groups=groupedProvided(d);
+ const quickNames=["식사하기","약복용"];
+ const quick=d.quickCounts||(d.quickCounts={});
+ const rows=groups.map((x,i)=>{
+  const v=Object.assign({},...x.members.map(m=>d.frequencies[m.name]||{}),d.frequencies[x.name]||{}),def=frequencyDefault(x);
   const original=parseFrequency(x.frequency);
   const cycle=v.cycle??def.cycle??original.cycle;
-  const count=v.count??def.count??original.count;
+  const manualCount=quickNames.includes(x.name)&&quick[x.name]!==undefined&&quick[x.name]!==""?quick[x.name]:v.count;
+  const count=manualCount!==undefined && manualCount!==null && String(manualCount).trim()!=='' ? manualCount : (def.count??original.count);
   const minutes=v.minutes??def.minutes??x.minutes??'10';
-  const group=x.group||x.serviceType||'주야간보호';
-  const code=x.code||x.goalCode||'';
+  const group=x.serviceType||'주야간보호';
+  const code=goalCodes.get(norm(x.name))||x.code||x.goalCode||'';
   return `<tr><td class="frequency-status">${i+1}</td><td class="frequency-code">${esc(code)}</td><td class="frequency-service">${esc(group)}</td><th scope="row">${esc(x.name)}</th><td><select aria-label="${esc(x.name)} 주기" data-cycle="${esc(x.name)}">${['일','주','월','필요시'].map(z=>`<option value="${z}" ${cycle===z?'selected':''}>${z}</option>`).join('')}</select></td><td><input aria-label="${esc(x.name)} 횟수" type="number" min="0" step="1" inputmode="numeric" data-count="${esc(x.name)}" value="${esc(count)}"></td><td><input aria-label="${esc(x.name)} 시간(분)" type="number" min="0" step="1" inputmode="numeric" data-minutes="${esc(x.name)}" value="${esc(minutes)}"></td></tr>`;
  });
- container.innerHTML=rows.length?`<div class="frequency-table-wrap"><table class="frequency-plan-table"><colgroup><col style="width:5%"><col style="width:9%"><col style="width:15%"><col><col style="width:10%"><col style="width:10%"><col style="width:11%"></colgroup><thead><tr><th>NO</th><th>세부 목표 코드</th><th>급여종류</th><th>필요내용그룹</th><th>주기</th><th>횟수</th><th>시간 (분)</th></tr></thead><tbody>${rows.join('')}</tbody></table></div><p class="frequency-note">관리자 기본값이 자동 적용됩니다. 여기서 수정한 값은 현재 계획서에만 저장됩니다.</p>`:'<p class="empty">2단계에서 센터 계획서를 업로드하세요.</p>';
+ container.innerHTML=rows.length?`<div class="frequency-table-wrap"><table class="frequency-plan-table"><colgroup><col style="width:5%"><col style="width:9%"><col style="width:15%"><col><col style="width:10%"><col style="width:10%"><col style="width:11%"></colgroup><thead><tr><th>NO</th><th>세부 목표 코드</th><th>급여종류</th><th>필요내용그룹</th><th>주기</th><th>횟수</th><th>시간 (분)</th></tr></thead><tbody>${rows.join('')}</tbody></table></div><p class="frequency-note">같은 필요내용그룹은 한 줄로 표시됩니다. 관리자 기본값이 자동 적용됩니다. 식사하기·약복용 등 직접 입력한 횟수가 우선 적용되며 현재 계획서에만 저장됩니다. 횟수를 비우면 기본값으로 돌아갑니다.</p>`:'<p class="empty">2단계에서 센터 계획서를 업로드하세요.</p>';
+ const quickBox=document.createElement('section');
+ quickBox.style.cssText='background:#eff5ff;border:1px solid #cbdcf5;border-radius:10px;padding:16px;margin:0 0 16px';
+ quickBox.innerHTML=`<strong>식사 및 복약 횟수 설정</strong><div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:12px">${quickNames.map((name,i)=>`<label style="flex:1;min-width:160px">${i===0?'식사':'복약'} 횟수 (일)<span style="display:flex;align-items:center;gap:8px;margin-top:6px"><input style="width:100%;min-width:0" type="number" min="0" step="1" inputmode="numeric" data-quick-count="${name}" placeholder="관리자 기본값" value="${esc(quick[name]??'')}">회</span></label>`).join('')}</div><small style="display:block;margin-top:10px;color:#526987">입력한 횟수가 아래 급여 목록에 우선 반영됩니다. 비워두면 관리자 기본값을 적용합니다.</small>`;
+ container.prepend(quickBox);
+ quickBox.querySelectorAll('[data-quick-count]').forEach(el=>el.addEventListener('input',()=>{
+  if(el.value!==''&&(!el.validity.valid||!Number.isInteger(Number(el.value))))return;
+  const name=el.dataset.quickCount;
+  if(el.value===''){delete quick[name];for(const key of [name,...(groups.find(g=>g.name===name)?.members||[]).map(m=>m.name)]){if(d.frequencies[key])delete d.frequencies[key].count;}}
+  else quick[name]=el.value;
+  const row=Array.from(container.querySelectorAll('[data-count]')).find(x=>x.dataset.count===name);
+  const g=groups.find(x=>x.name===name);
+  if(row&&g)row.value=quick[name]??frequencyDefault(g).count??parseFrequency(g.frequency).count;
+  persist();
+ }));
  container.querySelectorAll('[data-cycle],[data-count],[data-minutes]').forEach(el=>el.addEventListener('input',()=>{
   const name=el.dataset.cycle||el.dataset.count||el.dataset.minutes;
   const v=d.frequencies[name]||{};
-  v[el.hasAttribute('data-cycle')?'cycle':el.hasAttribute('data-count')?'count':'minutes']=el.value;
-  d.frequencies[name]=v;scheduleSave();
+  const field=el.hasAttribute('data-cycle')?'cycle':el.hasAttribute('data-count')?'count':'minutes';
+  if(field==='count' && el.value==='') delete v.count;
+  else if(field==='count' && (!Number.isInteger(Number(el.value)) || Number(el.value)<0)) return;
+  else v[field]=el.value;
+  if(field==='count'&&quickNames.includes(name)){if(el.value==='')delete quick[name];else quick[name]=el.value;const top=Array.from(quickBox.querySelectorAll('[data-quick-count]')).find(x=>x.dataset.quickCount===name);if(top)top.value=el.value;}
+  d.frequencies[name]=v;persist();
  }));
+ container.querySelectorAll('[data-count]').forEach(el=>el.addEventListener('change',()=>{if(el.value===''||!el.validity.valid)frequencyRender();}));
 }
 let goalDefaults={},goalLoaded=false,goalError='';
 function goalText(x){return goalDefaults[encodeURIComponent(x.name)]??Object.entries(goalDefaults).find(([k])=>norm(decodeURIComponent(k))===norm(x.name))?.[1]??'';}
 async function copyGoal(text){if(!text)return;try{await navigator.clipboard.writeText(text);}catch{const t=document.createElement('textarea');t.value=text;document.body.append(t);t.select();const ok=document.execCommand('copy');t.remove();if(!ok)return alert('복사하지 못했습니다.');}$('goalStatus').textContent='복사 완료';}
-function goalRender(){const d=current();if(!d)return;$('goalStatus').textContent=goalError?'불러오기 실패: '+goalError:goalLoaded?'':'관리자 세부 목표 불러오는 중…';const ordered=orderedProvided(d);$('goalItems').innerHTML=ordered.map((x,i)=>{const v=goalText(x);return `<div class="wizard-field-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><strong>${esc(x.name)}</strong><button type="button" class="secondary" data-goal-copy="${i}" ${v?'':'disabled'}>복사</button></div><p style="white-space:pre-wrap;margin-top:10px">${esc(v||(goalLoaded?'관리자 등록 문구 없음':'불러오는 중…'))}</p></div>`}).join('')||'<p class="empty">2단계에서 센터 계획서를 업로드하세요.</p>';$('goalItems').querySelectorAll('[data-goal-copy]').forEach(b=>b.onclick=()=>copyGoal(goalText(ordered[Number(b.dataset.goalCopy)])));}
-$('copyAllGoals').onclick=()=>{const rows=orderedProvided(current()).filter(x=>goalText(x)).map(x=>x.name+'\n'+goalText(x));if(!rows.length)return alert('등록된 세부 목표가 없습니다.');copyGoal(rows.join('\n\n'));};
+function goalGroups(d){const groups=new Map();for(const g of groupedProvided(d)){const code=goalCodes.get(norm(g.name))||g.code||g.goalCode||'';const key=code||norm(g.name);if(!groups.has(key))groups.set(key,{code,names:[],texts:new Set()});const row=groups.get(key);row.names.push(g.name);for(const x of g.members){const v=goalText(x);if(v)row.texts.add(v.trim());}const v=goalText(g);if(v)row.texts.add(v.trim());}return [...groups.values()].map(g=>({...g,text:[...g.texts].filter(Boolean).join('\n')}));}
+function goalRender(){const d=current();if(!d)return;$('goalStatus').textContent=goalError?'불러오기 실패: '+goalError:goalLoaded?'':'관리자 세부 목표 불러오는 중…';const rows=goalGroups(d);$('goalItems').innerHTML=rows.map((g,i)=>`<div class="wizard-field-card"><div style="display:flex;align-items:center;justify-content:space-between;gap:12px"><strong>${esc([g.code,g.names.join(' · ')].filter(Boolean).join(' | '))}</strong><button type="button" class="secondary" data-goal-copy="${i}" ${g.text?'':'disabled'}>복사</button></div><p style="white-space:pre-wrap;margin-top:10px">${esc(g.text||(goalLoaded?'관리자 등록 문구 없음':'불러오는 중…'))}</p></div>`).join('')||'<p class="empty">2단계에서 센터 계획서를 업로드하세요.</p>';$('goalItems').querySelectorAll('[data-goal-copy]').forEach(b=>b.onclick=()=>copyGoal(rows[Number(b.dataset.goalCopy)].text));}
+$('copyAllGoals').onclick=()=>{const rows=goalGroups(current()).filter(g=>g.text).map(g=>[g.code,g.names.join(' · ')].filter(Boolean).join(' | ')+'\n'+g.text);if(!rows.length)return alert('등록된 세부 목표가 없습니다.');copyGoal(rows.join('\n\n'));};
 window.benefitGoalsChanged=x=>{goalDefaults=x||{};goalLoaded=true;goalError='';goalRender();};window.benefitGoalsError=x=>{goalError=x;goalRender();};
 function getRows(wb){const results=[];for(const sheet of wb.SheetNames){const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:'',raw:false});let header=-1,col=-1,detailCol=-1,freqCol=-1,minCol=-1;for(let i=0;i<rows.length;i++){const r=rows[i].map(v=>String(v??'').replace(/\s+/g,''));const ix=r.findIndex(v=>v==='장기요양필요내용'||v==='필요내용');if(ix>=0){header=i;col=ix;detailCol=r.findIndex(v=>v==='세부제공내용');freqCol=r.findIndex(v=>v.startsWith('횟수'));minCol=r.findIndex(v=>v.startsWith('시간'));break}}if(header<0)continue;for(let i=header+1;i<rows.length;i++){const r=rows[i],name=String(r[col]??'').trim();if(!name||name==='장기요양필요내용'||name==='필요내용')continue;if(name.includes('종합의견')||name.includes('총괄확인자'))break;results.push({name,detail:detailCol>=0?String(r[detailCol]||'').trim():'',frequency:freqCol>=0?String(r[freqCol]||'').trim():'',minutes:minCol>=0?String(r[minCol]||'').trim():''})}}return results}
 function mappingMatches(){const d=current(),provided=d.provided.map(x=>x.name),add=provided.filter(k=>!d.recommended.some(r=>norm(r)===norm(k))),remove=d.recommended.filter(k=>!provided.some(p=>norm(p)===norm(k))),usedA=new Set(),usedR=new Set(),matches=[];for(const m of mappings){if(m.kind!=='replace')continue;const a=add.find(x=>norm(x)===norm(m.target)),r=remove.find(x=>norm(x)===norm(m.source));if(a&&r&&!usedA.has(a)&&!usedR.has(r)){matches.push({...m,source:r,target:a});usedA.add(a);usedR.add(r)}}return {matches,add:add.filter(x=>!usedA.has(x)),remove:remove.filter(x=>!usedR.has(x))}}
