@@ -72,3 +72,5 @@
 .benefit-combo-option:hover,.benefit-combo-option.active{background:#eff6ff;color:#1d4ed8}
 .benefit-combo-empty{padding:12px;color:#64748b;font-size:13px}
 #targetWrap{position:relative;z-index:5}
+
+#feePanel{margin:16px 0}.fee-grid{display:grid;grid-template-columns:minmax(110px,1fr) minmax(180px,3fr);gap:12px;margin:12px 0}.fee-grid label{display:grid;gap:6px}.fee-grid select,.fee-grid input{width:100%;box-sizing:border-box}.fee-check{display:flex!important;align-items:center;gap:8px}.fee-check input{width:auto!important;margin:0}#feeSaturdayRow[hidden]{display:none}#feePreview{white-space:pre-wrap;line-height:1.7}@media(max-width:600px){.fee-grid{grid-template-columns:1fr}}

@@ -28,13 +28,15 @@ const physicalActions={
  '세면도구 준비':'세면도구를 준비하는','양치도구 준비':'양치도구를 준비하는','틀니관리':'틀니를 관리해 드리는','세면도움':'세수를 도와드리는','몸 씻기 도움':'몸을 씻을 수 있도록 도와드리는'};
 function actionDefault(x){return physicalActions[x]||x.replace(/ 지시 및 지켜보기(?: 도움)?$/,' 동작을 지켜보고 알려드리는').replace(/^전적인 (.*) 도움$/,'$1의 모든 과정에서 도와드리는').replace(/ 도움(?:\(위생관리\))?$/,'을 도와드리는').replace(/ 준비$/,'를 준비하는').replace(/ 하기$/,' 하는').replace(/ 관리$/,'를 관리하는');}
 function actionValue(f,x){const v=settings.physicalPhrases?.[f]?.[x];return v&&v!==x?v:actionDefault(x)}
-function physicalSentence(f,level,illness,actions){
+function diseaseParticle(value){const c=value.trim().slice(-1);return /[가-힣]/.test(c)&& ![0,8].includes((c.charCodeAt(0)-44032)%28)?'으로':'로';}
+function physicalPattern(f,level){return settings.physicalPatterns?.[f]?.[level] ?? (level==='완전자립'?'{동작} 스스로 수행할 수 있는 상태임.':'{동작} {질환연결}{도움문구}주수발자의 '+(level==='부분도움'?'부분적인':'전적인')+' 도움이 필요한 상태임.');}
+function physicalSentence(f,level,illness,actions,pattern=physicalPattern(f,level),connector=settings.physicalConnectors?.[f]??'{질환}{조사} 인해'){
  const subject=f+(/[가-힣]$/.test(f)&&((f.charCodeAt(f.length-1)-44032)%28===0)?'는':'은');
- if(level==='완전자립')return subject+' 스스로 수행할 수 있는 상태임.';
- const end='주수발자의 '+(level==='부분도움'?'부분적인':'전적인')+' 도움이 필요한 상태임.';
+ illness=String(illness||'').trim();
  const details=actions.filter(Boolean).map(x=>x.trim()).filter(Boolean);
  const joined=details.map((x,i)=>i===details.length-1?x:x.replace(/하는$/,'하고').replace(/드리는$/,'드리고')).join(', ');
- return subject+' '+(illness?illness+'으로 인해 ':'')+(joined?joined+' ':'')+end;
+ const cause=illness?connector.replaceAll('{질환}',illness).replaceAll('{조사}',diseaseParticle(illness)).trim():'';
+ return pattern.replaceAll('{동작}',subject).replaceAll('{질환연결}',cause?cause+' ':'').replaceAll('{도움문구}',joined?joined+' ':'').replaceAll('{질환}',illness).replaceAll('{조사}',illness?diseaseParticle(illness):'').replace(/ +/g,' ').trim();
 }
 function physicalResult(){return sections[3].fields.map(([f,opts])=>{
  const level=state[3][f]||opts[0], illness=String(state[3]['진단명::'+f]||'').trim();
@@ -42,7 +44,7 @@ function physicalResult(){return sections[3].fields.map(([f,opts])=>{
  if(!settings.physicalSimple?.[f] && settings.phrases[id(3,f,level)] && settings.phrases[id(3,f,level)]!==defaultPhrase(3,f,level)){
  const ending=level==='완전자립'?'스스로 수행할 수 있는 상태임.':level==='부분도움'?'주수발자의 부분적인 도움이 필요한 상태임.':'주수발자의 전적인 도움이 필요한 상태임.';
  const details=chosen.map(x=>settings.physicalPhrases?.[f]?.[x]||x).join(', ');
- return template(3,f,level).replaceAll('{질환}',illness).replaceAll('{도움사유}',details).replaceAll('{필요내용}',details).replaceAll('{도움수준}',ending);
+ return template(3,f,level).replace(/\{질환\}(?:으로|로) 인해\s*/g,illness?illness+diseaseParticle(illness)+' 인해 ':'').replaceAll('{질환}',illness).replaceAll('{도움사유}',details).replaceAll('{필요내용}',details).replaceAll('{도움수준}',ending);
  }
  return physicalSentence(f,level,illness,chosen.map(x=>actionValue(f,x)));
  }).join('\n')+(state[3]['신체상태 추가 설명']?'\n'+state[3]['신체상태 추가 설명']:'')}
@@ -60,14 +62,15 @@ function renderPhysical(area){
   if(role==='admin'){
    const admin=document.createElement('div');admin.className='adminbox physical-admin';
    admin.innerHTML='<strong>관리자 · 도움 문구 설정</strong><p class="muted">도움을 제공하는 행동만 입력하세요. 진단명과 도움 수준은 자동으로 연결됩니다.</p>';
+   const format=document.createElement('div');format.innerHTML='<label>질환 연결 표현<input data-connector type="text"></label><p class="muted">{질환}은 진단명, {조사}는 자동으로 으로/로를 적용합니다. 예: {질환}{조사} 인해, {질환}의 영향으로</p>'+opts.map(o=>`<label>${esc(o)} 전체 출력 문장<textarea data-pattern="${esc(o)}" rows="2"></textarea></label>`).join('')+'<p class="muted">{동작}: 동작명과 조사 · {질환연결}: 질환 연결 표현 · {도움문구}: 선택한 도움 행동</p>';admin.append(format);format.querySelector('[data-connector]').value=settings.physicalConnectors?.[f]??'{질환}{조사} 인해';format.querySelectorAll('[data-pattern]').forEach(el=>el.value=physicalPattern(f,el.dataset.pattern));
    const list=document.createElement('div');list.className='physical-edit-list';admin.append(list);
    const preview=document.createElement('div');preview.className='physical-edit-preview';
-   const refresh=()=>{const rows=[...list.children];preview.textContent=physicalSentence(f,state[3][f]||'부분도움',state[3]['진단명::'+f]||'',rows.filter(r=>r.querySelector('[data-test]').checked).map(r=>r.querySelector('[data-action]').value));};
+   const refresh=()=>{const rows=[...list.children];preview.textContent=physicalSentence(f,state[3][f]||'부분도움',state[3]['진단명::'+f]||'',rows.filter(r=>r.querySelector('[data-test]').checked).map(r=>r.querySelector('[data-action]').value),format.querySelector('[data-pattern="'+(state[3][f]||'부분도움')+'"]').value,format.querySelector('[data-connector]').value);};
    const add=(name='',value='')=>{const r=document.createElement('div');r.className='physical-edit-row';r.innerHTML='<label>필요내용<input type="text" data-name></label><label>도움 문구<input type="text" data-action placeholder="예: 입을 옷을 준비하는"></label><label class="physical-test"><input type="checkbox" data-test> 미리보기</label><button type="button" data-remove>삭제</button>';r.querySelector('[data-name]').value=name;r.querySelector('[data-action]').value=value;r.querySelector('[data-test]').checked=(state[3]['필요내용::'+f]||[]).includes(name);r.addEventListener('input',refresh);r.querySelector('[data-remove]').onclick=()=>{r.remove();refresh()};list.append(r);};
    physicalNeedOptions(f).forEach(x=>add(x,actionValue(f,x)));
    const addBtn=document.createElement('button');addBtn.type='button';addBtn.textContent='+ 필요내용 추가';addBtn.onclick=()=>add();admin.append(addBtn);
    const title=document.createElement('p');title.textContent='출력 미리보기 (위 도움 수준 및 진단명 적용)';admin.append(title,preview);row.addEventListener('input',refresh);refresh();
-   const saveBtn=document.createElement('button');saveBtn.className='primary';saveBtn.textContent='이 동작 설정 저장';saveBtn.onclick=()=>{if(!window.needsIsAdmin)return;const entries=[...list.children].map(r=>[r.querySelector('[data-name]').value.trim(),r.querySelector('[data-action]').value.trim()]);if(entries.some(([n,v])=>!n||!v)||new Set(entries.map(x=>x[0])).size!==entries.length)return alert('항목명과 도움 문구를 입력하고 중복 항목을 확인하세요.');settings.physicalNeeds??={};settings.physicalNeeds[f]=entries.map(x=>x[0]);settings.physicalPhrases??={};settings.physicalPhrases[f]=Object.fromEntries(entries);settings.physicalSimple??={};settings.physicalSimple[f]=true;save();renderOptions();update();};admin.append(saveBtn);row.appendChild(admin)
+   const saveBtn=document.createElement('button');saveBtn.className='primary';saveBtn.textContent='이 동작 설정 저장';saveBtn.onclick=()=>{if(!window.needsIsAdmin)return;const entries=[...list.children].map(r=>[r.querySelector('[data-name]').value.trim(),r.querySelector('[data-action]').value.trim()]);if(entries.some(([n,v])=>!n||!v)||new Set(entries.map(x=>x[0])).size!==entries.length)return alert('항목명과 도움 문구를 입력하고 중복 항목을 확인하세요.');settings.physicalNeeds??={};settings.physicalNeeds[f]=entries.map(x=>x[0]);settings.physicalPhrases??={};settings.physicalPhrases[f]=Object.fromEntries(entries);settings.physicalSimple??={};settings.physicalSimple[f]=true;settings.physicalConnectors??={};settings.physicalConnectors[f]=format.querySelector('[data-connector]').value;settings.physicalPatterns??={};settings.physicalPatterns[f]=Object.fromEntries([...format.querySelectorAll('[data-pattern]')].map(el=>[el.dataset.pattern,el.value]));save();renderOptions();update();};admin.append(saveBtn);row.appendChild(admin)
 
   }
   table.appendChild(row)
